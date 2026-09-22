@@ -1,0 +1,3 @@
+[build]
+# Work around rustix 0.37.x linux_raw + nightly incompatibility by forcing libc backend.
+rustflags = ["--cfg", "rustix_use_libc"]

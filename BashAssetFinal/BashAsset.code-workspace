@@ -1,0 +1,49 @@
+{
+    "folders": [
+        {
+            "path": "."
+        },
+        {
+            "name": "partitioned_array",
+            "path": "partitioned_array"
+        }
+    ],
+    "settings": {
+        "ruby.useLanguageServer": true,
+        "ruby.lint": {
+            "rubocop": true,
+            "reek": true,
+            "ruby": true,
+            "debride": true,
+            "ruby-lint": true,
+            "fasterer": true
+        },
+        "ruby.format": "rubocop",
+        "ruby.intellisense": "rubyLocate",
+        "ruby.codeCompletion": "rcodetools",
+        "ruby.useBundler": true,
+        "ruby.rubocop.executePath": "C:\\Ruby33-x64\\bin\\",
+        "ruby.rubocop.suppressRubocopWarnings": true,
+        "ruby.rubocop.onSave": true,
+        "ruby.formatOnSave": true,
+        "ruby.lintOnSave": true,
+        "ruby.completion": true,
+        "ruby.hover": true,
+        "solargraph.autoformat": true,
+        "solargraph.diagnostics": true,
+        "solargraph.formatting": true,
+        "solargraph.useBundler": true,
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.fixAll": "explicit"
+        },
+        "powershell.cwd": "BashAssetFinal",
+        "files.autoSave": "afterDelay",
+        "notebook.editorOptionsCustomizations": {
+            
+        }
+    },
+    "rust-analyzer.linkedProjects": [
+        "Cargo.toml",
+    ]
+}

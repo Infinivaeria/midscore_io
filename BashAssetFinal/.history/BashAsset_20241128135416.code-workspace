@@ -1,0 +1,30 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "partitioned_array",
+			"path": "partitioned_array"
+		}
+	],
+	
+	"settings": {"ruby.rubocop.executePath": "C:\\Ruby33-x64\\bin\\",
+
+	"ruby.rubocop.suppressRubocopWarnings": true,
+"ruby.rubocop.onSave": true,
+"ruby.rubocop.useBundler": true,
+"terminal.integrated.sendKeybindingsToShell": true,
+"git.ignoreLimitWarning": true,
+"powershell.cwd": "BashAsset",
+"workbench.colorCustomizations": {
+	"activityBar.background": "#093049",
+	"titleBar.activeBackground": "#0D4366",
+	"titleBar.activeForeground": "#F7FBFE"
+},
+"window.title": "${dirty}${activeEditorShort}${separator}${rootName}${separator}${profileName}${separator}${appName}${separator}[Branch: main]",
+"rust-analyzer.linkedProjects": [
+	"rust/rustby/Cargo.toml", "rust/meta-os/Cargo.toml"
+]
+}
+}

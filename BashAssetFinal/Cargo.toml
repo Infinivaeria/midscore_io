@@ -1,0 +1,6 @@
+[workspace]
+resolver = "3"
+members = [
+    "rust/bash-asset-engine",
+    # Add other members here
+]

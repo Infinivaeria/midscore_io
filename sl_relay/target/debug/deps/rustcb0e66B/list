@@ -1,0 +1,8 @@
+{
+  global:
+    __rustc_proc_macro_decls_6839fe95f7748439__;
+    rust_metadata_futures_macro_6839fe95f7748439;
+
+  local:
+    *;
+};

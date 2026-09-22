@@ -1,0 +1,191 @@
+Ollama Team Relay 3.0 Routes
+
+Browser API conventions
+-----------------------
+Base URL is the HTTPS origin of this server, for example:
+
+  const baseUrl = window.location.origin;
+
+Browser workbench:
+
+  GET /assets/ollama-console.html
+
+Open https://your-host/assets/ollama-console.html to compose and send standard
+non-streaming POST /ollama requests from the browser.
+
+The server listens on standard HTTPS port 443 by default, so browser routes are
+available without a port suffix: https://your-host/ollama and
+https://your-host/game/your-team/your-player/turn.
+
+All relay responses are JSON. POST requests must use:
+
+  Content-Type: application/json
+
+Every listed route supports OPTIONS preflight and returns these CORS headers:
+
+  Access-Control-Allow-Origin: *
+  Access-Control-Allow-Methods: GET, POST, OPTIONS
+  Access-Control-Allow-Headers: Authorization, Content-Type
+
+Path parameters :team and :player identify independent persisted sessions. They
+must be non-empty URL-safe values using letters, numbers, _, -, or .. Encode
+browser-supplied values with encodeURIComponent.
+
+GET  /ollama
+  JSON API catalog. Discover the running relay before issuing other calls:
+
+  const catalog = await fetch(`${baseUrl}/ollama`).then((response) => response.json());
+
+  Response: { service, version, routes: [{ method, path, description, authorization }] }
+
+POST /ollama
+  Standard non-streaming Ollama chat access. This forwards an Ollama-compatible
+  request to the configured upstream /api/chat endpoint and returns its JSON
+  response unchanged. model defaults to OLLAMA_MODEL when omitted.
+
+  const reply = await fetch(`${baseUrl}/ollama`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'llama2-uncensored:latest',
+      messages: [{ role: 'user', content: 'Hello.' }],
+      stream: false,
+    }),
+  }).then((response) => response.json());
+
+  stream: true is not supported on this buffered HTTPS route. Use stream: false.
+
+GET  /ollama/health
+  Ollama upstream status and installed model list. Returns 200 when upstream is
+  available; 503 otherwise.
+
+  const health = await fetch(`${baseUrl}/ollama/health`).then((response) => response.json());
+
+  200 response: { status: "ok", version, ollama_http_address,
+                  configured_model, available_models }
+
+POST /chat/:team
+  JSON: {"message":"..."}
+  Team-scoped persisted chat history.
+
+  const chat = await fetch(`${baseUrl}/chat/${team}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: 'Summarize today\'s findings.' }),
+  }).then((response) => response.json());
+
+  200 response: { response, team, model, fallback_used, history_chars }
+
+POST /game/:team/:player
+  JSON: {"message":"...","game_prompt":"optional current game state or rules"}
+  Player-isolated persisted game conversation history. game_prompt is optional
+  request-scoped context, such as rules or scene details.
+
+  200 response: { response, team, player, model, fallback_used, history_chars,
+                  game_prompt_applied }
+
+POST /game/:team/:player/turn
+  JSON: {"action":"...","game_prompt":"optional rules or scene context","state":{}}
+  Model-directed game turn. state is optional; omitting it resumes the player's
+  persisted JSON-object state. Ollama returns a directive as data, never code.
+
+  const turn = await fetch(`${baseUrl}/game/${team}/${player}/turn`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'open the north door', state: { room: 'entry' } }),
+  }).then((response) => response.json());
+
+  200 response: {
+    response, directive: { narrative, state, choices: [{ id, label }], game_over },
+    state, team, player, model, fallback_used
+  }
+
+  A game client must validate and apply directive data with its own local rules.
+
+GET  /game/:team/:player/state
+  Returns the player's persisted game state.
+
+  const saved = await fetch(`${baseUrl}/game/${team}/${player}/state`)
+    .then((response) => response.json());
+
+  200 response: { state: {}, team, player }
+
+POST /game/:team/:player/reset
+  Clears the player's game state and isolated game history.
+
+  const reset = await fetch(`${baseUrl}/game/${team}/${player}/reset`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  }).then((response) => response.json());
+
+  200 response: { state: {}, team, player }
+
+GET  /history/:team
+  Recent persisted team chat history. It does not include player game history.
+
+  const history = await fetch(`${baseUrl}/history/${team}`).then((response) => response.json());
+
+  200 response: { history, team }
+
+GET  /teams/:team/prompt
+  Requires: Authorization: Bearer OLLAMA_TEAM_PROMPT_TOKEN
+  Reads the saved team system prompt.
+
+POST /teams/:team/prompt
+  Requires: Authorization: Bearer OLLAMA_TEAM_PROMPT_TOKEN
+  JSON: {"prompt":"..."}
+  Creates, updates, or clears the saved team system prompt.
+
+  const promptHeaders = {
+    Authorization: `Bearer ${teamPromptToken}`,
+    'Content-Type': 'application/json',
+  };
+  const savedPrompt = await fetch(`${baseUrl}/teams/${team}/prompt`, {
+    method: 'POST', headers: promptHeaders,
+    body: JSON.stringify({ prompt: 'Answer as a concise game director.' }),
+  }).then((response) => response.json());
+
+  200 response: { team, prompt, prompt_chars }
+
+  An empty prompt clears it. These endpoints return 503 when
+  OLLAMA_TEAM_PROMPT_TOKEN is unset and 401 for a missing or invalid token.
+
+Browser WASM module after ./start-with-wasm.sh:
+  /assets/wasm/ollama_game_client.js
+  /assets/wasm/ollama_game_client_bg.wasm
+
+  import init, { game_turn } from '/assets/wasm/ollama_game_client.js';
+  await init();
+  const reply = await game_turn(baseUrl, 'arcade', 'player-42',
+    'open the north door', 'Fantasy dungeon. Keep choices concise.');
+
+  The WASM module exports routes, health, chat, game_turn, and history.
+
+Validation and Errors
+---------------------
+- Invalid JSON, empty message/action, invalid team/player, or non-object state
+  returns 400 with JSON error information.
+- message and action default to a maximum of 8,000 characters.
+- game_prompt and team prompt default to a maximum of 8,000 characters.
+- supplied serialized game state defaults to a maximum of 32,000 characters.
+- If no usable Ollama model is installed, chat and game routes return 503 with
+  error, configured_model, and available_models fields.
+- Upstream transport failures return an HTTP error response with JSON error data.
+
+Server Configuration
+--------------------
+OLLAMA_HTTP_ADDRESS        Ollama upstream URL; default http://localhost:11434
+OLLAMA_MODEL               Preferred model; default llama2-uncensored:latest
+OLLAMA_TEAM_PROMPT_TOKEN   Enables authenticated team-prompt management
+MSSL_ADDRESS               TLS listener; default 0.0.0.0:443
+MSSL_CERT_PATH             PEM certificate; default Let's Encrypt fullchain path
+MSSL_KEY_PATH              PEM private key; default Let's Encrypt private-key path
+
+For local unprivileged TLS development, set MSSL_ADDRESS to a non-privileged
+port such as 0.0.0.0:8443. Browser clients must then include :8443 in baseUrl.
+
+Persistence
+-----------
+The relay persists team chat, team prompts, player game history, and player
+state with the Rust partitioned-array LineDb store. Chat history is isolated by
+team; game history and state are isolated by both team and player.

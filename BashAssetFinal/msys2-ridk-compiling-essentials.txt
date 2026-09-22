@@ -1,0 +1,6 @@
+ridk enable
+pacman -Syu
+pacman -S build-essentials
+pacman -S mingw-w64-x86_64-clang-tools-extra
+pacman -S mingw-w64-x86_64-FreeImage
+

@@ -1,0 +1,1 @@
+cargo:rustc-env=MIME_TYPES_GENERATED_PATH=/root/midscore_io/sl_relay/target/debug/build/mime_guess-70c70fab9b40830a/out/mime_types_generated.rs
