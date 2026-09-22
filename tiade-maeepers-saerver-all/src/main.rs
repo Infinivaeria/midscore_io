@@ -1974,38 +1974,121 @@ use chrono_tz::America::Los_Angeles;
 
 
     use std::fs;
-*/
-app.at("/chatlog").get(|_req: tide::Request<AppState>| async move {
-    use std::collections::{BTreeMap, HashMap, HashSet};
+
+app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
+  use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
     use std::fs;
-    use chrono::{Datelike, LocalResult, Timelike};
+    use chrono::{Datelike, LocalResult, Timelike, Weekday};
     use chrono_tz::America::Los_Angeles;
-    use regex::Regex;
     use serde::Serialize;
+    use serde_json::Value;
     use tide::{Response, StatusCode};
 
     #[derive(Clone, Serialize)]
     struct MsgEntry {
+        avatar_id: String,
         avatar_name: String,
         sim_name: String,
         message: String,
         timestamp: i64,
+        timestamp_valid: bool,
         x: f64,
         y: f64,
         z: f64,
+        position_valid: bool,
         captured_by: String,
+        hostility_score: i64,
+        positive_score: i64,
+        drug_score: i64,
+        slang_score: i64,
+        tags: Vec<String>,
+        hostile_terms: Vec<String>,
         quarantined: bool,
     }
 
     #[derive(Default, Serialize)]
     struct IntegrityReport {
         total_lines: usize,
+        candidate_objects: usize,
         parsed_objects: usize,
+        parse_errors: usize,
         missing_avatar_name: usize,
         missing_sim_name: usize,
         missing_message: usize,
         bad_timestamp: usize,
         bad_position: usize,
+    }
+
+    // Splits the raw log into top-level `{...}` JSON objects, respecting
+    // nested braces and braces embedded inside string values (e.g. chat text).
+    fn split_json_objects(raw: &str) -> Vec<String> {
+        let mut objects = Vec::new();
+        let mut buf = String::new();
+        let mut depth: i32 = 0;
+        let mut in_string = false;
+        let mut escaped = false;
+
+        for ch in raw.chars() {
+            if depth > 0 || ch == '{' {
+                buf.push(ch);
+            }
+
+            if in_string {
+                if escaped {
+                    escaped = false;
+                } else if ch == '\\' {
+                    escaped = true;
+                } else if ch == '"' {
+                    in_string = false;
+                }
+                continue;
+            }
+
+            match ch {
+                '"' => in_string = true,
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        let obj = std::mem::take(&mut buf);
+                        if !obj.trim().is_empty() {
+                            objects.push(obj);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        objects
+    }
+
+    fn json_i64(v: &Value) -> Option<i64> {
+        v.as_i64()
+        .or_else(|| {
+          v.as_f64().and_then(|number| {
+            if number.is_finite()
+              && number.fract() == 0.0
+              && number >= i64::MIN as f64
+              && number <= i64::MAX as f64
+            {
+              Some(number as i64)
+            } else {
+              None
+            }
+          })
+        })
+            .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
+    }
+
+    fn json_f64(v: &Value) -> Option<f64> {
+      v.as_f64()
+        .or_else(|| v.as_str().and_then(|s| s.parse::<f64>().ok()))
+        .filter(|number| number.is_finite())
+    }
+
+    fn json_string(v: &Value) -> Option<String> {
+        v.as_str().map(|s| s.to_string())
     }
 
     let mut integrity = IntegrityReport::default();
@@ -2023,30 +2106,8 @@ app.at("/chatlog").get(|_req: tide::Request<AppState>| async move {
         }
     };
 
-    let mut objects = Vec::new();
-    let mut buf = String::new();
-    for ch in raw.chars() {
-        buf.push(ch);
-        if ch == '}' {
-            objects.push(buf.clone());
-            buf.clear();
-        }
-    }
-
-    let make_regex = |pattern: &str| Regex::new(pattern).unwrap_or_else(|e| {
-        eprintln!("Regex compile error for {}: {}", pattern, e);
-        Regex::new(".*").unwrap()
-    });
-
-    let re_avatar_id = make_regex(r#""avatar_id"\s*:\s*"([^"]+)""#);
-    let re_avatar_name = make_regex(r#""avatar_name"\s*:\s*"([^"]+)""#);
-    let re_message = make_regex(r#""message"\s*:\s*"([^"]+)""#);
-    let re_sim_name = make_regex(r#""sim_name"\s*:\s*"([^"]+)""#);
-    let re_timestamp = make_regex(r#""timestamp"\s*:\s*(\d+)"#);
-    let re_x = make_regex(r#""x_pos"\s*:\s*([\d\.]+)"#);
-    let re_y = make_regex(r#""y_pos"\s*:\s*([\d\.]+)"#);
-    let re_z = make_regex(r#""z_pos"\s*:\s*([\d\.]+)"#);
-    let re_captured_by = make_regex(r#""captured_by"\s*:\s*"([^"]+)""#);
+    let objects = split_json_objects(&raw);
+    integrity.candidate_objects = objects.len();
 
     let hostile_words: HashMap<&'static str, i32> = [
         ("hate", 3), ("kill", 4), ("stupid", 2), ("idiot", 3), ("annoying", 2),
@@ -2054,12 +2115,28 @@ app.at("/chatlog").get(|_req: tide::Request<AppState>| async move {
         ("mad", 1), ("toxic", 2), ("cringe", 1), ("lame", 1), ("jerk", 2),
         ("bully", 3), ("rekt", 2), ("owned", 2), ("noob", 2), ("scrub", 2),
         ("clown", 2), ("dumb", 2), ("moron", 3), ("pathetic", 3), ("worthless", 4),
+      ("abuse", 2), ("abusive", 3), ("aggression", 2), ("aggressive", 2),
+      ("attack", 2), ("attacking", 2), ("threat", 3), ("threaten", 3),
+      ("threatening", 3), ("harass", 3), ("harassment", 3), ("harassing", 3),
+      ("hateful", 3), ("hostile", 2), ("rude", 1), ("mean", 1), ("nasty", 2),
+      ("vile", 3), ("disgusting", 2), ("gross", 1), ("suck", 1), ("sucks", 1),
+      ("liar", 2), ("lying", 2), ("fraud", 2), ("fake", 1), ("cheat", 2),
+      ("cheater", 2), ("scam", 2), ("scammer", 3), ("shame", 1), ("failure", 2),
+      ("useless", 3), ("garbage", 2), ("fool", 2), ("idiotic", 3),
+      ("imbecile", 3), ("ignorant", 2), ("obnoxious", 2), ("disrespect", 2),
+      ("disrespectful", 2), ("coward", 2), ("punch", 2), ("violent", 3),
+      ("violence", 3), ("hurt", 2), ("harm", 3), ("die", 3), ("dead", 2),
     ].iter().cloned().collect();
 
     let positive_words: HashMap<&'static str, i32> = [
         ("love", 3), ("great", 2), ("awesome", 2), ("nice", 1), ("cool", 1),
         ("fun", 1), ("good", 1), ("beautiful", 2), ("kind", 2), ("friendly", 2),
         ("sweet", 2), ("amazing", 3), ("fantastic", 3), ("wonderful", 3),
+        ("thanks", 2), ("thank", 1), ("appreciate", 2), ("appreciated", 2),
+        ("helpful", 2), ("excellent", 3), ("brilliant", 3), ("perfect", 3),
+        ("glad", 2), ("happy", 2), ("joy", 2), ("support", 2), ("supportive", 2),
+        ("welcome", 1), ("cheers", 1), ("congrats", 2), ("congratulations", 3),
+        ("respect", 2), ("peace", 2), ("smile", 1), ("laugh", 1), ("yay", 1),
     ].iter().cloned().collect();
 
     let drug_words: HashMap<&'static str, i32> = [
@@ -2067,6 +2144,11 @@ app.at("/chatlog").get(|_req: tide::Request<AppState>| async move {
         ("substance", 1), ("addiction", 2), ("rehab", 1), ("narcotic", 1),
         ("opioid", 2), ("heroin", 3), ("cocaine", 3), ("meth", 3),
         ("weed", 1), ("marijuana", 1),
+        ("alcohol", 1), ("beer", 1), ("wine", 1), ("vodka", 1), ("whiskey", 1),
+        ("cannabis", 1), ("cbd", 1), ("thc", 1), ("fentanyl", 3),
+        ("amphetamine", 2), ("ketamine", 2), ("lsd", 2), ("mdma", 2),
+        ("ecstasy", 2), ("benzodiazepine", 2), ("xanax", 2), ("valium", 2),
+        ("pill", 1), ("pills", 1), ("sober", 1), ("withdrawal", 2), ("relapse", 2),
     ].iter().cloned().collect();
 
     let slang_words: HashMap<&'static str, i32> = [
@@ -2074,6 +2156,11 @@ app.at("/chatlog").get(|_req: tide::Request<AppState>| async move {
         ("sus", 1), ("salty", 1), ("ratio", 1), ("based", 0), ("cap", 1),
         ("yeet", 0), ("pog", 0), ("poggers", 0), ("smh", 0), ("ngl", 0),
         ("idk", 0),
+        ("omg", 0), ("wtf", 1), ("imo", 0), ("tbh", 0), ("irl", 0),
+        ("btw", 0), ("gg", 0), ("ggs", 0), ("wp", 0), ("rip", 1),
+        ("yikes", 1), ("fomo", 0), ("lowkey", 0), ("highkey", 0),
+        ("vibe", 0), ("vibes", 0), ("goated", 0), ("cracked", 0),
+        ("cope", 1), ("seethe", 1), ("savage", 1),
     ].iter().cloned().collect();
 
     let mut unique_keys: HashSet<String> = HashSet::new();
@@ -2090,12 +2177,15 @@ app.at("/chatlog").get(|_req: tide::Request<AppState>| async move {
     let mut freq_quarter: BTreeMap<u32, usize> = BTreeMap::new();
     let mut freq_day_of_year: BTreeMap<u32, usize> = BTreeMap::new();
     let mut freq_epoch_bucket: BTreeMap<i64, usize> = BTreeMap::new(); // 1-hour buckets
+    let mut freq_ampm: BTreeMap<&'static str, usize> = BTreeMap::new();
+    let mut freq_weekend: BTreeMap<&'static str, usize> = BTreeMap::new();
 
     let mut timeline: BTreeMap<String, usize> = BTreeMap::new();
     let mut sentiment_timeline: BTreeMap<String, i64> = BTreeMap::new();
 
     let mut avatar_counts: BTreeMap<String, usize> = BTreeMap::new();
     let mut sim_counts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut freq_avatar_id: BTreeMap<String, usize> = BTreeMap::new();
 
     let mut messages_vec: Vec<MsgEntry> = Vec::new();
 
@@ -2116,95 +2206,100 @@ app.at("/chatlog").get(|_req: tide::Request<AppState>| async move {
     let mut roc_per_sim: BTreeMap<String, Vec<(i64, f64)>> = BTreeMap::new();
 
     let mut freq_timestamp: BTreeMap<i64, usize> = BTreeMap::new();
+    let mut freq_message_len_bucket: BTreeMap<usize, usize> = BTreeMap::new();
+    let mut freq_x_bucket: BTreeMap<i64, usize> = BTreeMap::new();
+    let mut freq_y_bucket: BTreeMap<i64, usize> = BTreeMap::new();
+    let mut freq_z_bucket: BTreeMap<i64, usize> = BTreeMap::new();
 
     // real 3D heatmap points: one point per message using raw x,y,z
     let mut heat3d_points: Vec<(f64, f64, f64)> = Vec::new();
 
     for obj in &objects {
-        let line = obj.as_str();
+        let parsed: Value = match serde_json::from_str(obj) {
+            Ok(v) => v,
+            Err(_) => {
+                integrity.parse_errors += 1;
+                continue;
+            }
+        };
         integrity.parsed_objects += 1;
 
-        let avatar_id = re_avatar_id
-            .captures(line)
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().to_string())
+        let avatar_id = parsed
+            .get("avatar_id")
+            .and_then(json_string)
             .unwrap_or_default();
 
-        let avatar_name = re_avatar_name
-            .captures(line)
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().to_string())
-            .unwrap_or_else(|| {
-                integrity.missing_avatar_name += 1;
-                String::new()
-            });
+        let avatar_name = parsed.get("avatar_name").and_then(json_string).unwrap_or_else(|| {
+            integrity.missing_avatar_name += 1;
+            String::new()
+        });
 
-        let message = re_message
-            .captures(line)
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().to_string())
-            .unwrap_or_else(|| {
-                integrity.missing_message += 1;
-                String::new()
-            });
+        let message = parsed.get("message").and_then(json_string).unwrap_or_else(|| {
+            integrity.missing_message += 1;
+            String::new()
+        });
 
-        let sim_name = re_sim_name
-            .captures(line)
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().to_string())
-            .unwrap_or_else(|| {
-                integrity.missing_sim_name += 1;
-                String::new()
-            });
+        let sim_name = parsed.get("sim_name").and_then(json_string).unwrap_or_else(|| {
+            integrity.missing_sim_name += 1;
+            String::new()
+        });
 
-        let timestamp = re_timestamp
-            .captures(line)
-            .and_then(|c| c.get(1))
-            .and_then(|m| m.as_str().parse::<i64>().ok())
-            .unwrap_or_else(|| {
-                integrity.bad_timestamp += 1;
-                0
-            });
+        let timestamp = parsed
+            .get("timestamp")
+          .and_then(json_i64);
+        let timestamp_valid = timestamp.is_some();
+        let timestamp = timestamp.unwrap_or_else(|| {
+          integrity.bad_timestamp += 1;
+          0
+        });
 
-        let x = re_x
-            .captures(line)
-            .and_then(|c| c.get(1))
-            .and_then(|m| m.as_str().parse::<f64>().ok())
-            .unwrap_or_else(|| {
-                integrity.bad_position += 1;
-                0.0
-            });
+        let x = parsed.get("x_pos").and_then(json_f64);
+        if x.is_none() {
+            integrity.bad_position += 1;
+        }
+        let y = parsed.get("y_pos").and_then(json_f64);
+        if y.is_none() {
+            integrity.bad_position += 1;
+        }
+        let z = parsed.get("z_pos").and_then(json_f64);
+        if z.is_none() {
+            integrity.bad_position += 1;
+        }
+        let position_valid = x.is_some() && y.is_some() && z.is_some();
+        let x = x.unwrap_or(0.0);
+        let y = y.unwrap_or(0.0);
+        let z = z.unwrap_or(0.0);
 
-        let y = re_y
-            .captures(line)
-            .and_then(|c| c.get(1))
-            .and_then(|m| m.as_str().parse::<f64>().ok())
-            .unwrap_or_else(|| {
-                integrity.bad_position += 1;
-                0.0
-            });
-
-        let z = re_z
-            .captures(line)
-            .and_then(|c| c.get(1))
-            .and_then(|m| m.as_str().parse::<f64>().ok())
-            .unwrap_or_else(|| {
-                integrity.bad_position += 1;
-                0.0
-            });
-
-        let captured_by = re_captured_by
-            .captures(line)
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().to_string())
+        let captured_by = parsed
+            .get("captured_by")
+            .and_then(json_string)
             .unwrap_or_default();
 
         let key = format!("{}|{}|{}", avatar_id, timestamp, message);
         unique_keys.insert(key);
 
-        *freq_timestamp.entry(timestamp).or_insert(0) += 1;
+        if timestamp_valid {
+          *freq_timestamp.entry(timestamp).or_insert(0) += 1;
+        }
 
-        if let LocalResult::Single(dt) = Los_Angeles.timestamp_opt(timestamp, 0) {
+        if !avatar_id.is_empty() {
+            *freq_avatar_id.entry(avatar_id.clone()).or_insert(0) += 1;
+        }
+
+        let len_bucket = (message.chars().count() / 20) * 20;
+        *freq_message_len_bucket.entry(len_bucket).or_insert(0) += 1;
+
+        if position_valid {
+          let x_bucket = ((x / 10.0).round() as i64) * 10;
+          let y_bucket = ((y / 10.0).round() as i64) * 10;
+          let z_bucket = ((z / 10.0).round() as i64) * 10;
+          *freq_x_bucket.entry(x_bucket).or_insert(0) += 1;
+          *freq_y_bucket.entry(y_bucket).or_insert(0) += 1;
+          *freq_z_bucket.entry(z_bucket).or_insert(0) += 1;
+        }
+
+        if timestamp_valid {
+          if let LocalResult::Single(dt) = Los_Angeles.timestamp_opt(timestamp, 0) {
             let year = dt.year();
             let month = dt.month();
             let day = dt.day();
@@ -2231,8 +2326,17 @@ app.at("/chatlog").get(|_req: tide::Request<AppState>| async move {
             let bucket = timestamp / 3600;
             *freq_epoch_bucket.entry(bucket).or_insert(0) += 1;
 
+            let ampm = if hour < 12 { "AM" } else { "PM" };
+            *freq_ampm.entry(ampm).or_insert(0) += 1;
+
+            let is_weekend = matches!(dt.weekday(), Weekday::Sat | Weekday::Sun);
+            *freq_weekend
+              .entry(if is_weekend { "Weekend" } else { "Weekday" })
+              .or_insert(0) += 1;
+
             let date_key = dt.format("%Y-%m-%d").to_string();
-            *timeline.entry(date_key.clone()).or_insert(0) += 1;
+            *timeline.entry(date_key).or_insert(0) += 1;
+          }
         }
 
         if !avatar_name.is_empty() {
@@ -2253,12 +2357,15 @@ app.at("/chatlog").get(|_req: tide::Request<AppState>| async move {
         let mut msg_positive: i64 = 0;
         let mut msg_drug: i64 = 0;
         let mut msg_slang: i64 = 0;
+        let mut hostile_terms: BTreeSet<String> = BTreeSet::new();
+        let mut has_slang = false;
 
         for w in &tokens {
             *word_counts.entry(w.clone()).or_insert(0) += 1;
 
             if let Some(h) = hostile_words.get(w.as_str()) {
                 msg_hostile += *h as i64;
+              hostile_terms.insert(w.clone());
             }
             if let Some(p) = positive_words.get(w.as_str()) {
                 msg_positive += *p as i64;
@@ -2268,10 +2375,18 @@ app.at("/chatlog").get(|_req: tide::Request<AppState>| async move {
             }
             if let Some(s) = slang_words.get(w.as_str()) {
                 msg_slang += *s as i64;
+              has_slang = true;
             }
         }
 
         let msg_total = msg_hostile + msg_drug + msg_slang - msg_positive;
+
+        if timestamp_valid {
+          if let LocalResult::Single(dt) = Los_Angeles.timestamp_opt(timestamp, 0) {
+            let date_key = dt.format("%Y-%m-%d").to_string();
+            *sentiment_timeline.entry(date_key).or_insert(0) += msg_positive - msg_hostile;
+          }
+        }
 
         if !avatar_name.is_empty() {
             *avatar_hostility.entry(avatar_name.clone()).or_insert(0) += msg_hostile;
@@ -2325,18 +2440,50 @@ app.at("/chatlog").get(|_req: tide::Request<AppState>| async move {
             || msg_total >= 20;
 
         let quarantined = flagged;
+        let mut tags = Vec::new();
+        if hard_hit {
+          tags.push("urgent".to_string());
+        }
+        if msg_hostile >= 7 {
+          tags.push("high-hostility".to_string());
+        } else if msg_hostile > 0 {
+          tags.push("hostile".to_string());
+        }
+        if msg_drug > 0 {
+          tags.push("substance".to_string());
+        }
+        if has_slang {
+          tags.push("slang".to_string());
+        }
+        if msg_positive > msg_hostile {
+          tags.push("positive".to_string());
+        }
+        if tags.is_empty() {
+          tags.push("neutral".to_string());
+        }
 
-        heat3d_points.push((x, y, z));
+        if position_valid {
+          heat3d_points.push((x, y, z));
+        }
 
         let entry = MsgEntry {
+            avatar_id,
             avatar_name,
             sim_name,
             message,
             timestamp,
+            timestamp_valid,
             x,
             y,
             z,
+            position_valid,
             captured_by,
+            hostility_score: msg_hostile,
+            positive_score: msg_positive,
+            drug_score: msg_drug,
+            slang_score: msg_slang,
+            tags,
+            hostile_terms: hostile_terms.into_iter().collect(),
             quarantined,
         };
 
@@ -2347,98 +2494,143 @@ app.at("/chatlog").get(|_req: tide::Request<AppState>| async move {
         messages_vec.push(entry);
     }
 
-    for m in &messages_vec {
-        if let LocalResult::Single(dt) = Los_Angeles.timestamp_opt(m.timestamp, 0) {
-            let date_key = dt.format("%Y-%m-%d").to_string();
+      let recent_only = req
+        .url()
+        .query_pairs()
+        .any(|(key, value)| key == "format" && value == "recent");
+      if recent_only {
+        let mut recent_messages: Vec<&MsgEntry> = messages_vec.iter().collect();
+        recent_messages.sort_by(|left, right| {
+          right
+            .timestamp_valid
+            .cmp(&left.timestamp_valid)
+            .then_with(|| right.timestamp.cmp(&left.timestamp))
+        });
+        recent_messages.truncate(50);
 
-            let text = m.message.to_lowercase();
-            let mut score = 0i64;
-            for (w, v) in positive_words.iter() {
-                if text.contains(w) {
-                    score += *v as i64;
-                }
-            }
-            for (w, v) in hostile_words.iter() {
-                if text.contains(w) {
-                    score -= *v as i64;
-                }
-            }
+        let messages: Vec<Value> = recent_messages
+          .into_iter()
+          .map(|message| {
+            let timestamp_label = if !message.timestamp_valid {
+              "Invalid timestamp".to_string()
+            } else if let LocalResult::Single(dt) = Los_Angeles.timestamp_opt(message.timestamp, 0) {
+              dt.format("%Y-%m-%d %H:%M:%S").to_string()
+            } else {
+              message.timestamp.to_string()
+            };
 
-            *sentiment_timeline.entry(date_key.clone()).or_insert(0) += score;
+            serde_json::json!({
+              "avatar_id": &message.avatar_id,
+              "avatar_name": &message.avatar_name,
+              "sim_name": &message.sim_name,
+              "message": &message.message,
+              "timestamp": message.timestamp,
+              "timestamp_label": timestamp_label,
+              "hostility_score": message.hostility_score,
+              "positive_score": message.positive_score,
+              "drug_score": message.drug_score,
+              "slang_score": message.slang_score,
+              "tags": &message.tags,
+              "hostile_terms": &message.hostile_terms,
+              "quarantined": message.quarantined,
+            })
+          })
+          .collect();
+        let payload = serde_json::json!({
+          "refreshed_at": chrono::Utc::now().to_rfc3339(),
+          "messages": messages,
+        });
+        let body = serde_json::to_string(&payload).map_err(|error| {
+          tide::Error::from_str(StatusCode::InternalServerError, error.to_string())
+        })?;
+
+        let mut res = Response::new(StatusCode::Ok);
+        res.set_body(body);
+        res.insert_header("Content-Type", "application/json; charset=utf-8");
+        return Ok(res);
+      }
+
+  fn append_rate_samples(
+    timestamp_counts: &BTreeMap<i64, usize>,
+    samples: &mut Vec<(i64, f64)>,
+  ) {
+    let mut previous_timestamp = None;
+
+    for (&timestamp, &count) in timestamp_counts {
+      if let Some(previous_timestamp) = previous_timestamp {
+        let elapsed_seconds = timestamp - previous_timestamp;
+        if elapsed_seconds > 0 {
+          samples.push((timestamp, count as f64 / elapsed_seconds as f64));
         }
+      }
+      previous_timestamp = Some(timestamp);
+    }
     }
 
     {
-        let mut sorted = messages_vec.clone();
-        sorted.sort_by_key(|m| m.timestamp);
+    let mut global_timestamp_counts: BTreeMap<i64, usize> = BTreeMap::new();
+    let mut sim_timestamp_counts: BTreeMap<String, BTreeMap<i64, usize>> = BTreeMap::new();
 
-        let mut last_ts: Option<i64> = None;
-        let mut last_count: usize = 0;
+    for message in &messages_vec {
+      if !message.timestamp_valid {
+        continue;
+      }
+      *global_timestamp_counts.entry(message.timestamp).or_insert(0) += 1;
+      if !message.sim_name.is_empty() {
+        *sim_timestamp_counts
+          .entry(message.sim_name.clone())
+          .or_default()
+          .entry(message.timestamp)
+          .or_insert(0) += 1;
+      }
+    }
 
-        for (i, m) in sorted.iter().enumerate() {
-            let ts = m.timestamp;
-            if let Some(prev_ts) = last_ts {
-                let dt = (ts - prev_ts).max(1) as f64;
-                let dc = (i - last_count) as f64;
-                let roc = dc / dt;
-                rate_of_change.push((ts, roc));
-            }
-            last_ts = Some(ts);
-            last_count = i;
-        }
-
-        let mut by_sim: HashMap<String, Vec<&MsgEntry>> = HashMap::new();
-        for m in &sorted {
-            by_sim.entry(m.sim_name.clone()).or_insert(Vec::new()).push(m);
-        }
-
-        for (sim, msgs) in by_sim {
-            let mut last_ts: Option<i64> = None;
-            let mut last_count: usize = 0;
-            let mut sim_roc: Vec<(i64, f64)> = Vec::new();
-
-            for (i, m) in msgs.iter().enumerate() {
-                let ts = m.timestamp;
-                if let Some(prev_ts) = last_ts {
-                    let dt = (ts - prev_ts).max(1) as f64;
-                    let dc = (i - last_count) as f64;
-                    let roc = dc / dt;
-                    sim_roc.push((ts, roc));
-                }
-                last_ts = Some(ts);
-                last_count = i;
-            }
-
-            roc_per_sim.insert(sim, sim_roc);
+    append_rate_samples(&global_timestamp_counts, &mut rate_of_change);
+    for (sim, timestamp_counts) in sim_timestamp_counts {
+      let mut sim_samples = Vec::new();
+      append_rate_samples(&timestamp_counts, &mut sim_samples);
+      roc_per_sim.insert(sim, sim_samples);
         }
     }
 
     {
         let mut by_avatar: HashMap<String, Vec<&MsgEntry>> = HashMap::new();
         for m in &messages_vec {
-            by_avatar.entry(m.avatar_name.clone()).or_insert(Vec::new()).push(m);
+        if m.timestamp_valid && !m.avatar_name.is_empty() && !m.sim_name.is_empty() {
+        by_avatar.entry(m.avatar_name.clone()).or_default().push(m);
+      }
         }
 
-        for (_avatar, msgs) in &by_avatar {
-            let mut last_sim: Option<String> = None;
-            let mut last_avatar: Option<String> = None;
+    for messages in by_avatar.values_mut() {
+      messages.sort_by_key(|message| message.timestamp);
+      for pair in messages.windows(2) {
+        let previous = pair[0];
+        let current = pair[1];
+        if previous.sim_name != current.sim_name {
+          *sim_transitions
+            .entry((previous.sim_name.clone(), current.sim_name.clone()))
+            .or_insert(0) += 1;
+        }
+      }
+    }
 
-            for m in msgs.iter() {
-                if let Some(prev_sim) = &last_sim {
-                    if *prev_sim != m.sim_name {
-                        let key = (prev_sim.clone(), m.sim_name.clone());
-                        *sim_transitions.entry(key).or_insert(0) += 1;
-                    }
-                }
-                last_sim = Some(m.sim_name.clone());
+    let mut by_sim: HashMap<String, Vec<&MsgEntry>> = HashMap::new();
+    for m in &messages_vec {
+      if m.timestamp_valid && !m.avatar_name.is_empty() && !m.sim_name.is_empty() {
+        by_sim.entry(m.sim_name.clone()).or_default().push(m);
+      }
+    }
 
-                if let Some(prev_avatar) = &last_avatar {
-                    if *prev_avatar != m.avatar_name {
-                        let key = (prev_avatar.clone(), m.avatar_name.clone());
-                        *avatar_interactions.entry(key).or_insert(0) += 1;
-                    }
-                }
-                last_avatar = Some(m.avatar_name.clone());
+    for messages in by_sim.values_mut() {
+      messages.sort_by_key(|message| message.timestamp);
+      for pair in messages.windows(2) {
+        let previous = pair[0];
+        let current = pair[1];
+        if previous.avatar_name != current.avatar_name {
+          *avatar_interactions
+            .entry((previous.avatar_name.clone(), current.avatar_name.clone()))
+            .or_insert(0) += 1;
+        }
             }
         }
     }
@@ -2479,6 +2671,35 @@ app.at("/chatlog").get(|_req: tide::Request<AppState>| async move {
         }
     }
 
+    fn json_for_script<T: Serialize>(value: &T) -> String {
+      serde_json::to_string(value)
+        .unwrap_or_else(|_| "[]".to_string())
+        .replace("</", "<\\/")
+    }
+
+    let timeline_data: Vec<Value> = timeline
+      .iter()
+      .map(|(date, count)| serde_json::json!({ "date": date, "count": count }))
+      .collect();
+    let sentiment_data: Vec<Value> = sentiment_timeline
+      .iter()
+      .map(|(date, score)| serde_json::json!({ "date": date, "score": score }))
+      .collect();
+    let roc_data: Vec<Value> = rate_of_change
+      .iter()
+      .map(|(timestamp, rate)| serde_json::json!({ "ts": timestamp, "roc": rate }))
+      .collect();
+    let heat3d_data: Vec<Value> = heat3d_points
+      .iter()
+      .map(|(x, y, z)| serde_json::json!({ "x": x, "y": y, "z": z }))
+      .collect();
+    let dashboard_data_json = json_for_script(&serde_json::json!({
+        "timeline": timeline_data,
+        "sentiment": sentiment_data,
+        "rate_of_change": roc_data,
+        "heatmap": heat3d_data,
+    }));
+
     let mut html = String::new();
     html.push_str(r#"<!DOCTYPE html>
 <html lang="en">
@@ -2502,11 +2723,23 @@ th { color: #c5c6c7; }
 .quarantine { background: #ff6b6b22; }
 .chart { height: 160px; background: #0b0c10; border-radius: 6px; border: 1px solid #45a29e33; position: relative; overflow: hidden; }
 .chart canvas { width: 100%; height: 100%; }
-#heat3dCanvas { background: #000; }
+#heat3dCanvas { background: #000; touch-action: none; }
+.section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.recent-messages { display: grid; gap: 8px; max-height: 430px; overflow-y: auto; }
+.recent-message { padding: 10px; border-left: 3px solid #45a29e; background: #0b0c10; }
+.recent-message.is-quarantined { border-left-color: #ff6b6b; }
+.recent-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: #c5c6c7; font-size: 11px; }
+.recent-message-text { margin-top: 6px; color: #f4f6f7; line-height: 1.45; overflow-wrap: anywhere; }
+.message-tag { display: inline-block; padding: 2px 5px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.tag-neutral { background: #45a29e22; color: #c5c6c7; }
+.tag-positive { background: #4cd13722; color: #8bea9b; }
+.tag-slang { background: #f4d35e22; color: #f4d35e; }
+.tag-substance { background: #b58cff22; color: #d0b6ff; }
+.tag-hostile, .tag-high-hostility, .tag-urgent { background: #ff6b6b22; color: #ff8b8b; }
 </style>
 </head>
 <body>
-<header>
+<header id="chatlogHeader">
   <h1>Second Life Chatlog Dashboard</h1>
   <div class="small">File: second_life_chat_logs.txt &mdash; Parsed objects: "#);
 
@@ -2517,7 +2750,7 @@ th { color: #c5c6c7; }
     ));
     html.push_str(r#"</div>
 </header>
-<main>
+<main id="chatlogDashboard">
 <section>
   <h2>Integrity Report</h2>
   <table>
@@ -2528,8 +2761,16 @@ th { color: #c5c6c7; }
         integrity.total_lines
     ));
     html.push_str(&format!(
-        "<tr><td>Parsed objects</td><td>{}</td></tr>",
+        "<tr><td>Candidate objects</td><td>{}</td></tr>",
+        integrity.candidate_objects
+    ));
+    html.push_str(&format!(
+        "<tr><td>Parsed objects (serde_json)</td><td>{}</td></tr>",
         integrity.parsed_objects
+    ));
+    html.push_str(&format!(
+        "<tr><td>JSON parse errors</td><td class=\"bad\">{}</td></tr>",
+        integrity.parse_errors
     ));
     html.push_str(&format!(
         "<tr><td>Missing avatar_name</td><td class=\"bad\">{}</td></tr>",
@@ -2572,7 +2813,7 @@ th { color: #c5c6c7; }
         let cls = if hostility >= 50 { "bad" } else { "good" };
         html.push_str(&format!(
             "<tr><td>{}</td><td>{}</td><td class=\"{}\">{}</td></tr>",
-            name, count, cls, hostility
+        escape_html(&name), count, cls, hostility
         ));
     }
 
@@ -2597,7 +2838,7 @@ th { color: #c5c6c7; }
         let cls = if hostility >= 80 { "bad" } else { "good" };
         html.push_str(&format!(
             "<tr><td>{}</td><td>{}</td><td class=\"{}\">{}</td></tr>",
-            name, count, cls, hostility
+        escape_html(&name), count, cls, hostility
         ));
     }
 
@@ -2618,7 +2859,7 @@ th { color: #c5c6c7; }
   <div class="small">Positive vs hostile language per day.</div>
 </section>
 <section>
-  <h2>Timestamp Frequency (Raw UNIX)</h2>
+  <h2>Timestamp Frequency (Raw UNIX, Full)</h2>
   <table>
     <tr><th>Timestamp</th><th>Count</th></tr>"#);
 
@@ -2627,7 +2868,6 @@ th { color: #c5c6c7; }
         .map(|(ts, c)| (*ts, *c))
         .collect();
     ts_vec.sort_by(|a, b| a.0.cmp(&b.0));
-    ts_vec.truncate(50);
 
     for (ts, c) in ts_vec {
         html.push_str(&format!(
@@ -2688,7 +2928,7 @@ th { color: #c5c6c7; }
     for (weekday, count) in &freq_weekday {
         html.push_str(&format!(
             "<tr><td>{}</td><td>{}</td></tr>",
-            weekday, count
+        escape_html(weekday), count
         ));
     }
 
@@ -2793,23 +3033,196 @@ th { color: #c5c6c7; }
     html.push_str(r#"</table>
 </section>
 <section>
+  <h2>AM/PM Frequency</h2>
+  <table>
+    <tr><th>Period</th><th>Count</th></tr>"#);
+
+    for (period, count) in &freq_ampm {
+        html.push_str(&format!("<tr><td>{}</td><td>{}</td></tr>", period, count));
+    }
+
+    html.push_str(r#"</table>
+</section>
+<section>
+  <h2>Weekday vs Weekend Frequency</h2>
+  <table>
+    <tr><th>Kind</th><th>Count</th></tr>"#);
+
+    for (kind, count) in &freq_weekend {
+        html.push_str(&format!("<tr><td>{}</td><td>{}</td></tr>", kind, count));
+    }
+
+    html.push_str(r#"</table>
+</section>
+<section>
+  <h2>Message Length Frequency (20-char buckets)</h2>
+  <table>
+    <tr><th>Length Bucket</th><th>Count</th></tr>"#);
+
+    for (bucket, count) in &freq_message_len_bucket {
+        html.push_str(&format!(
+            "<tr><td>{}-{}</td><td>{}</td></tr>",
+            bucket, bucket + 19, count
+        ));
+    }
+
+    html.push_str(r#"</table>
+</section>
+<section>
+  <h2>Position Frequency (10m buckets)</h2>
+  <table>
+    <tr><th>Axis</th><th>Bucket</th><th>Count</th></tr>"#);
+
+    for (bucket, count) in &freq_x_bucket {
+        html.push_str(&format!("<tr><td>X</td><td>{}</td><td>{}</td></tr>", bucket, count));
+    }
+    for (bucket, count) in &freq_y_bucket {
+        html.push_str(&format!("<tr><td>Y</td><td>{}</td><td>{}</td></tr>", bucket, count));
+    }
+    for (bucket, count) in &freq_z_bucket {
+        html.push_str(&format!("<tr><td>Z</td><td>{}</td><td>{}</td></tr>", bucket, count));
+    }
+
+    html.push_str(r#"</table>
+</section>
+<section>
+  <h2>Avatar ID Frequency</h2>
+  <table>
+    <tr><th>Avatar ID</th><th>Count</th></tr>"#);
+
+    let mut avatar_id_vec: Vec<(String, usize)> = freq_avatar_id
+        .iter()
+        .map(|(k, v)| (k.clone(), *v))
+        .collect();
+    avatar_id_vec.sort_by(|a, b| b.1.cmp(&a.1));
+
+    for (id, count) in avatar_id_vec {
+      html.push_str(&format!(
+        "<tr><td>{}</td><td>{}</td></tr>",
+        escape_html(&id), count
+      ));
+    }
+
+    html.push_str(r#"</table>
+</section>
+<section>
+  <h2>Word Frequency (Top 100)</h2>
+  <table>
+    <tr><th>Word</th><th>Count</th></tr>"#);
+
+    let mut word_vec: Vec<(String, usize)> = word_counts
+        .iter()
+        .map(|(k, v)| (k.clone(), *v))
+        .collect();
+    word_vec.sort_by(|a, b| b.1.cmp(&a.1));
+    word_vec.truncate(100);
+
+    for (word, count) in word_vec {
+      html.push_str(&format!(
+        "<tr><td>{}</td><td>{}</td></tr>",
+        escape_html(&word), count
+      ));
+    }
+
+    html.push_str(r#"</table>
+</section>
+<section>
+  <h2>Avatar Score Breakdown</h2>
+  <table>
+    <tr><th>Avatar</th><th>Hostile</th><th>Positive</th><th>Drug</th><th>Slang</th><th>Total</th></tr>"#);
+
+    let mut avatar_scores_vec: Vec<(String, i64, i64, i64, i64, i64)> = avatar_scores
+        .iter()
+        .map(|(name, (h, p, d, s, t))| (name.clone(), *h, *p, *d, *s, *t))
+        .collect();
+    avatar_scores_vec.sort_by(|a, b| b.5.cmp(&a.5));
+
+    for (name, hostile, positive, drug, slang, total) in avatar_scores_vec {
+        html.push_str(&format!(
+            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+        escape_html(&name), hostile, positive, drug, slang, total
+        ));
+    }
+
+    html.push_str(r#"</table>
+</section>
+<section>
+  <h2>Captured By &times; Sim Crosstab</h2>
+  <table>
+    <tr><th>Capturer</th><th>Sim</th><th>Count</th></tr>"#);
+
+    let mut captured_by_sim_vec: Vec<((String, String), usize)> = captured_by_sim_counts
+        .iter()
+        .map(|(k, v)| (k.clone(), *v))
+        .collect();
+    captured_by_sim_vec.sort_by(|a, b| b.1.cmp(&a.1));
+
+    for ((capturer, sim), count) in captured_by_sim_vec {
+        html.push_str(&format!(
+            "<tr><td>{}</td><td>{}</td><td>{}</td></tr>",
+        escape_html(&capturer), escape_html(&sim), count
+        ));
+    }
+
+    html.push_str(r#"</table>
+</section>
+<section>
+  <h2>Rate of Change per Sim (Average)</h2>
+  <table>
+    <tr><th>Sim</th><th>Samples</th><th>Avg Rate</th></tr>"#);
+
+    let mut roc_per_sim_vec: Vec<(String, usize, f64)> = roc_per_sim
+        .iter()
+        .map(|(sim, samples)| {
+            let avg = if samples.is_empty() {
+                0.0
+            } else {
+                samples.iter().map(|(_, roc)| roc).sum::<f64>() / samples.len() as f64
+            };
+            (sim.clone(), samples.len(), avg)
+        })
+        .collect();
+    roc_per_sim_vec.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+
+    for (sim, samples, avg) in roc_per_sim_vec {
+        html.push_str(&format!(
+            "<tr><td>{}</td><td>{}</td><td>{:.4}</td></tr>",
+        escape_html(&sim), samples, avg
+        ));
+    }
+
+    html.push_str(r#"</table>
+</section>
+<section>
+  <div class="section-heading">
+    <h2>Recent Messages</h2>
+    <span id="recentMessageStatus" class="small">Loading</span>
+  </div>
+  <div id="recentMessages" class="recent-messages" aria-live="polite"></div>
+</section>
+<section>
   <h2>Quarantine (Flagged Messages)</h2>
   <table>
     <tr><th>Avatar</th><th>Sim</th><th>Message</th><th>Timestamp</th></tr>"#);
 
     let mut quarantine_sorted = quarantine.clone();
-    quarantine_sorted.sort_by_key(|m| m.timestamp);
+    quarantine_sorted.sort_by_key(|m| (!m.timestamp_valid, m.timestamp));
     quarantine_sorted.truncate(50);
 
     for m in &quarantine_sorted {
-        let ts_str = if let LocalResult::Single(dt) = Los_Angeles.timestamp_opt(m.timestamp, 0) {
-            dt.format("%Y-%m-%d %H:%M:%S").to_string()
+      let ts_str = if !m.timestamp_valid {
+        "Invalid timestamp".to_string()
+      } else if let LocalResult::Single(dt) = Los_Angeles.timestamp_opt(m.timestamp, 0) {
+        dt.format("%Y-%m-%d %H:%M:%S").to_string()
         } else {
             m.timestamp.to_string()
         };
         html.push_str(&format!(
             "<tr class=\"quarantine\"><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
-            m.avatar_name, m.sim_name, m.message, ts_str
+          escape_html(&m.avatar_name),
+          escape_html(&m.sim_name),
+          escape_html(&m.message),
+          ts_str
         ));
     }
 
@@ -2829,7 +3242,7 @@ th { color: #c5c6c7; }
     for (w, c) in topics_vec {
         html.push_str(&format!(
             "<span class=\"tag\">{} <span class=\"small\">{}</span></span>",
-            w, c
+        escape_html(&w), c
         ));
     }
 
@@ -2853,8 +3266,39 @@ th { color: #c5c6c7; }
     for (name, count, share) in captured_vec {
         html.push_str(&format!(
             "<tr><td>{}</td><td>{}</td><td>{:.3}</td></tr>",
-            name, count, share
+        escape_html(&name), count, share
         ));
+    }
+
+    html.push_str(r#"</table>
+</section>
+<section>
+  <h2>Captured By: Top Topics</h2>
+  <table>
+    <tr><th>Capturer</th><th>Top Topics</th></tr>"#);
+
+    let mut captured_by_topics_vec: Vec<(String, Vec<(String, usize)>)> = captured_by_topics
+        .iter()
+        .map(|(capturer, topics)| {
+            let mut topics_vec: Vec<(String, usize)> =
+                topics.iter().map(|(w, c)| (w.clone(), *c)).collect();
+            topics_vec.sort_by(|a, b| b.1.cmp(&a.1));
+            topics_vec.truncate(8);
+            (capturer.clone(), topics_vec)
+        })
+        .collect();
+    captured_by_topics_vec.sort_by(|a, b| a.0.cmp(&b.0));
+
+    for (capturer, topics) in captured_by_topics_vec {
+        let joined = topics
+            .iter()
+        .map(|(w, c)| format!("{} ({})", escape_html(w), c))
+            .collect::<Vec<_>>()
+            .join(", ");
+      html.push_str(&format!(
+        "<tr><td>{}</td><td>{}</td></tr>",
+        escape_html(&capturer), joined
+      ));
     }
 
     html.push_str(r#"</table>
@@ -2871,7 +3315,7 @@ th { color: #c5c6c7; }
   <div class="chart">
     <canvas id="heat3dCanvas"></canvas>
   </div>
-  <div class="small">Each point uses the raw (x,y,z) coordinates from the chatlog.</div>
+  <div class="small">Drag or swipe to rotate. Each point uses the raw (x,y,z) coordinates from the chatlog.</div>
 </section>
 <section>
   <h2>Sim Markov Chain (Transitions)</h2>
@@ -2891,7 +3335,7 @@ th { color: #c5c6c7; }
     for (from, to, count, prob) in sim_trans_vec {
         html.push_str(&format!(
             "<tr><td>{}</td><td>{}</td><td>{}</td><td>{:.3}</td></tr>",
-            from, to, count, prob
+        escape_html(&from), escape_html(&to), count, prob
         ));
     }
 
@@ -2915,53 +3359,26 @@ th { color: #c5c6c7; }
     for (from, to, count, prob) in avatar_trans_vec {
         html.push_str(&format!(
             "<tr><td>{}</td><td>{}</td><td>{}</td><td>{:.3}</td></tr>",
-            from, to, count, prob
+        escape_html(&from), escape_html(&to), count, prob
         ));
     }
 
     html.push_str(r#"</table>
 </section>
 </main>
+<script id="chatlogDashboardData" type="application/json">"#);
+    html.push_str(&dashboard_data_json);
+    html.push_str(r#"</script>
 <script>
 "#);
 
-    html.push_str("const timelineData = [");
-    for (date, count) in &timeline {
-        html.push_str(&format!(
-            "{{ date: \"{}\", count: {} }},",
-            date, count
-        ));
-    }
-    html.push_str("];\n");
-
-    html.push_str("const sentimentData = [");
-    for (date, score) in &sentiment_timeline {
-        html.push_str(&format!(
-            "{{ date: \"{}\", score: {} }},",
-            date, score
-        ));
-    }
-    html.push_str("];\n");
-
-    html.push_str("const rocData = [");
-    for (ts, roc) in &rate_of_change {
-        html.push_str(&format!(
-            "{{ ts: {}, roc: {} }},",
-            ts, roc
-        ));
-    }
-    html.push_str("];\n");
-
-    html.push_str("const heat3dData = [");
-    for (x, y, z) in &heat3d_points {
-        html.push_str(&format!(
-            "{{ x: {}, y: {}, z: {} }},",
-            x, y, z
-        ));
-    }
-    html.push_str("];\n");
-
     html.push_str(r#"
+const dashboardData = JSON.parse(document.getElementById('chatlogDashboardData').textContent);
+let timelineData = dashboardData.timeline || [];
+let sentimentData = dashboardData.sentiment || [];
+let rocData = dashboardData.rate_of_change || [];
+let heat3dData = dashboardData.heatmap || [];
+
 function renderLineChart(canvasId, data, xKey, yKey, color) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
@@ -3006,6 +3423,33 @@ function renderLineChart(canvasId, data, xKey, yKey, color) {
   ctx.fillText('max: ' + maxY.toFixed(2), w - 80, 12);
 }
 
+let heat3dRot = { y: 0.6, x: 0.35 };
+let heat3dNormalized = null;
+let heat3dDragging = false;
+let dashboardRefreshInFlight = false;
+let dashboardResizeObserver = null;
+
+function normalizeHeat3D(data) {
+  if (!data.length) return [];
+  const xs = data.map(d => d.x);
+  const ys = data.map(d => d.y);
+  const zs = data.map(d => d.z);
+  const cx = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2;
+  const cy = (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2;
+  const cz = (Math.min.apply(null, zs) + Math.max.apply(null, zs)) / 2;
+  const range = Math.max(
+    Math.max.apply(null, xs) - Math.min.apply(null, xs),
+    Math.max.apply(null, ys) - Math.min.apply(null, ys),
+    Math.max.apply(null, zs) - Math.min.apply(null, zs),
+    1e-6
+  );
+  return data.map(d => ({
+    x: (d.x - cx) / range,
+    y: (d.y - cy) / range,
+    z: (d.z - cz) / range,
+  }));
+}
+
 function renderHeat3D(canvasId, data) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
@@ -3021,39 +3465,228 @@ function renderHeat3D(canvasId, data) {
     return;
   }
 
-  const xs = data.map(d => d.x);
-  const ys = data.map(d => d.y);
-  const zs = data.map(d => d.z);
-  const minX = Math.min.apply(null, xs);
-  const maxX = Math.max.apply(null, xs);
-  const minY = Math.min.apply(null, ys);
-  const maxY = Math.max.apply(null, ys);
-  const minZ = Math.min.apply(null, zs);
-  const maxZ = Math.max.apply(null, zs);
+  if (!heat3dNormalized) heat3dNormalized = normalizeHeat3D(data);
 
-  const proj = (x, y, z) => {
-    const nx = (x - minX) / Math.max(1e-6, (maxX - minX));
-    const ny = (y - minY) / Math.max(1e-6, (maxY - minY));
-    const nz = (z - minZ) / Math.max(1e-6, (maxZ - minZ));
-    const sx = w * (nx - ny * 0.2);
-    const sy = h * (0.1 + ny * 0.6 - nz * 0.3);
-    return { x: sx, y: sy };
-  };
+  const cosY = Math.cos(heat3dRot.y), sinY = Math.sin(heat3dRot.y);
+  const cosX = Math.cos(heat3dRot.x), sinX = Math.sin(heat3dRot.x);
+  const scale = Math.min(w, h) * 0.42;
+  const cx = w / 2, cy = h / 2;
 
-  ctx.fillStyle = 'rgba(102, 252, 241, 0.25)';
-  for (let i = 0; i < data.length; i++) {
-    const d = data[i];
-    const p = proj(d.x, d.y, d.z);
-    const size = 4;
-    ctx.fillRect(p.x - size/2, p.y - size/2, size, size);
+  const projected = heat3dNormalized.map(p => {
+    // yaw around Y axis, then pitch around X axis
+    const x1 = p.x * cosY + p.z * sinY;
+    const z1 = -p.x * sinY + p.z * cosY;
+    const y1 = p.y * cosX - z1 * sinX;
+    const z2 = p.y * sinX + z1 * cosX;
+    return { x: x1, y: y1, z: z2 };
+  });
+
+  // painter's algorithm: draw back-to-front so closer points overdraw
+  projected.sort((a, b) => a.z - b.z);
+
+  for (const p of projected) {
+    const depth = (p.z + 1) / 2;
+    const alpha = 0.15 + depth * 0.55;
+    const size = 2 + depth * 3;
+    ctx.fillStyle = `rgba(102, 252, 241, ${alpha.toFixed(2)})`;
+    ctx.fillRect(cx + p.x * scale - size / 2, cy - p.y * scale - size / 2, size, size);
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+function attachHeat3DRotation(canvasId, data) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  let dragging = false;
+  let pointerId = null;
+  let lastX = 0;
+  let lastY = 0;
+
+  canvas.style.cursor = 'grab';
+  canvas.addEventListener('pointerdown', event => {
+    dragging = true;
+    heat3dDragging = true;
+    pointerId = event.pointerId;
+    lastX = event.clientX;
+    lastY = event.clientY;
+    canvas.setPointerCapture(pointerId);
+    canvas.style.cursor = 'grabbing';
+  });
+  const stopDragging = event => {
+    if (event.pointerId !== pointerId) return;
+    dragging = false;
+    heat3dDragging = false;
+    pointerId = null;
+    canvas.style.cursor = 'grab';
+  };
+  canvas.addEventListener('pointerup', stopDragging);
+  canvas.addEventListener('pointercancel', stopDragging);
+  canvas.addEventListener('pointermove', event => {
+    if (!dragging || event.pointerId !== pointerId) return;
+    heat3dRot.y += (event.clientX - lastX) * 0.01;
+    heat3dRot.x = Math.max(-1.5, Math.min(1.5, heat3dRot.x + (event.clientY - lastY) * 0.01));
+    lastX = event.clientX;
+    lastY = event.clientY;
+    renderHeat3D(canvasId, data);
+  });
+}
+
+function recentTagClass(tag) {
+  const classes = {
+    'urgent': 'tag-urgent',
+    'high-hostility': 'tag-high-hostility',
+    'hostile': 'tag-hostile',
+    'substance': 'tag-substance',
+    'slang': 'tag-slang',
+    'positive': 'tag-positive',
+    'neutral': 'tag-neutral',
+  };
+  return classes[tag] || 'tag-neutral';
+}
+
+function renderRecentMessages(messages) {
+  const root = document.getElementById('recentMessages');
+  if (!root) return;
+  root.replaceChildren();
+
+  if (!messages.length) {
+    const empty = document.createElement('div');
+    empty.className = 'small';
+    empty.textContent = 'No messages yet.';
+    root.append(empty);
+    return;
+  }
+
+  for (const message of messages) {
+    const item = document.createElement('article');
+    item.className = 'recent-message';
+    if (message.quarantined) item.classList.add('is-quarantined');
+
+    const meta = document.createElement('div');
+    meta.className = 'recent-meta';
+    const identity = message.avatar_name || message.avatar_id || 'Unknown avatar';
+    const location = message.sim_name ? ` - ${message.sim_name}` : '';
+    meta.append(`${message.timestamp_label || 'Invalid timestamp'} - ${identity}${location}`);
+
+    for (const tag of message.tags || []) {
+      const badge = document.createElement('span');
+      badge.className = `message-tag ${recentTagClass(tag)}`;
+      badge.textContent = tag.replace('-', ' ');
+      meta.append(badge);
+    }
+
+    if (message.hostility_score > 0) {
+      const score = document.createElement('span');
+      score.className = 'message-tag tag-hostile';
+      score.textContent = `score ${message.hostility_score}`;
+      meta.append(score);
+    }
+
+    const content = document.createElement('div');
+    content.className = 'recent-message-text';
+    content.textContent = message.message || '';
+    item.append(meta, content);
+
+    if (message.hostile_terms && message.hostile_terms.length) {
+      const terms = document.createElement('div');
+      terms.className = 'small';
+      terms.textContent = message.hostile_terms.join(', ');
+      item.append(terms);
+    }
+
+    root.append(item);
+  }
+}
+
+async function refreshRecentMessages() {
+  const status = document.getElementById('recentMessageStatus');
+  try {
+    const response = await fetch('/chatlog?format=recent', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    renderRecentMessages(payload.messages || []);
+    if (status) {
+      const refreshedAt = new Date(payload.refreshed_at);
+      status.textContent = Number.isNaN(refreshedAt.valueOf())
+        ? 'Updated'
+        : `Updated ${refreshedAt.toLocaleTimeString()}`;
+    }
+  } catch (_) {
+    if (status) status.textContent = 'Refresh unavailable';
+  }
+}
+
+function renderCharts() {
   renderLineChart('timelineChart', timelineData, 'date', 'count', '#66fcf1');
   renderLineChart('sentimentChart', sentimentData, 'date', 'score', '#ff6b6b');
   renderLineChart('rocChart', rocData, 'ts', 'roc', '#45a29e');
   renderHeat3D('heat3dCanvas', heat3dData);
+}
+
+function observeDashboardSize() {
+  const dashboard = document.getElementById('chatlogDashboard');
+  if (!dashboard) return;
+  if ('ResizeObserver' in window) {
+    if (!dashboardResizeObserver) dashboardResizeObserver = new ResizeObserver(renderCharts);
+    dashboardResizeObserver.disconnect();
+    dashboardResizeObserver.observe(dashboard);
+  }
+}
+
+function initializeDashboard() {
+  renderCharts();
+  attachHeat3DRotation('heat3dCanvas', heat3dData);
+  observeDashboardSize();
+  refreshRecentMessages();
+}
+
+async function refreshDashboard() {
+  if (
+    dashboardRefreshInFlight
+    || document.hidden
+    || heat3dDragging
+    || window.getSelection().type === 'Range'
+  ) return;
+
+  dashboardRefreshInFlight = true;
+  try {
+    const response = await fetch('/chatlog', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const nextDocument = new DOMParser().parseFromString(await response.text(), 'text/html');
+    const nextHeader = nextDocument.getElementById('chatlogHeader');
+    const nextDashboard = nextDocument.getElementById('chatlogDashboard');
+    const nextData = nextDocument.getElementById('chatlogDashboardData');
+    if (!nextHeader || !nextDashboard || !nextData) return;
+
+    const nextDashboardData = JSON.parse(nextData.textContent);
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    timelineData = nextDashboardData.timeline || [];
+    sentimentData = nextDashboardData.sentiment || [];
+    rocData = nextDashboardData.rate_of_change || [];
+    heat3dData = nextDashboardData.heatmap || [];
+    heat3dNormalized = null;
+
+    document.getElementById('chatlogHeader').replaceWith(nextHeader);
+    document.getElementById('chatlogDashboard').replaceWith(nextDashboard);
+    document.getElementById('chatlogDashboardData').textContent = nextData.textContent;
+    initializeDashboard();
+    window.requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
+  } catch (_) {
+    // Keep the last successful dashboard view if a background refresh fails.
+  } finally {
+    dashboardRefreshInFlight = false;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  initializeDashboard();
+  if (!('ResizeObserver' in window)) window.addEventListener('resize', renderCharts);
+  window.addEventListener('visibilitychange', () => {
+    if (!document.hidden) refreshDashboard();
+  });
+  window.setInterval(refreshRecentMessages, 5000);
+  window.setInterval(refreshDashboard, 15000);
 });
 </script>
 </body>
@@ -3067,195 +3700,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
-  
-/*
-app.at("/chatlog").get(|_req: Request<AppState>| async move {
-
-
-    let raw = fs::read_to_string(
-        "/root/midscore_io/tiade-maeepers-saerver-all/second_life_chat_logs.txt"
-    ).unwrap_or_default();
-
-    //
-    // ---------------------------------------------------------
-    // 1. Split into individual JSON/YAML objects (CRITICAL FIX)
-    // ---------------------------------------------------------
-    //
-
-    let mut objects = Vec::new();
-    let mut buf = String::new();
-
-    for ch in raw.chars() {
-        buf.push(ch);
-        if ch == '}' {
-            objects.push(buf.clone());
-            buf.clear();
-        }
-    }
-
-    //
-    // ---------------------------------------------------------
-    // 2. Regexes for each field
-    // ---------------------------------------------------------
-    //
-
-    let re_avatar_id = Regex::new(r#""avatar_id"\s*:\s*"([^"]+)""#).unwrap();
-    let re_avatar_name = Regex::new(r#""avatar_name"\s*:\s*"([^"]+)""#).unwrap();
-    let re_captured_by = Regex::new(r#""captured_by"\s*:\s*"([^"]+)""#).unwrap();
-    let re_message = Regex::new(r#""message"\s*:\s*"([^"]+)""#).unwrap();
-    let re_sim_name = Regex::new(r#""sim_name"\s*:\s*"([^"]+)""#).unwrap();
-    let re_timestamp = Regex::new(r#""timestamp"\s*:\s*(\d+)"#).unwrap();
-    let re_x = Regex::new(r#""x_pos"\s*:\s*([\d\.]+)"#).unwrap();
-    let re_y = Regex::new(r#""y_pos"\s*:\s*([\d\.]+)"#).unwrap();
-    let re_z = Regex::new(r#""z_pos"\s*:\s*([\d\.]+)"#).unwrap();
-
-    //
-    // ---------------------------------------------------------
-    // 3. Statistics containers
-    // ---------------------------------------------------------
-    //
-
-    let mut unique_keys: HashSet<String> = HashSet::new();
-    let mut freq: BTreeMap<u32, usize> = BTreeMap::new();
-    let mut per_avatar: BTreeMap<String, usize> = BTreeMap::new();
-    let mut per_sim: BTreeMap<String, usize> = BTreeMap::new();
-
-    let mut xs = Vec::new();
-    let mut ys = Vec::new();
-    let mut zs = Vec::new();
-    let mut labels = Vec::new();
-
-    //
-    // ---------------------------------------------------------
-    // 4. Parse each object with regex
-    // ---------------------------------------------------------
-    //
-
-    for obj in &objects {
-        let line = obj.as_str();
-
-        let avatar_id = re_avatar_id.captures(line)
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().to_string())
-            .unwrap_or_default();
-
-        let avatar_name = re_avatar_name.captures(line)
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().to_string())
-            .unwrap_or_default();
-
-        let _captured_by = re_captured_by.captures(line)
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().to_string())
-            .unwrap_or_default(); // intentionally unused
-
-        let message = re_message.captures(line)
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().to_string())
-            .unwrap_or_default();
-
-        let sim_name = re_sim_name.captures(line)
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().to_string())
-            .unwrap_or_default();
-
-        let timestamp = re_timestamp.captures(line)
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().parse::<i64>().unwrap_or(0));
-
-        let x = re_x.captures(line)
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().parse::<f64>().unwrap_or(0.0));
-
-        let y = re_y.captures(line)
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().parse::<f64>().unwrap_or(0.0));
-
-        let z = re_z.captures(line)
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().parse::<f64>().unwrap_or(0.0));
-
-        //
-        // Uniqueness
-        //
-        let key = format!("{}|{}|{}", avatar_id, timestamp.unwrap_or(0), message);
-        unique_keys.insert(key);
-
-        //
-        // Hourly frequency
-        //
-        if let Some(ts) = timestamp {
-            if let chrono::LocalResult::Single(dt) = Los_Angeles.timestamp_opt(ts, 0) {
-                let hour = dt.hour();
-                *freq.entry(hour).or_insert(0) += 1;
-            }
-        }
-
-        //
-        // Per-avatar
-        //
-        if !avatar_name.is_empty() {
-            *per_avatar.entry(avatar_name.clone()).or_insert(0) += 1;
-        }
-
-        //
-        // Per-sim
-        //
-        if !sim_name.is_empty() {
-            *per_sim.entry(sim_name.clone()).or_insert(0) += 1;
-        }
-
-        //
-        // Coordinates
-        //
-        if let (Some(x), Some(y), Some(z)) = (x, y, z) {
-            xs.push(x.to_string());
-            ys.push(y.to_string());
-            zs.push(z.to_string());
-            labels.push(format!("{} @ {}", avatar_name, sim_name));
-        }
-    }
-
-    //
-    // ---------------------------------------------------------
-    // 5. Build HTML output
-    // ---------------------------------------------------------
-    //
-
-    let mut out = String::new();
-    out.push_str(r#"<!DOCTYPE html><html><head><meta charset="UTF-8">
-<title>Chatlog Stats</title>"#);
-
-    out.push_str(&format!("<p>Total Entries: {}</p>", objects.len()));
-    out.push_str(&format!("<p>Unique Entries: {}</p>", unique_keys.len()));
-
-    out.push_str("<h2>Hourly Frequency</h2><table><tr><th>Hour</th><th>Count</th></tr>");
-    for hour in 0..24 {
-        let count = freq.get(&hour).copied().unwrap_or(0);
-        out.push_str(&format!("<tr><td>{:02}</td><td>{}</td></tr>", hour, count));
-    }
-    out.push_str("</table>");
-
-    out.push_str("<h2>Per Avatar</h2><table><tr><th>Avatar</th><th>Count</th></tr>");
-    for (name, count) in &per_avatar {
-        out.push_str(&format!("<tr><td>{}</td><td>{}</td></tr>", name, count));
-    }
-    out.push_str("</table>");
-
-    out.push_str("<h2>Per Sim</h2><table><tr><th>Sim</th><th>Count</th></tr>");
-    for (sim, count) in &per_sim {
-        out.push_str(&format!("<tr><td>{}</td><td>{}</td></tr>", sim, count));
-    }
-    out.push_str("</table>");
-
-
-    let mut res = Response::new(StatusCode::Ok);
-    res.set_body(out);
-    res.insert_header("Content-Type", "text/html; charset=utf-8");
-    Ok(res)
-});
-
-*/
 
 
 
