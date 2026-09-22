@@ -860,15 +860,6 @@ use std::thread;
 #[derive(Clone)]
 struct AppState;
 
-// Helper: convert HashMap<String, Value> -> serde_json::Map<String, Value>
-fn hashmap_to_map(src: &std::collections::HashMap<String, serde_json::Value>) -> serde_json::Map<String, serde_json::Value> {
-    let mut m = serde_json::Map::new();
-    for (k, v) in src.iter() {
-        m.insert(k.clone(), v.clone());
-    }
-    m
-}
-
 #[derive(Debug, Deserialize)]
 struct LogEntrySl {
     avatar_id: Option<String>,
@@ -893,97 +884,282 @@ use async_std::io::prelude::*; // for WriteExt
 
 
 
-lazy_static! {
-    static ref VARS: Arc<Mutex<Map<String,Value>>> = Arc::new(Mutex::new(Map::new()));
-}
-use lazy_static::lazy_static;
-use async_std::io::WriteExt;
-
- // Ensure these constants are defined at module top-level (not inside this function).
-    const DATA_DIR: &str = "/midscore_io/tiade-maeepers-saerver-all/";
-  const FLAT_FILE: &str = "vars_flatfile.json";
-    const HISTORY_FILE: &str = "vars_history.log";
 use std::collections::HashMap;
 use futures_util::TryFutureExt;
-/// Async save_snapshot that accepts a serde_json::Map (the type you are passing from handlers).
-/// Writes DATA_DIR/FLAT_FILE and appends HISTORY_FILE. Returns tide::Result so callers can handle errors.
-async fn save_snapshot(snapshot: Map<String, Value>, tag: &str) -> tide::Result<()> {
-   
-
-    let dir = Path::new(DATA_DIR);
-
-    // create_dir_all is async; await it and map errors to tide::Error
-    fs::create_dir_all(dir).map_err(|e| {
-        tide::Error::from_str(
-            StatusCode::InternalServerError,
-            format!("create_dir_all failed: {}", e),
-        )
-    })?;
-
-    let flat_path = dir.join(FLAT_FILE);
-
-    // Serialize the serde_json::Map directly
-    let flat_json = serde_json::to_string_pretty(&snapshot).map_err(|e| {
-        tide::Error::from_str(
-            StatusCode::InternalServerError,
-            format!("serialize failed: {}", e),
-        )
-    })?;
-
-    // Write file asynchronously
-    fs::write(&flat_path, flat_json).map_err(|e| {
-        tide::Error::from_str(
-            StatusCode::InternalServerError,
-            format!("write flat file failed: {}", e),
-        )
-    });
-    println!("save_snapshot: wrote {}", flat_path.display());
-
-    // Append history entry
-    let history_path = dir.join(HISTORY_FILE);
-    let entry = format!("{} - {}\n", Utc::now().to_rfc3339(), tag);
-
-    let mut f = async_std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&history_path)
-        .await
-        .map_err(|e| {
-            tide::Error::from_str(
-                StatusCode::InternalServerError,
-                format!("open history failed: {}", e),
-            )
-        })?;
-
-    f.write_all(entry.as_bytes()).await.map_err(|e| {
-        tide::Error::from_str(
-            StatusCode::InternalServerError,
-            format!("write history failed: {}", e),
-        )
-    })?;
-
-    Ok(())
-  }
-
-
-
 #[async_std::main]
 async fn main() -> tide::Result<()> {
     // Data directory and filenames (place near top of main.rs, after imports)
 
+  fn new_chatlog_memory_cache() -> partitioned_array_rust::PartitionedArray {
+    let mut cache = partitioned_array_rust::PartitionedArray::new(1, 1, 1, false);
+    cache.allocate(false);
+    cache
+  }
+
+  struct ChatlogStore {
+    entries: partitioned_array_rust::PartitionedArray,
+    revision: u64,
+  }
+
+  struct VarsStore {
+    entries: partitioned_array_rust::PartitionedArray,
+    history: partitioned_array_rust::PartitionedArray,
+  }
+
+  #[derive(Serialize, Deserialize)]
+  struct PersistedMemoryStores {
+    version: u8,
+    chatlog_entries: partitioned_array_rust::PartitionedArray,
+    chatlog_revision: u64,
+    variable_entries: partitioned_array_rust::PartitionedArray,
+    variable_history: partitioned_array_rust::PartitionedArray,
+  }
+
+  fn new_chatlog_store() -> ChatlogStore {
+    let mut store = partitioned_array_rust::PartitionedArray::new(1, 256, 1, true);
+    store.allocate(false);
+    ChatlogStore {
+      entries: store,
+      revision: 0,
+    }
+  }
+
+  fn new_vars_store() -> VarsStore {
+    let mut entries = partitioned_array_rust::PartitionedArray::new(1, 64, 1, true);
+    entries.allocate(false);
+    let mut history = partitioned_array_rust::PartitionedArray::new(1, 64, 1, true);
+    history.allocate(false);
+    VarsStore { entries, history }
+  }
+
+  fn memory_store_path() -> std::path::PathBuf {
+    std::env::var("MSSL_MEMORY_STORE_PATH")
+      .map(std::path::PathBuf::from)
+      .unwrap_or_else(|_| {
+        std::path::PathBuf::from(
+          "/root/midscore_io/tiade-maeepers-saerver-all/partitioned_memory_store.json",
+        )
+      })
+  }
+
+  fn restore_memory_stores() -> Option<(ChatlogStore, VarsStore)> {
+    let bytes = std::fs::read(memory_store_path()).ok()?;
+    let snapshot = serde_json::from_slice::<PersistedMemoryStores>(&bytes).ok()?;
+    if snapshot.version != 1 {
+      return None;
+    }
+    Some((
+      ChatlogStore {
+        entries: snapshot.chatlog_entries,
+        revision: snapshot.chatlog_revision,
+      },
+      VarsStore {
+        entries: snapshot.variable_entries,
+        history: snapshot.variable_history,
+      },
+    ))
+  }
+
+  fn persist_memory_stores(state: &AppState) -> std::io::Result<()> {
+    let chatlog_store = state.chatlog_store.lock().map_err(|_| {
+      std::io::Error::other("chatlog store lock poisoned")
+    })?;
+    let vars_store = state.vars_store.lock().map_err(|_| {
+      std::io::Error::other("variable store lock poisoned")
+    })?;
+    let snapshot = PersistedMemoryStores {
+      version: 1,
+      chatlog_entries: chatlog_store.entries.clone(),
+      chatlog_revision: chatlog_store.revision,
+      variable_entries: vars_store.entries.clone(),
+      variable_history: vars_store.history.clone(),
+    };
+    let payload = serde_json::to_vec_pretty(&snapshot)
+      .map_err(std::io::Error::other)?;
+    let path = memory_store_path();
+    if let Some(parent) = path.parent() {
+      std::fs::create_dir_all(parent)?;
+    }
+    let temporary_path = path.with_extension("tmp");
+    std::fs::write(&temporary_path, payload)?;
+    std::fs::rename(temporary_path, path)
+  }
+
+  fn vars_entry_id(store: &VarsStore, name: &str) -> Option<usize> {
+    store.entries.non_empty_ids().into_iter().find(|id| {
+      store.entries.get(*id)
+        .and_then(|row| row.get("name"))
+        .and_then(serde_json::Value::as_str)
+        == Some(name)
+    })
+  }
+
+  fn vars_snapshot(store: &VarsStore) -> Map<String, Value> {
+    store.entries.non_empty_ids().into_iter().filter_map(|id| {
+      let row = store.entries.get(id)?;
+      let name = row.get("name")?.as_str()?.to_owned();
+      let value = row.get("value")?.clone();
+      Some((name, value))
+    }).collect()
+  }
+
+  fn vars_record_history(store: &mut VarsStore, operation: String) {
+    let snapshot = vars_snapshot(store);
+    let _ = store.history.add(|row| {
+      row.insert("operation".to_string(), Value::String(operation.clone()));
+      row.insert("recorded_at".to_string(), Value::String(Utc::now().to_rfc3339()));
+      row.insert("snapshot".to_string(), Value::Object(snapshot.clone()));
+    });
+  }
+
+  fn vars_set(store: &mut VarsStore, values: &Map<String, Value>) {
+    for (name, value) in values {
+      if let Some(id) = vars_entry_id(store, name) {
+        let _ = store.entries.set_with(id, |row| {
+          row.insert("value".to_string(), value.clone());
+        });
+      } else {
+        let _ = store.entries.add(|row| {
+          row.insert("name".to_string(), Value::String(name.clone()));
+          row.insert("value".to_string(), value.clone());
+        });
+      }
+    }
+    vars_record_history(store, "SET".to_string());
+  }
+
+  fn vars_get(store: &mut VarsStore, name: &str) -> Option<Value> {
+    let value = vars_entry_id(store, name)
+      .and_then(|id| store.entries.get(id))
+      .and_then(|row| row.get("value"))
+      .cloned();
+    let operation = if value.is_some() {
+      format!("GET {}", name)
+    } else {
+      format!("GET {} not found", name)
+    };
+    vars_record_history(store, operation);
+    value
+  }
+
+  fn vars_delete(store: &mut VarsStore, name: &str) {
+    if let Some(id) = vars_entry_id(store, name) {
+      let _ = store.entries.delete(id);
+    }
+    vars_record_history(store, format!("DELETE {}", name));
+  }
+
+  fn vars_clear(store: &mut VarsStore) {
+    for id in store.entries.non_empty_ids() {
+      let _ = store.entries.delete(id);
+    }
+    vars_record_history(store, "CLEAR".to_string());
+  }
+
+  fn chatlog_store_snapshot(store: &Mutex<ChatlogStore>) -> (String, String) {
+    let Ok(store) = store.lock() else {
+      return (String::new(), String::new());
+    };
+    let raw = store
+      .entries
+      .non_empty_ids()
+      .into_iter()
+      .filter_map(|id| store.entries.get(id))
+      .filter_map(|row| row.get("body").and_then(serde_json::Value::as_str))
+      .collect::<Vec<_>>()
+      .join("\n");
+    (raw, store.revision.to_string())
+  }
+
+  fn chatlog_cache_get(
+    cache: &Mutex<partitioned_array_rust::PartitionedArray>,
+    source_len: u64,
+    source_modified: &str,
+    payload_key: &str,
+  ) -> Option<String> {
+    let cache = cache.lock().ok()?;
+    let row = cache.get(0)?;
+    let is_current = row
+      .get("source_len")
+      .and_then(serde_json::Value::as_u64)
+      == Some(source_len)
+      && row
+        .get("source_modified")
+        .and_then(serde_json::Value::as_str)
+        == Some(source_modified);
+    if !is_current {
+      return None;
+    }
+    row.get(payload_key)
+      .and_then(serde_json::Value::as_str)
+      .map(str::to_owned)
+  }
+
+  fn chatlog_cache_store(
+    cache: &Mutex<partitioned_array_rust::PartitionedArray>,
+    source_len: u64,
+    source_modified: &str,
+    payload_key: &str,
+    payload: String,
+  ) {
+    let Ok(mut cache) = cache.lock() else {
+      return;
+    };
+    let preserves_current_payloads = cache.get(0).is_some_and(|row| {
+      row.get("source_len")
+        .and_then(serde_json::Value::as_u64)
+        == Some(source_len)
+        && row
+          .get("source_modified")
+          .and_then(serde_json::Value::as_str)
+          == Some(source_modified)
+    });
+    let mut row = if preserves_current_payloads {
+      cache.get(0).cloned().unwrap_or_default()
+    } else {
+      serde_json::Map::new()
+    };
+    row.insert("source_len".to_string(), serde_json::Value::from(source_len));
+    row.insert(
+      "source_modified".to_string(),
+      serde_json::Value::from(source_modified.to_string()),
+    );
+    row.insert(payload_key.to_string(), serde_json::Value::from(payload));
+    let _ = cache.set_with(0, |slot| *slot = row.clone());
+  }
+
     // Main HTTPS server - handling all defined routes
-let mut app = tide::with_state(AppState {
+let (chatlog_store, vars_store) = restore_memory_stores()
+  .unwrap_or_else(|| (new_chatlog_store(), new_vars_store()));
+let state = AppState {
     queue: Mutex::new(Vec::new()),
     results: Mutex::new(Vec::new()),
-});
+  chatlog_cache: Arc::new(Mutex::new(new_chatlog_memory_cache())),
+  chatlog_store: Arc::new(Mutex::new(chatlog_store)),
+  vars_store: Arc::new(Mutex::new(vars_store)),
+};
+let mut app = tide::with_state(state.clone());
+    let state_for_shutdown = state.clone();
+    ctrlc::set_handler(move || {
+        if let Err(error) = persist_memory_stores(&state_for_shutdown) {
+            eprintln!("Failed to persist partitioned memory stores: {}", error);
+        }
+        std::process::exit(0);
+    }).map_err(|error| tide::Error::from_str(
+        StatusCode::InternalServerError,
+        format!("failed to install shutdown handler: {}", error),
+    ))?;
     // Spawn a background thread to listen for CLI input.
-    std::thread::spawn(|| {
+    let state_for_cli = state.clone();
+    std::thread::spawn(move || {
         let stdin = io::stdin();
         for line in stdin.lock().lines() {
             if let Ok(input) = line {
                 match input.trim() {
                     "exit" => {
-                        println!("Exiting server abruptly.");
+                        if let Err(error) = persist_memory_stores(&state_for_cli) {
+                        eprintln!("Failed to persist partitioned memory stores: {}", error);
+                      }
                         std::process::exit(0);
                     }
 
@@ -1116,6 +1292,9 @@ struct CompletedResult {
 struct AppState {
     queue: Mutex<Vec<QueuedCommand>>,
     results: Mutex<Vec<CompletedResult>>,
+  chatlog_cache: Arc<Mutex<partitioned_array_rust::PartitionedArray>>,
+    chatlog_store: Arc<Mutex<ChatlogStore>>,
+    vars_store: Arc<Mutex<VarsStore>>,
 }
 
 impl Default for AppState {
@@ -1123,6 +1302,9 @@ impl Default for AppState {
         Self {
             queue: Mutex::new(Vec::new()),
             results: Mutex::new(Vec::new()),
+          chatlog_cache: Arc::new(Mutex::new(new_chatlog_memory_cache())),
+          chatlog_store: Arc::new(Mutex::new(new_chatlog_store())),
+          vars_store: Arc::new(Mutex::new(new_vars_store())),
         }
     }
 }
@@ -1134,6 +1316,9 @@ impl Clone for AppState {
         Self {
             queue: Mutex::new(queue),
             results: Mutex::new(results),
+          chatlog_cache: Arc::clone(&self.chatlog_cache),
+          chatlog_store: Arc::clone(&self.chatlog_store),
+          vars_store: Arc::clone(&self.vars_store),
         }
     }
 }
@@ -1195,13 +1380,10 @@ impl Clone for AppState {
         });
 
 
-   app.at("/analytics").get(|_req: tide::Request<AppState>| async move {
+  app.at("/analytics").get(|req: tide::Request<AppState>| async move {
     use chrono::{Datelike, FixedOffset, Timelike, Utc, NaiveDateTime};
     use serde_json::Value;
     use std::collections::{BTreeMap, HashMap, HashSet};
-
-    const PATH: &str =
-        "/root/midscore_io/tiade-maeepers-saerver-all/second_life_chat_logs.txt";
 
     const WEEKDAYS: [&str; 7] = [
         "Monday", "Tuesday", "Wednesday", "Thursday",
@@ -1232,9 +1414,9 @@ impl Clone for AppState {
     }
 
     // ---------------------------------------------------------------------
-    // Read raw log file
+    // Read the shared in-memory partitioned log store.
     // ---------------------------------------------------------------------
-    let raw = std::fs::read_to_string(PATH).unwrap_or_default();
+    let (raw, _) = chatlog_store_snapshot(req.state().chatlog_store.as_ref());
     let mut entries: Vec<Value> = Vec::new();
 
     for line in raw.lines() {
@@ -1372,7 +1554,7 @@ impl Clone for AppState {
     // ---------------------------------------------------------------------
     let mut out = String::new();
     out.push_str("Second Life chat frequency report (PST)\n");
-    out.push_str(&format!("Source file: {}\n", PATH));
+    out.push_str("Source: in-memory partitioned log store\n");
     out.push_str(&format!("Raw parsed entries: {}\n", entries.len()));
     out.push_str(&format!("Total unique events: {}\n", events.len()));
     out.push_str(&format!("Unique avatar IDs: {}\n", avatars.len()));
@@ -1621,35 +1803,21 @@ app.at("/vars/status").post(|_req: Request<AppState>| async move {
         let body = req.body_string().await.unwrap_or_default();
         println!("Received POST body: {}", body);
 
-        // Log file path (adjust to a writable path for your process)
-        let log_path = "/root/midscore_io/tiade-maeepers-saerver-all/second_life_chat_logs.txt";
-
-        // Ensure parent directory exists
-        if let Some(parent) = Path::new(log_path).parent() {
-            create_dir_all(parent).map_err(|e| {
-                println!("Failed to create directory {}: {}", parent.display(), e);
-                tide::Error::new(StatusCode::InternalServerError, e)
-            })?;
-        }
-
-        // Append to file (create if missing)
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(log_path)
-            .map_err(|e| {
-                println!("Failed to open log file {}: {}", log_path, e);
-                tide::Error::new(StatusCode::InternalServerError, e)
-            })?;
-
-        writeln!(file, "{}", body).map_err(|e| {
-            println!("Failed to write to log file: {}", e);
-            tide::Error::new(StatusCode::InternalServerError, e)
-        })?;
+      let mut store = req.state().chatlog_store.lock().map_err(|_| {
+        tide::Error::from_str(StatusCode::InternalServerError, "chatlog store lock poisoned")
+      })?;
+      let row_id = store.entries.add(|row| {
+        row.insert("body".to_string(), Value::String(body.clone()));
+        row.insert("received_at".to_string(), Value::String(Utc::now().to_rfc3339()));
+      }).ok_or_else(|| {
+        tide::Error::from_str(StatusCode::InsufficientStorage, "chatlog store is full")
+      })?;
+      store.revision = store.revision.saturating_add(1);
+      drop(store);
 
         // Respond
         let mut res = Response::new(StatusCode::Ok);
-        res.set_body("Log entry received and written to file successfully.");
+      res.set_body(format!("Log entry stored in memory with id {}.", row_id));
         res.insert_header("Content-Type", "text/plain; charset=utf-8");
         Ok(res)
     });
@@ -1671,37 +1839,16 @@ app.at("/vars/set").post(|mut req: Request<AppState>| async move {
     let body: Value = req.body_json().await
         .map_err(|e| tide::Error::from_str(StatusCode::BadRequest, format!("invalid json body: {}", e)))?;
 
-    {
-        let mut vars = VARS.lock().unwrap();
-        if let Some(obj) = body.as_object() {
-            for (k, v) in obj {
-                vars.insert(k.clone(), v.clone());
-            }
-        } else {
-            let mut res = Response::new(StatusCode::BadRequest);
-            res.set_body("expected JSON object");
-            res.insert_header("Content-Type", "text/plain");
-            return Ok(res);
-        }
-    }
-
-    // Build snapshot as serde_json::Map
-    let snapshot_map = {
-        let vars = VARS.lock().unwrap();
-        let mut map = Map::new();
-        for (k, v) in vars.iter() {
-            map.insert(k.clone(), v.clone());
-        }
-        map
-    };
-
-    if let Err(e) = save_snapshot(snapshot_map, "SET").await {
-        println!("save_snapshot error (SET): {}", e);
-        let mut res = Response::new(StatusCode::InternalServerError);
-        res.set_body(format!("set failed: {}", e));
-        res.insert_header("Content-Type", "text/plain");
-        return Ok(res);
-    }
+  let Some(values) = body.as_object() else {
+    let mut res = Response::new(StatusCode::BadRequest);
+    res.set_body("expected JSON object");
+    res.insert_header("Content-Type", "text/plain");
+    return Ok(res);
+  };
+  let mut store = req.state().vars_store.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+  })?;
+  vars_set(&mut store, values);
 
     let mut res = Response::new(StatusCode::Ok);
     //res.set_body("set complete"); -- we don't need to send a body for this response
@@ -1721,43 +1868,18 @@ app.at("/vars/get").post(|mut req: Request<AppState>| async move {
         .ok_or_else(|| tide::Error::from_str(StatusCode::BadRequest, "missing name"))?
         .to_string();
 
-    let val_opt = {
-        let vars = VARS.lock().unwrap();
-        vars.get(&name).cloned()
-    };
-
-    // Build snapshot_map from current in-memory vars
-    let snapshot_map = {
-        let vars = VARS.lock().unwrap();
-        let mut map = Map::new();
-        for (k, v) in vars.iter() {
-            map.insert(k.clone(), v.clone());
-        }
-        map
-    };
+    let mut store = req.state().vars_store.lock().map_err(|_| {
+      tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+    })?;
+    let val_opt = vars_get(&mut store, &name);
 
     if let Some(val) = val_opt {
-        if let Err(e) = save_snapshot(snapshot_map, &format!("GET {}", name)).await {
-            println!("save_snapshot error (GET {}): {}", name, e);
-        }
         let mut res = Response::new(StatusCode::Ok);
         res.set_body(serde_json::to_string(&val)?);
         res.insert_header("Content-Type", "application/json; charset=utf-8");
 
         Ok(res)
     } else {
-        // rebuild snapshot for the "not found" case (snapshot_map was moved above)
-        let snapshot_map = {
-            let vars = VARS.lock().unwrap();
-            let mut map = Map::new();
-            for (k, v) in vars.iter() {
-                map.insert(k.clone(), v.clone());
-            }
-            map
-        };
-        if let Err(e) = save_snapshot(snapshot_map, &format!("GET {} not found", name)).await {
-            println!("save_snapshot error (GET not found {}): {}", name, e);
-        }
         let mut res = Response::new(StatusCode::NotFound);
         //res.set_body("not found"); -- we don't need to send a body for this response
         println!("GET {} not found", name);
@@ -1768,19 +1890,12 @@ app.at("/vars/get").post(|mut req: Request<AppState>| async move {
 });
 
 /// /vars/view
-app.at("/vars/view").post(|_req: Request<AppState>| async move {
-    let snapshot_map = {
-        let vars = VARS.lock().unwrap();
-        let mut map = Map::new();
-        for (k, v) in vars.iter() {
-            map.insert(k.clone(), v.clone());
-        }
-        map
-    };
-
-    if let Err(e) = save_snapshot(snapshot_map.clone(), "VIEW").await {
-        println!("save_snapshot error (VIEW): {}", e);
-    }
+app.at("/vars/view").post(|req: Request<AppState>| async move {
+  let mut store = req.state().vars_store.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+  })?;
+  let snapshot_map = vars_snapshot(&store);
+  vars_record_history(&mut store, "VIEW".to_string());
 
     let mut res = Response::new(StatusCode::Ok);
     res.set_body(serde_json::to_string(&snapshot_map)?);
@@ -1799,23 +1914,10 @@ app.at("/vars/delete").post(|mut req: Request<AppState>| async move {
         .ok_or_else(|| tide::Error::from_str(StatusCode::BadRequest, "missing name"))?
         .to_string();
 
-    {
-        let mut vars = VARS.lock().unwrap();
-        vars.remove(&name);
-    }
-
-    let snapshot_map = {
-        let vars = VARS.lock().unwrap();
-        let mut map = Map::new();
-        for (k, v) in vars.iter() {
-            map.insert(k.clone(), v.clone());
-        }
-        map
-    };
-
-    if let Err(e) = save_snapshot(snapshot_map, &format!("DELETE {}", name)).await {
-        println!("save_snapshot error (DELETE {}): {}", name, e);
-    }
+    let mut store = req.state().vars_store.lock().map_err(|_| {
+      tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+    })?;
+    vars_delete(&mut store, &name);
 
     let mut res = Response::new(StatusCode::Ok);
     //res.set_body(format!("Deleted {}", name)); -- we don't need to send a body for this response
@@ -1825,29 +1927,11 @@ app.at("/vars/delete").post(|mut req: Request<AppState>| async move {
 });
 
 /// /vars/clear
-app.at("/vars/clear").post(|_req: Request<AppState>| async move {
-    {
-        let mut vars = VARS.lock().unwrap();
-        vars.clear();
-    }
-
-    let snapshot_map = {
-        let vars = VARS.lock().unwrap();
-        let mut map = Map::new();
-        for (k, v) in vars.iter() {
-            map.insert(k.clone(), v.clone());
-        }
-        map
-    };
-
-    if let Err(e) = save_snapshot(snapshot_map, "CLEAR").await{
-        println!("save_snapshot error (CLEAR): {}", e);
-        let mut res = Response::new(StatusCode::InternalServerError);
-        //res.set_body(format!("clear failed: {}", e));
-        //res.insert_header("Content-Type", "text/plain");
-        println!("clear failed: {}", e);
-        return Ok(res);
-    }
+app.at("/vars/clear").post(|req: Request<AppState>| async move {
+  let mut store = req.state().vars_store.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+  })?;
+  vars_clear(&mut store);
 
     let body = serde_json::json!({
         "result": "cleared",
@@ -1861,61 +1945,26 @@ app.at("/vars/clear").post(|_req: Request<AppState>| async move {
     Ok(res)
 });
 
-/// /vars/history (robust, uses DATA_DIR and FLAT_FILE)
-app.at("/vars/history").post(|_req: Request<AppState>| async move {
-    let path = format!("{}/{}", DATA_DIR, FLAT_FILE);
-
-    match fs::metadata(&path) {
-        Ok(meta) => {
-            if meta.len() == 0 {
-                println!("history: file exists but is empty: {}", path);
-                let mut res = Response::new(StatusCode::Ok);
-                res.set_body("[]");
-                res.insert_header("Content-Type", "application/json");
-                return Ok(res);
-            }
-        }
-        Err(e) => {
-            println!("history: metadata error for {}: {}", path, e);
-            let history_path = format!("{}/{}", DATA_DIR, HISTORY_FILE);
-            if let Ok(content) = fs::read_to_string(&history_path) {
-                let mut res = Response::new(StatusCode::Ok);
-                res.set_body(content);
-                res.insert_header("Content-Type", "application/json; charset=utf-8");
-                return Ok(res);
-            }
-            let mut res = Response::new(StatusCode::NotFound);
-            //res.set_body(format!("history file not found: {} (error: {})", path, e));
-            println!("history file not found: {} (error: {})", path, e);
-            res.insert_header("Content-Type", "text/plain");
-            return Ok(res);
-        }
-    }
-
-    match fs::read_to_string(&path) {
-        Ok(content) => {
-            let mut res = Response::new(StatusCode::Ok);
-            res.set_body(content);
-            res.insert_header("Content-Type", "application/json");
-            Ok(res)
-        }
-        Err(e) => {
-            println!("history: read error for {}: {}", path, e);
-            let mut res = Response::new(StatusCode::InternalServerError);
-            //res.set_body(format!("failed to read history file: {}", e));
-            //res.insert_header("Content-Type", "text/plain");
-            println!("failed to read history file: {}", e);
-            Ok(res)
-        }
-    }
+/// /vars/history
+app.at("/vars/history").post(|req: Request<AppState>| async move {
+  let store = req.state().vars_store.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+  })?;
+  let history = store.history.non_empty_ids().into_iter().filter_map(|id| {
+    store.history.get(id).cloned().map(Value::Object)
+  }).collect::<Vec<_>>();
+  let mut res = Response::new(StatusCode::Ok);
+  res.set_body(serde_json::to_string(&history)?);
+  res.insert_header("Content-Type", "application/json; charset=utf-8");
+  Ok(res)
 });
 
 /// /vars/status
-app.at("/vars/status").post(|_req: Request<AppState>| async move {
-    let count = {
-        let vars = VARS.lock().unwrap();
-        vars.len()
-    };
+app.at("/vars/status").post(|req: Request<AppState>| async move {
+  let store = req.state().vars_store.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+  })?;
+  let count = store.entries.non_empty_ids().len();
 
     let status = serde_json::json!({
         "vars_count": count,
@@ -2091,20 +2140,43 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
         v.as_str().map(|s| s.to_string())
     }
 
+    let requested_format = req
+      .url()
+      .query_pairs()
+      .find_map(|(key, value)| (key == "format").then(|| value.into_owned()));
+    let recent_only = requested_format.as_deref() == Some("recent");
+    let (raw, source_modified) = chatlog_store_snapshot(req.state().chatlog_store.as_ref());
+    let source_len = raw.len() as u64;
+    let cache_key = match requested_format.as_deref() {
+      None | Some("html") => Some("html"),
+      Some("recent") => Some("recent"),
+      _ => None,
+    };
+    if let Some(cache_key) = cache_key {
+      if let Some(body) = chatlog_cache_get(
+        req.state().chatlog_cache.as_ref(),
+        source_len,
+        &source_modified,
+        cache_key,
+      ) {
+        let mut res = Response::new(StatusCode::Ok);
+        res.set_body(body);
+        res.insert_header(
+          "Content-Type",
+          if recent_only {
+            "application/json; charset=utf-8"
+          } else {
+            "text/html; charset=utf-8"
+          },
+        );
+        return Ok(res);
+      }
+    }
+
     let mut integrity = IntegrityReport::default();
     let mut quarantine: Vec<MsgEntry> = Vec::new();
 
-    let path = "/root/midscore_io/tiade-maeepers-saerver-all/second_life_chat_logs.txt";
-    let raw = match fs::read_to_string(path) {
-        Ok(s) => {
-            integrity.total_lines = s.lines().count();
-            s
-        }
-        Err(e) => {
-            eprintln!("Failed to read {}: {}", path, e);
-            String::new()
-        }
-    };
+    integrity.total_lines = raw.lines().count();
 
     let objects = split_json_objects(&raw);
     integrity.candidate_objects = objects.len();
@@ -2199,6 +2271,7 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
     let mut topic_buckets: BTreeMap<String, usize> = BTreeMap::new();
 
     let mut captured_by_counts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut captured_by_sentiment: BTreeMap<String, i64> = BTreeMap::new();
     let mut captured_by_sim_counts: BTreeMap<(String, String), usize> = BTreeMap::new();
     let mut captured_by_topics: BTreeMap<String, BTreeMap<String, usize>> = BTreeMap::new();
 
@@ -2407,8 +2480,15 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
             }
         }
 
+        let captured_by_key = if captured_by.trim().is_empty() {
+          "(missing)".to_string()
+        } else {
+          captured_by.clone()
+        };
+        *captured_by_counts.entry(captured_by_key.clone()).or_insert(0) += 1;
+        *captured_by_sentiment.entry(captured_by_key).or_insert(0) += msg_positive - msg_hostile;
+
         if !captured_by.is_empty() {
-            *captured_by_counts.entry(captured_by.clone()).or_insert(0) += 1;
             if !sim_name.is_empty() {
                 *captured_by_sim_counts
                     .entry((captured_by.clone(), sim_name.clone()))
@@ -2494,10 +2574,6 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
         messages_vec.push(entry);
     }
 
-      let recent_only = req
-        .url()
-        .query_pairs()
-        .any(|(key, value)| key == "format" && value == "recent");
       if recent_only {
         let mut recent_messages: Vec<&MsgEntry> = messages_vec.iter().collect();
         recent_messages.sort_by(|left, right| {
@@ -2544,6 +2620,13 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
           tide::Error::from_str(StatusCode::InternalServerError, error.to_string())
         })?;
 
+        chatlog_cache_store(
+          req.state().chatlog_cache.as_ref(),
+          source_len,
+          &source_modified,
+          "recent",
+          body.clone(),
+        );
         let mut res = Response::new(StatusCode::Ok);
         res.set_body(body);
         res.insert_header("Content-Type", "application/json; charset=utf-8");
@@ -2671,6 +2754,83 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
         }
     }
 
+    let total_messages = messages_vec.len();
+    let valid_timestamps = messages_vec.iter().filter(|message| message.timestamp_valid).count();
+    let valid_positions = messages_vec.iter().filter(|message| message.position_valid).count();
+    let quarantined_messages = messages_vec.iter().filter(|message| message.quarantined).count();
+    let total_message_characters: usize = messages_vec
+      .iter()
+      .map(|message| message.message.chars().count())
+      .sum();
+    let average_message_length = if total_messages == 0 {
+      0.0
+    } else {
+      total_message_characters as f64 / total_messages as f64
+    };
+    let mut message_lengths: Vec<usize> = messages_vec
+      .iter()
+      .map(|message| message.message.chars().count())
+      .collect();
+    message_lengths.sort_unstable();
+    let median_message_length = match message_lengths.len() {
+      0 => 0.0,
+      len if len % 2 == 1 => message_lengths[len / 2] as f64,
+      len => (message_lengths[len / 2 - 1] + message_lengths[len / 2]) as f64 / 2.0,
+    };
+    let total_sentiment: i64 = messages_vec
+      .iter()
+      .map(|message| message.positive_score - message.hostility_score)
+      .sum();
+    let mean_sentiment = if total_messages == 0 {
+      0.0
+    } else {
+      total_sentiment as f64 / total_messages as f64
+    };
+    let unique_event_ratio = if integrity.parsed_objects == 0 {
+      0.0
+    } else {
+      unique_keys.len() as f64 / integrity.parsed_objects as f64
+    };
+    let peak_day = timeline
+      .iter()
+      .max_by_key(|(_, count)| *count)
+      .map(|(date, count)| (date.clone(), *count));
+    let (peak_day_label, peak_day_count) = peak_day
+      .clone()
+      .unwrap_or_else(|| ("N/A".to_string(), 0));
+
+    let mut captured_by_frequency: Vec<(String, usize, f64, i64, f64)> = captured_by_counts
+      .iter()
+      .map(|(capturer, count)| {
+        let total_sentiment = *captured_by_sentiment.get(capturer).unwrap_or(&0);
+        let share = *captured_by_share.get(capturer).unwrap_or(&0.0);
+        let average_sentiment = if *count == 0 {
+          0.0
+        } else {
+          total_sentiment as f64 / *count as f64
+        };
+        (
+          capturer.clone(),
+          *count,
+          share,
+          total_sentiment,
+          average_sentiment,
+        )
+      })
+      .collect();
+    captured_by_frequency.sort_by(|left, right| {
+      right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0))
+    });
+    let capture_entropy_bits = captured_by_frequency
+      .iter()
+      .filter(|(_, _, share, _, _)| *share > 0.0)
+      .map(|(_, _, share, _, _)| -share * share.log2())
+      .sum::<f64>();
+    let (top_capturer, top_capturer_probability) = captured_by_frequency
+      .first()
+      .map(|(name, _, share, _, _)| (name.clone(), *share))
+      .unwrap_or_else(|| ("N/A".to_string(), 0.0));
+
     fn json_for_script<T: Serialize>(value: &T) -> String {
       serde_json::to_string(value)
         .unwrap_or_else(|_| "[]".to_string())
@@ -2700,18 +2860,66 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
         "heatmap": heat3d_data,
     }));
 
+    if requested_format.as_deref() == Some("summary") {
+      let captured_by_data: Vec<Value> = captured_by_frequency
+        .iter()
+        .map(|(capturer, count, share, sentiment_total, sentiment_average)| {
+          serde_json::json!({
+            "captured_by": capturer,
+            "count": count,
+            "probability": share,
+            "sentiment_total": sentiment_total,
+            "sentiment_average": sentiment_average,
+          })
+        })
+        .collect();
+      let payload = serde_json::json!({
+        "refreshed_at": chrono::Utc::now().to_rfc3339(),
+        "source": {
+          "bytes": source_len,
+          "modified": source_modified,
+        },
+        "integrity": &integrity,
+        "statistics": {
+          "total_messages": total_messages,
+          "valid_timestamps": valid_timestamps,
+          "valid_positions": valid_positions,
+          "quarantined_messages": quarantined_messages,
+          "unique_event_ratio": unique_event_ratio,
+          "average_message_length": average_message_length,
+          "median_message_length": median_message_length,
+          "mean_sentiment": mean_sentiment,
+          "capture_entropy_bits": capture_entropy_bits,
+          "top_capturer": top_capturer,
+          "top_capturer_probability": top_capturer_probability,
+          "peak_day": peak_day,
+        },
+        "timeline": &timeline_data,
+        "sentiment": &sentiment_data,
+        "captured_by_frequency": captured_by_data,
+      });
+      let body = serde_json::to_string(&payload).map_err(|error| {
+        tide::Error::from_str(StatusCode::InternalServerError, error.to_string())
+      })?;
+      let mut res = Response::new(StatusCode::Ok);
+      res.set_body(body);
+      res.insert_header("Content-Type", "application/json; charset=utf-8");
+      return Ok(res);
+    }
+
     let mut html = String::new();
     html.push_str(r#"<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Second Life Chatlog Dashboard</title>
 <style>
 body { font-family: system-ui, sans-serif; background: #0b0c10; color: #c5c6c7; margin: 0; padding: 0; }
 header { padding: 16px 24px; background: #1f2833; border-bottom: 1px solid #45a29e; }
 h1 { margin: 0; font-size: 20px; color: #66fcf1; }
-main { padding: 16px 24px; display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
-section { background: #1f2833; border-radius: 8px; padding: 12px 16px; border: 1px solid #45a29e22; }
+main { padding: 16px 24px; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; }
+section { min-width: 0; background: #1f2833; border-radius: 8px; padding: 12px 16px; border: 1px solid #45a29e22; }
 section h2 { margin-top: 0; font-size: 16px; color: #66fcf1; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 th, td { padding: 4px 6px; border-bottom: 1px solid #45a29e22; text-align: left; }
@@ -2725,6 +2933,8 @@ th { color: #c5c6c7; }
 .chart canvas { width: 100%; height: 100%; }
 #heat3dCanvas { background: #000; touch-action: none; }
 .section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.chart-range-label { display: flex; align-items: center; gap: 8px; color: #c5c6c7; font-size: 12px; }
+.chart-range-label select { border: 1px solid #45a29e66; border-radius: 4px; color: #c5c6c7; background: #0b0c10; padding: 5px 7px; font: inherit; }
 .recent-messages { display: grid; gap: 8px; max-height: 430px; overflow-y: auto; }
 .recent-message { padding: 10px; border-left: 3px solid #45a29e; background: #0b0c10; }
 .recent-message.is-quarantined { border-left-color: #ff6b6b; }
@@ -2736,12 +2946,13 @@ th { color: #c5c6c7; }
 .tag-slang { background: #f4d35e22; color: #f4d35e; }
 .tag-substance { background: #b58cff22; color: #d0b6ff; }
 .tag-hostile, .tag-high-hostility, .tag-urgent { background: #ff6b6b22; color: #ff8b8b; }
+@media (max-width: 900px) { header, main { padding-left: 12px; padding-right: 12px; } main { grid-template-columns: minmax(0, 1fr); } .chart { height: 190px; } }
 </style>
 </head>
 <body>
 <header id="chatlogHeader">
   <h1>Second Life Chatlog Dashboard</h1>
-  <div class="small">File: second_life_chat_logs.txt &mdash; Parsed objects: "#);
+  <div class="small">In-memory partitioned log store &mdash; Parsed objects: "#);
 
     html.push_str(&format!(
         "{} &mdash; Unique keys: {}",
@@ -2795,6 +3006,47 @@ th { color: #c5c6c7; }
     html.push_str(r#"</table>
 </section>
 <section>
+  <h2>Dashboard Statistics</h2>
+  <table>
+    <tr><th>Metric</th><th>Value</th></tr>"#);
+    html.push_str(&format!(
+        r#"<tr><td>Messages</td><td>{}</td></tr>
+<tr><td>Timestamp coverage</td><td>{}/{} ({:.1}%)</td></tr>
+<tr><td>Position coverage</td><td>{}/{} ({:.1}%)</td></tr>
+<tr><td>Unique event ratio</td><td>{:.3}</td></tr>
+<tr><td>Unique avatars / sims</td><td>{} / {}</td></tr>
+<tr><td>Capture sources</td><td>{}</td></tr>
+<tr><td>Average / median message length</td><td>{:.1} / {:.1}</td></tr>
+<tr><td>Mean lexical sentiment</td><td>{:.3}</td></tr>
+<tr><td>Quarantined messages</td><td>{} ({:.1}%)</td></tr>
+<tr><td>Peak day</td><td>{} ({})</td></tr>
+<tr><td>Top capture probability</td><td>{} ({:.1}%)</td></tr>
+<tr><td>Capture-source entropy</td><td>{:.3} bits</td></tr>"#,
+        total_messages,
+        valid_timestamps,
+        total_messages,
+        if total_messages == 0 { 0.0 } else { valid_timestamps as f64 * 100.0 / total_messages as f64 },
+        valid_positions,
+        total_messages,
+        if total_messages == 0 { 0.0 } else { valid_positions as f64 * 100.0 / total_messages as f64 },
+        unique_event_ratio,
+        avatar_counts.len(),
+        sim_counts.len(),
+        captured_by_frequency.len(),
+        average_message_length,
+        median_message_length,
+        mean_sentiment,
+        quarantined_messages,
+        if total_messages == 0 { 0.0 } else { quarantined_messages as f64 * 100.0 / total_messages as f64 },
+        escape_html(&peak_day_label),
+        peak_day_count,
+        escape_html(&top_capturer),
+        top_capturer_probability * 100.0,
+        capture_entropy_bits,
+    ));
+    html.push_str(r#"</table>
+</section>
+<section>
   <h2>Top Avatars</h2>
   <table>
     <tr><th>Avatar</th><th>Messages</th><th>Hostility</th></tr>"#);
@@ -2843,6 +3095,20 @@ th { color: #c5c6c7; }
     }
 
     html.push_str(r#"</table>
+</section>
+<section>
+  <div class="section-heading">
+    <h2>Timeline Range</h2>
+    <label class="chart-range-label" for="chartRange">Range
+      <select id="chartRange">
+        <option value="all">All dates</option>
+        <option value="365">Last year</option>
+        <option value="90">Last 90 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="7">Last 7 days</option>
+      </select>
+    </label>
+  </div>
 </section>
 <section>
   <h2>Timeline (Messages per Day)</h2>
@@ -3249,24 +3515,14 @@ th { color: #c5c6c7; }
     html.push_str(r#"</div>
 </section>
 <section>
-  <h2>Captured By (Counts & Share)</h2>
+    <h2>Captured By Frequency</h2>
   <table>
-    <tr><th>Capturer</th><th>Messages</th><th>Share</th></tr>"#);
+    <tr><th>Capture Source</th><th>Messages</th><th>Probability</th><th>Avg Sentiment</th><th>Total Sentiment</th></tr>"#);
 
-    let mut captured_vec: Vec<(String, usize, f64)> = captured_by_counts
-        .iter()
-        .map(|(k, v)| {
-            let share = *captured_by_share.get(k).unwrap_or(&0.0);
-            (k.clone(), *v, share)
-        })
-        .collect();
-    captured_vec.sort_by(|a, b| b.1.cmp(&a.1));
-    captured_vec.truncate(20);
-
-    for (name, count, share) in captured_vec {
+    for (name, count, share, sentiment_total, sentiment_average) in &captured_by_frequency {
         html.push_str(&format!(
-            "<tr><td>{}</td><td>{}</td><td>{:.3}</td></tr>",
-        escape_html(&name), count, share
+        "<tr><td>{}</td><td>{}</td><td>{:.2}%</td><td>{:.3}</td><td>{}</td></tr>",
+      escape_html(name), count, share * 100.0, sentiment_average, sentiment_total
         ));
     }
 
@@ -3378,40 +3634,106 @@ let timelineData = dashboardData.timeline || [];
 let sentimentData = dashboardData.sentiment || [];
 let rocData = dashboardData.rate_of_change || [];
 let heat3dData = dashboardData.heatmap || [];
+let chartRange = 'all';
+
+function filterTimelineByRange(data) {
+  const days = Number(chartRange);
+  if (!Number.isFinite(days) || days <= 0) return data;
+  const dated = data
+    .map(point => ({ point, timestamp: Date.parse(`${point.date}T00:00:00Z`) }))
+    .filter(({ timestamp }) => Number.isFinite(timestamp));
+  if (!dated.length) return data;
+  const newest = Math.max.apply(null, dated.map(({ timestamp }) => timestamp));
+  const cutoff = newest - days * 24 * 60 * 60 * 1000;
+  return dated
+    .filter(({ timestamp }) => timestamp >= cutoff)
+    .map(({ point }) => point);
+}
 
 function renderLineChart(canvasId, data, xKey, yKey, color) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  const w = canvas.width = canvas.clientWidth;
-  const h = canvas.height = canvas.clientHeight;
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  if (w < 2 || h < 2) return;
 
-  if (!data.length) {
+  const pixelRatio = Math.max(window.devicePixelRatio || 1, 1);
+  const pixelWidth = Math.round(w * pixelRatio);
+  const pixelHeight = Math.round(h * pixelRatio);
+  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+  }
+  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const points = data
+    .map((entry, index) => {
+      const rawX = entry[xKey];
+      const x = typeof rawX === 'string'
+        ? Date.parse(`${rawX}T00:00:00Z`)
+        : Number(rawX);
+      const y = Number(entry[yKey]);
+      return { x: Number.isFinite(x) ? x : index, y, label: String(rawX ?? '') };
+    })
+    .filter(point => Number.isFinite(point.y));
+
+  if (!points.length) {
     ctx.fillStyle = '#c5c6c7';
     ctx.font = '12px system-ui';
     ctx.fillText('No data', 10, 20);
     return;
   }
 
-  const ys = data.map(d => d[yKey]);
+  const padding = { top: 18, right: 12, bottom: 24, left: 38 };
+  const plotWidth = Math.max(1, w - padding.left - padding.right);
+  const plotHeight = Math.max(1, h - padding.top - padding.bottom);
+  const xs = points.map(point => point.x);
+  const ys = points.map(point => point.y);
+  let minX = Math.min.apply(null, xs);
+  let maxX = Math.max.apply(null, xs);
   let minY = Math.min.apply(null, ys);
   let maxY = Math.max.apply(null, ys);
+  if (minX === maxX) {
+    minX -= 1;
+    maxX += 1;
+  }
   if (minY === maxY) {
     minY -= 1;
     maxY += 1;
   }
 
-  ctx.clearRect(0, 0, w, h);
+  const yMin = Math.min(minY, 0);
+  const yMax = Math.max(maxY, 0);
+  const xToCanvas = x => padding.left + ((x - minX) / (maxX - minX)) * plotWidth;
+  const yToCanvas = y => padding.top + (1 - ((y - yMin) / (yMax - yMin))) * plotHeight;
+
+  ctx.strokeStyle = '#45a29e22';
+  ctx.lineWidth = 1;
+  for (let index = 0; index <= 4; index++) {
+    const y = padding.top + (plotHeight * index) / 4;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(w - padding.right, y);
+    ctx.stroke();
+  }
+
+  if (yMin < 0 && yMax > 0) {
+    ctx.strokeStyle = '#c5c6c766';
+    ctx.beginPath();
+    ctx.moveTo(padding.left, yToCanvas(0));
+    ctx.lineTo(w - padding.right, yToCanvas(0));
+    ctx.stroke();
+  }
+
   ctx.strokeStyle = color;
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 2;
   ctx.beginPath();
 
-  for (let i = 0; i < data.length; i++) {
-    const t = i / Math.max(1, data.length - 1);
-    const x = 16 + t * (w - 32);
-    const yNorm = (ys[i] - minY) / (maxY - minY);
-    const y = h - 16 - yNorm * (h - 32);
-
+  for (let i = 0; i < points.length; i++) {
+    const x = xToCanvas(points[i].x);
+    const y = yToCanvas(points[i].y);
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   }
@@ -3419,8 +3741,11 @@ function renderLineChart(canvasId, data, xKey, yKey, color) {
   ctx.stroke();
   ctx.fillStyle = '#c5c6c7';
   ctx.font = '10px system-ui';
-  ctx.fillText('min: ' + minY.toFixed(2), 8, h - 8);
-  ctx.fillText('max: ' + maxY.toFixed(2), w - 80, 12);
+  ctx.fillText(yMax.toFixed(2), 4, padding.top + 3);
+  ctx.fillText(yMin.toFixed(2), 4, h - padding.bottom + 3);
+  ctx.fillText(points[0].label, padding.left, h - 7);
+  const endLabel = points[points.length - 1].label;
+  ctx.fillText(endLabel, Math.max(padding.left, w - padding.right - ctx.measureText(endLabel).width), h - 7);
 }
 
 let heat3dRot = { y: 0.6, x: 0.35 };
@@ -3616,10 +3941,20 @@ async function refreshRecentMessages() {
 }
 
 function renderCharts() {
-  renderLineChart('timelineChart', timelineData, 'date', 'count', '#66fcf1');
-  renderLineChart('sentimentChart', sentimentData, 'date', 'score', '#ff6b6b');
+  renderLineChart('timelineChart', filterTimelineByRange(timelineData), 'date', 'count', '#66fcf1');
+  renderLineChart('sentimentChart', filterTimelineByRange(sentimentData), 'date', 'score', '#ff6b6b');
   renderLineChart('rocChart', rocData, 'ts', 'roc', '#45a29e');
   renderHeat3D('heat3dCanvas', heat3dData);
+}
+
+function attachChartRangeControl() {
+  const control = document.getElementById('chartRange');
+  if (!control) return;
+  control.value = chartRange;
+  control.addEventListener('change', () => {
+    chartRange = control.value;
+    renderCharts();
+  });
 }
 
 function observeDashboardSize() {
@@ -3633,6 +3968,7 @@ function observeDashboardSize() {
 }
 
 function initializeDashboard() {
+  attachChartRangeControl();
   renderCharts();
   attachHeat3DRotation('heat3dCanvas', heat3dData);
   observeDashboardSize();
@@ -3693,6 +4029,13 @@ document.addEventListener('DOMContentLoaded', () => {
 </html>
 "#);
 
+  chatlog_cache_store(
+    req.state().chatlog_cache.as_ref(),
+    source_len,
+    &source_modified,
+    "html",
+    html.clone(),
+  );
     let mut res = Response::new(StatusCode::Ok);
     res.set_body(html);
     res.insert_header("Content-Type", "text/html; charset=utf-8");
@@ -5055,7 +5398,13 @@ WERE_FORMS = [
         });
 
     // Route to restart all spawned servers
-    app.at("/restart-servers").post(|_| async move {
+    app.at("/restart-servers").post(|req: Request<AppState>| async move {
+      persist_memory_stores(req.state()).map_err(|error| {
+        tide::Error::from_str(
+          StatusCode::InternalServerError,
+          format!("failed to persist partitioned memory stores: {}", error),
+        )
+      })?;
         println!("Restarting all servers...");
         std::process::Command::new("sh")
             .arg("-c")
@@ -5108,6 +5457,9 @@ WERE_FORMS = [
         if let Err(e) = t.await {
             println!("Error while running server: {}", e); // Debug message
         }
+    }
+    if let Err(error) = persist_memory_stores(&state) {
+      eprintln!("Failed to persist partitioned memory stores: {}", error);
     }
     println!("All servers have been spawned successfully."); // Debug message
     Ok(())
