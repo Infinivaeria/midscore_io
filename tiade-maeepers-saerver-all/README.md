@@ -2,6 +2,11 @@
 
 Tide-based Rust server that ports the Roda-era behavior and now uses LineDB-backed persistence.
 
+For the full maintainer and operator reference, see
+[COMPLETE_DOCUMENTATION.md](COMPLETE_DOCUMENTATION.md). It consolidates setup,
+configuration, persistence, HTTP routes, chatlog moderation, Forth/RubyForth,
+the Second Life bridge, LSL operation, security, and troubleshooting.
+
 ## Version
 
 - 1.0.0
@@ -108,6 +113,34 @@ overflowing results.
 m.solve A B X
 m.show X
 ```
+
+## Chatlog Moderation Dashboard
+
+- `GET /chatlog` renders the full moderation dashboard: parses the raw Second Life
+  chat log, scores each message against `hostile`/`positive`/`drug`/`slang` word
+  dictionaries, and reports integrity, timing, and capture-source statistics.
+- `GET /chatlog?format=summary` returns the same statistics as JSON instead of HTML.
+- `GET /chatlog?format=recent` renders only the most recent messages.
+- `GET /chatlog/summary`, `GET /chatlog/recent`, and `GET /chatlog/admin` are
+  convenience redirects to the `format` variants above.
+- `GET /chatlog/markov` and `GET /chatlog/markov.json` generate Markov-chain
+  sentence samples from the logged chat; `GET /chatlog/markov/transitions.json`
+  exposes the underlying state-transition table.
+
+### Custom Alert Words
+
+The built-in `hostile`, `positive`, `drug`, and `slang` dictionaries can be
+extended at runtime, without a rebuild, from `/chatlog`:
+
+- `GET /chatlog/words` is a browser console for adding, scoring, and removing words.
+- `GET /chatlog/words/list` returns the current custom words as JSON.
+- `POST /chatlog/words/add` with `{"category":"hostile","word":"example","score":2}`
+  upserts a word (`score` defaults to `2`, clamped to `-10..=10`).
+- `POST /chatlog/words/delete` with `{"category":"hostile","word":"example"}` removes it.
+
+Words are limited to 1-32 ASCII letters/numbers, persisted through
+`partitioned_array_rust` alongside the other memory stores, and merged into the
+matching dictionary every time `/chatlog` scores a message.
 
 ## Persistence
 
@@ -247,6 +280,22 @@ Integration note:
 | POST | `/restart-servers` | `src/main.rs` | Process HUP command |
 | POST | `/file/add` | `src/main.rs` | Writes `/tmp/new_file.txt` |
 | DELETE | `/file/delete` | `src/main.rs` | Deletes `/tmp/new_file.txt` |
+
+### Chatlog Moderation Dashboard (main.rs)
+
+| Method | Path | Source | Notes |
+|---|---|---|---|
+| GET | `/chatlog` | `src/main.rs` | Dashboard HTML; `?format=summary` for JSON stats, `?format=recent` for latest-only |
+| GET | `/chatlog/summary` | `src/main.rs` | Redirects to `/chatlog?format=summary` |
+| GET | `/chatlog/recent` | `src/main.rs` | Redirects to `/chatlog?format=recent` |
+| GET | `/chatlog/admin` | `src/main.rs` | Redirects to `/chatlog?format=summary` |
+| GET | `/chatlog/markov` | `src/main.rs` | Markov sentence generator HTML console |
+| GET | `/chatlog/markov.json` | `src/main.rs` | Markov sentence generator JSON |
+| GET | `/chatlog/markov/transitions.json` | `src/main.rs` | Markov state-transition table JSON |
+| GET | `/chatlog/words` | `src/main.rs` | Custom alert word console (HTML) |
+| GET | `/chatlog/words/list` | `src/main.rs` | Lists custom alert words (JSON) |
+| POST | `/chatlog/words/add` | `src/main.rs` | Upserts `{category, word, score}` |
+| POST | `/chatlog/words/delete` | `src/main.rs` | Removes `{category, word}` |
 
 ### Mounted Relay Routes (tiade_ollama_relay)
 

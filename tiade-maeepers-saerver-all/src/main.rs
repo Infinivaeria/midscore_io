@@ -904,6 +904,12 @@ async fn main() -> tide::Result<()> {
     queue
   }
 
+  fn new_custom_words_store() -> partitioned_array_rust::PartitionedArray {
+    let mut store = partitioned_array_rust::PartitionedArray::new(1, 256, 1, true);
+    store.allocate(false);
+    store
+  }
+
   struct ChatlogStore {
     entries: partitioned_array_rust::PartitionedArray,
     revision: u64,
@@ -923,6 +929,9 @@ async fn main() -> tide::Result<()> {
     variable_history: partitioned_array_rust::PartitionedArray,
     #[serde(default = "new_forth_bridge_queue")]
     forth_bridge_queue: partitioned_array_rust::PartitionedArray,
+    // Defaults to an empty store so snapshots saved before this feature existed still load.
+    #[serde(default = "new_custom_words_store")]
+    custom_words: partitioned_array_rust::PartitionedArray,
   }
 
   fn new_chatlog_store() -> ChatlogStore {
@@ -952,7 +961,7 @@ async fn main() -> tide::Result<()> {
       })
   }
 
-  fn restore_memory_stores() -> Option<(ChatlogStore, VarsStore, partitioned_array_rust::PartitionedArray)> {
+  fn restore_memory_stores() -> Option<(ChatlogStore, VarsStore, partitioned_array_rust::PartitionedArray, partitioned_array_rust::PartitionedArray)> {
     let bytes = std::fs::read(memory_store_path()).ok()?;
     let snapshot = serde_json::from_slice::<PersistedMemoryStores>(&bytes).ok()?;
     if snapshot.version != 1 {
@@ -968,6 +977,7 @@ async fn main() -> tide::Result<()> {
         history: snapshot.variable_history,
       },
       snapshot.forth_bridge_queue,
+      snapshot.custom_words,
     ))
   }
 
@@ -981,6 +991,9 @@ async fn main() -> tide::Result<()> {
     let forth_bridge_queue = state.forth_bridge_queue.lock().map_err(|_| {
       std::io::Error::other("Forth bridge queue lock poisoned")
     })?;
+    let custom_words = state.custom_words.lock().map_err(|_| {
+      std::io::Error::other("custom word store lock poisoned")
+    })?;
     let snapshot = PersistedMemoryStores {
       version: 1,
       chatlog_entries: chatlog_store.entries.clone(),
@@ -988,6 +1001,7 @@ async fn main() -> tide::Result<()> {
       variable_entries: vars_store.entries.clone(),
       variable_history: vars_store.history.clone(),
       forth_bridge_queue: forth_bridge_queue.clone(),
+      custom_words: custom_words.clone(),
     };
     let payload = serde_json::to_vec_pretty(&snapshot)
       .map_err(std::io::Error::other)?;
@@ -3585,8 +3599,8 @@ async fn main() -> tide::Result<()> {
   }
 
     // Main HTTPS server - handling all defined routes
-let (chatlog_store, vars_store, forth_bridge_queue) = restore_memory_stores()
-  .unwrap_or_else(|| (new_chatlog_store(), new_vars_store(), new_forth_bridge_queue()));
+let (chatlog_store, vars_store, forth_bridge_queue, custom_words) = restore_memory_stores()
+  .unwrap_or_else(|| (new_chatlog_store(), new_vars_store(), new_forth_bridge_queue(), new_custom_words_store()));
 let state = AppState {
     queue: Mutex::new(Vec::new()),
     results: Mutex::new(Vec::new()),
@@ -3594,6 +3608,7 @@ let state = AppState {
   chatlog_store: Arc::new(Mutex::new(chatlog_store)),
   vars_store: Arc::new(Mutex::new(vars_store)),
   forth_bridge_queue: Arc::new(Mutex::new(forth_bridge_queue)),
+  custom_words: Arc::new(Mutex::new(custom_words)),
 };
 let mut app = tide::with_state(state.clone());
     let state_for_shutdown = state.clone();
@@ -3765,6 +3780,8 @@ struct AppState {
     chatlog_store: Arc<Mutex<ChatlogStore>>,
     vars_store: Arc<Mutex<VarsStore>>,
     forth_bridge_queue: Arc<Mutex<partitioned_array_rust::PartitionedArray>>,
+    // Admin-managed words from /chatlog/words, merged into the built-in scoring dictionaries.
+    custom_words: Arc<Mutex<partitioned_array_rust::PartitionedArray>>,
 }
 
 impl Default for AppState {
@@ -3776,6 +3793,7 @@ impl Default for AppState {
           chatlog_store: Arc::new(Mutex::new(new_chatlog_store())),
           vars_store: Arc::new(Mutex::new(new_vars_store())),
           forth_bridge_queue: Arc::new(Mutex::new(new_forth_bridge_queue())),
+          custom_words: Arc::new(Mutex::new(new_custom_words_store())),
         }
     }
 }
@@ -3791,6 +3809,7 @@ impl Clone for AppState {
           chatlog_store: Arc::clone(&self.chatlog_store),
           vars_store: Arc::clone(&self.vars_store),
           forth_bridge_queue: Arc::clone(&self.forth_bridge_queue),
+          custom_words: Arc::clone(&self.custom_words),
         }
     }
 }
@@ -5328,6 +5347,258 @@ body{{margin:0;background:#0b0c10;color:#d7e4e2;font-family:system-ui,sans-serif
   )
 }
 
+// Mirrors the four built-in dictionaries so custom words merge into the same scoring buckets.
+const CUSTOM_WORD_CATEGORIES: [&str; 4] = ["hostile", "positive", "drug", "slang"];
+
+fn custom_word_category_name(category: &str) -> Result<&'static str, String> {
+  CUSTOM_WORD_CATEGORIES.iter().find(|&&name| name == category).copied()
+    .ok_or_else(|| format!("category must be one of {}", CUSTOM_WORD_CATEGORIES.join(", ")))
+}
+
+// Custom words are restricted to single alphanumeric tokens so they match the same
+// per-token scoring used by the built-in hostile/positive/drug/slang dictionaries.
+fn custom_word_normalize(word: &str) -> Result<String, String> {
+  let normalized = word.trim().to_lowercase();
+  if normalized.is_empty() || normalized.len() > 32 || !normalized.chars().all(|character| character.is_ascii_alphanumeric()) {
+    return Err("word must be 1 to 32 ASCII letters or numbers".to_string());
+  }
+  Ok(normalized)
+}
+
+// Linear scan for the (category, word) key: PartitionedArray has no secondary index.
+fn custom_words_entry_id(store: &partitioned_array_rust::PartitionedArray, category: &str, word: &str) -> Option<usize> {
+  store.non_empty_ids().into_iter().find(|id| {
+    store.get(*id).is_some_and(|row| {
+      row.get("category").and_then(Value::as_str) == Some(category)
+        && row.get("word").and_then(Value::as_str) == Some(word)
+    })
+  })
+}
+
+// Updates the score in place if (category, word) already exists, otherwise inserts a new row.
+fn custom_words_upsert(store: &mut partitioned_array_rust::PartitionedArray, category: &str, word: &str, score: i64) -> Result<(), String> {
+  if let Some(id) = custom_words_entry_id(store, category, word) {
+    let _ = store.set_with(id, |row| {
+      row.insert("score".to_string(), Value::from(score));
+    });
+    return Ok(());
+  }
+  let category = category.to_string();
+  let word = word.to_string();
+  store.add(|row| {
+    row.insert("category".to_string(), Value::String(category.clone()));
+    row.insert("word".to_string(), Value::String(word.clone()));
+    row.insert("score".to_string(), Value::from(score));
+    row.insert("added_at".to_string(), Value::String(Utc::now().to_rfc3339()));
+  }).ok_or_else(|| "custom word store is full".to_string())?;
+  Ok(())
+}
+
+fn custom_words_delete(store: &mut partitioned_array_rust::PartitionedArray, category: &str, word: &str) -> bool {
+  match custom_words_entry_id(store, category, word) {
+    Some(id) => { let _ = store.delete(id); true }
+    None => false,
+  }
+}
+
+fn custom_words_list(store: &partitioned_array_rust::PartitionedArray) -> Vec<Value> {
+  let mut entries = store.non_empty_ids().into_iter()
+    .filter_map(|id| store.get(id).cloned())
+    .map(Value::Object)
+    .collect::<Vec<_>>();
+  entries.sort_by(|left, right| {
+    let left_category = left.get("category").and_then(Value::as_str).unwrap_or("");
+    let right_category = right.get("category").and_then(Value::as_str).unwrap_or("");
+    let left_word = left.get("word").and_then(Value::as_str).unwrap_or("");
+    let right_word = right.get("word").and_then(Value::as_str).unwrap_or("");
+    left_category.cmp(right_category).then_with(|| left_word.cmp(right_word))
+  });
+  entries
+}
+
+// Builds the word->score lookup for one category, used to extend a built-in dictionary.
+fn custom_words_map(store: &partitioned_array_rust::PartitionedArray, category: &str) -> HashMap<String, i32> {
+  store.non_empty_ids().into_iter().filter_map(|id| {
+    let row = store.get(id)?;
+    if row.get("category").and_then(Value::as_str) != Some(category) {
+      return None;
+    }
+    let word = row.get("word")?.as_str()?.to_string();
+    let score = row.get("score").and_then(Value::as_i64).unwrap_or(0) as i32;
+    Some((word, score))
+  }).collect()
+}
+
+// POST /chatlog/words/add body; score defaults to 2 when omitted.
+#[derive(Deserialize)]
+struct CustomWordRequest {
+  category: String,
+  word: String,
+  #[serde(default)]
+  score: Option<i64>,
+}
+
+// POST /chatlog/words/delete body.
+#[derive(Deserialize)]
+struct CustomWordKeyRequest {
+  category: String,
+  word: String,
+}
+
+fn render_chatlog_words_page(words: &[Value]) -> String {
+  let words_json = serde_json::to_string(words)
+    .unwrap_or_else(|_| "[]".to_string())
+    .replace("</", "<\\/");
+
+  let template = r#"<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chatlog Custom Alert Words</title>
+<style>
+body{margin:0;background:#0b0c10;color:#d7e4e2;font-family:system-ui,sans-serif}
+main{max-width:900px;margin:auto;padding:22px}
+header{border-bottom:1px solid #45a29e55;padding-bottom:14px}
+h1{margin:0;color:#66fcf1;font-size:22px}
+a{color:#66fcf1}
+.small{color:#9fb2ae;font-size:12px;line-height:1.45}
+.links{display:flex;flex-wrap:wrap;gap:9px;margin-top:12px}
+.links a{border:1px solid #45a29e66;border-radius:999px;padding:6px 10px;text-decoration:none;font-size:12px}
+section{margin-top:16px;background:#1f2833;border:1px solid #45a29e22;border-radius:8px;padding:14px}
+label{display:block;margin-bottom:6px;font-size:12px;color:#b7c7c4}
+input,select{width:100%;box-sizing:border-box;background:#0b0c10;color:#f4f6f7;border:1px solid #45a29e66;border-radius:6px;padding:9px;font:inherit}
+.grid{display:grid;grid-template-columns:1fr 1fr 110px 110px;gap:10px;align-items:end}
+button{background:#0d6b67;color:white;border:0;border-radius:6px;padding:10px 14px;font-weight:700;cursor:pointer}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+th,td{padding:6px 8px;border-bottom:1px solid #45a29e22;text-align:left}
+.del{background:#a64c48}
+.status{min-height:16px;margin-top:8px;color:#9fb2ae;font-size:12px}
+.empty{color:#9fb2ae;padding:10px 0}
+@media(max-width:720px){.grid{grid-template-columns:1fr}}
+</style></head><body><main>
+<header><h1>Chatlog Custom Alert Words</h1><div class="small">Words added here are merged into the built-in hostile, positive, drug, and slang dictionaries used by the /chatlog dashboard.</div><nav class="links"><a href="/chatlog">Admin Dashboard</a><a href="/chatlog/words/list">Words JSON</a><a href="/chatlog/markov">Markov Chat</a></nav></header>
+<section><h2>Add a word</h2><form id="wordForm"><div class="grid"><div><label for="category">Category</label><select id="category" name="category"><option value="hostile">Hostile</option><option value="positive">Positive</option><option value="drug">Drug/alcohol</option><option value="slang">Slang</option></select></div><div><label for="word">Word</label><input id="word" name="word" placeholder="letters or numbers only" required></div><div><label for="score">Score</label><input id="score" name="score" type="number" min="-10" max="10" value="2"></div><div><button type="submit">Save word</button></div></div><div id="status" class="status"></div></form></section>
+<section><h2>Custom words</h2><table><thead><tr><th>Category</th><th>Word</th><th>Score</th><th></th></tr></thead><tbody id="wordRows"></tbody></table><div id="emptyState" class="empty" hidden>No custom words yet.</div></section>
+<script id="wordsSeed" type="application/json">__WORDS_JSON__</script>
+<script>
+(() => {
+  const seed = JSON.parse(document.getElementById('wordsSeed').textContent);
+  const rows = document.getElementById('wordRows'), empty = document.getElementById('emptyState'), status = document.getElementById('status');
+  const render = words => {
+    rows.replaceChildren();
+    empty.hidden = words.length > 0;
+    for (const word of words) {
+      const tr = document.createElement('tr');
+      const category = document.createElement('td'); category.textContent = word.category;
+      const term = document.createElement('td'); term.textContent = word.word;
+      const score = document.createElement('td'); score.textContent = word.score;
+      const actions = document.createElement('td');
+      const del = document.createElement('button'); del.className = 'del'; del.type = 'button'; del.textContent = 'Delete';
+      del.addEventListener('click', () => remove(word.category, word.word));
+      actions.append(del);
+      tr.append(category, term, score, actions);
+      rows.append(tr);
+    }
+  };
+  const remove = async (category, word) => {
+    status.textContent = 'Removing...';
+    const response = await fetch('/chatlog/words/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category, word }) });
+    const data = await response.json().catch(() => ({}));
+    status.textContent = response.ok ? 'Removed.' : (data.error || 'Failed to remove word.');
+    if (response.ok && data.words) render(data.words);
+  };
+  document.getElementById('wordForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const body = { category: form.get('category'), word: form.get('word'), score: Number(form.get('score')) || 0 };
+    status.textContent = 'Saving...';
+    const response = await fetch('/chatlog/words/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await response.json().catch(() => ({}));
+    status.textContent = response.ok ? 'Saved.' : (data.error || 'Failed to save word.');
+    if (response.ok && data.words) { render(data.words); event.currentTarget.reset(); document.getElementById('score').value = '2'; }
+  });
+  render(seed);
+})();
+</script>
+</main></body></html>"#;
+
+  template.replace("__WORDS_JSON__", &words_json)
+}
+
+// Adds or updates a custom word merged into the /chatlog alert dictionaries.
+app.at("/chatlog/words/add").post(|mut req: Request<AppState>| async move {
+  let request: CustomWordRequest = req.body_json().await.map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, format!("invalid custom word body: {}", error))
+  })?;
+  let category = custom_word_category_name(&request.category).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let word = custom_word_normalize(&request.word).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let score = request.score.unwrap_or(2).clamp(-10, 10);
+  let mut store = req.state().custom_words.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "custom word store lock poisoned")
+  })?;
+  custom_words_upsert(&mut store, category, &word, score).map_err(|error| {
+    tide::Error::from_str(StatusCode::InsufficientStorage, error)
+  })?;
+  let words = custom_words_list(&store);
+  drop(store);
+  persist_memory_stores(req.state()).map_err(|error| {
+    tide::Error::from_str(StatusCode::InternalServerError, format!("custom word was not persisted: {}", error))
+  })?;
+  Ok(json_response(serde_json::json!({
+    "saved": { "category": category, "word": word, "score": score },
+    "words": words,
+  })))
+});
+
+// Removes a custom word from the /chatlog alert dictionaries.
+app.at("/chatlog/words/delete").post(|mut req: Request<AppState>| async move {
+  let request: CustomWordKeyRequest = req.body_json().await.map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, format!("invalid custom word body: {}", error))
+  })?;
+  let category = custom_word_category_name(&request.category).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let word = custom_word_normalize(&request.word).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let mut store = req.state().custom_words.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "custom word store lock poisoned")
+  })?;
+  let deleted = custom_words_delete(&mut store, category, &word);
+  let words = custom_words_list(&store);
+  drop(store);
+  persist_memory_stores(req.state()).map_err(|error| {
+    tide::Error::from_str(StatusCode::InternalServerError, format!("custom word deletion was not persisted: {}", error))
+  })?;
+  Ok(json_response(serde_json::json!({ "deleted": deleted, "words": words })))
+});
+
+// Lists custom words merged into the /chatlog alert dictionaries.
+app.at("/chatlog/words/list").get(|req: Request<AppState>| async move {
+  let store = req.state().custom_words.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "custom word store lock poisoned")
+  })?;
+  Ok(json_response(serde_json::json!({
+    "categories": CUSTOM_WORD_CATEGORIES,
+    "words": custom_words_list(&store),
+  })))
+});
+
+// Browser console for managing custom /chatlog alert words.
+app.at("/chatlog/words").get(|req: Request<AppState>| async move {
+  let store = req.state().custom_words.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "custom word store lock poisoned")
+  })?;
+  let words = custom_words_list(&store);
+  drop(store);
+  let mut res = Response::new(StatusCode::Ok);
+  res.set_body(render_chatlog_words_page(&words));
+  res.insert_header("Content-Type", "text/html; charset=utf-8");
+  Ok(res)
+});
+
 app.at("/chatlog/summary").get(|_| async move {
   Ok(redirect("/chatlog?format=summary"))
 });
@@ -5571,7 +5842,13 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
     let objects = split_json_objects(&raw);
     integrity.candidate_objects = objects.len();
 
-    let hostile_words: HashMap<&'static str, i32> = [
+    // Words saved through /chatlog/words (see custom_words_map below) are merged
+    // into each built-in dictionary so admins can extend scoring without a rebuild.
+    let custom_words_store = req.state().custom_words.lock().map_err(|_| {
+      tide::Error::from_str(StatusCode::InternalServerError, "custom word store lock poisoned")
+    })?;
+
+    let mut hostile_words: HashMap<String, i32> = [
         ("hate", 3), ("kill", 4), ("stupid", 2), ("idiot", 3), ("annoying", 2),
         ("terrible", 2), ("awful", 2), ("trash", 2), ("loser", 3), ("angry", 1),
         ("mad", 1), ("toxic", 2), ("cringe", 1), ("lame", 1), ("jerk", 2),
@@ -5588,9 +5865,21 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
       ("imbecile", 3), ("ignorant", 2), ("obnoxious", 2), ("disrespect", 2),
       ("disrespectful", 2), ("coward", 2), ("punch", 2), ("violent", 3),
       ("violence", 3), ("hurt", 2), ("harm", 3), ("die", 3), ("dead", 2),
-    ].iter().cloned().collect();
+      ("racist", 3), ("racism", 3), ("sexist", 3), ("sexism", 3), ("bigot", 3),
+      ("bigotry", 3), ("slur", 2), ("nazi", 4), ("supremacist", 4), ("genocide", 4),
+      ("terrorist", 4), ("terrorism", 4), ("predator", 4), ("predatory", 3),
+      ("groomer", 4), ("grooming", 4), ("molest", 4), ("molester", 4), ("rape", 4),
+      ("rapist", 4), ("assault", 3), ("murder", 4), ("murderer", 4), ("psycho", 2),
+      ("psychotic", 2), ("stalker", 3), ("stalking", 3), ("doxx", 3), ("doxxing", 3),
+      ("swatting", 4), ("extort", 3), ("extortion", 3), ("blackmail", 3),
+      ("intimidate", 2), ("intimidation", 2), ("menace", 2), ("menacing", 2),
+      ("degenerate", 2), ("scum", 2), ("filth", 2), ("vermin", 2), ("subhuman", 3),
+      ("victimize", 2), ("abuser", 3), ("creep", 2), ("creepy", 2), ("pervert", 3),
+      ("pervy", 2),
+    ].iter().map(|&(word, score)| (word.to_string(), score)).collect();
+    hostile_words.extend(custom_words_map(&custom_words_store, "hostile"));
 
-    let positive_words: HashMap<&'static str, i32> = [
+    let mut positive_words: HashMap<String, i32> = [
         ("love", 3), ("great", 2), ("awesome", 2), ("nice", 1), ("cool", 1),
         ("fun", 1), ("good", 1), ("beautiful", 2), ("kind", 2), ("friendly", 2),
         ("sweet", 2), ("amazing", 3), ("fantastic", 3), ("wonderful", 3),
@@ -5599,9 +5888,23 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
         ("glad", 2), ("happy", 2), ("joy", 2), ("support", 2), ("supportive", 2),
         ("welcome", 1), ("cheers", 1), ("congrats", 2), ("congratulations", 3),
         ("respect", 2), ("peace", 2), ("smile", 1), ("laugh", 1), ("yay", 1),
-    ].iter().cloned().collect();
+      ("wholesome", 2), ("generous", 2), ("generosity", 2), ("charming", 2),
+      ("charismatic", 2), ("talented", 2), ("genius", 2), ("clever", 1),
+      ("graceful", 2), ("elegant", 2), ("stunning", 2), ("gorgeous", 2),
+      ("adorable", 2), ("cute", 1), ("funny", 1), ("hilarious", 2), ("delight", 2),
+      ("delighted", 2), ("delightful", 2), ("grateful", 2), ("gratitude", 2),
+      ("blessed", 2), ("blessing", 2), ("inspire", 2), ("inspiring", 2),
+      ("inspired", 2), ("motivate", 1), ("motivating", 1), ("encourage", 1),
+      ("encouraging", 1), ("uplift", 2), ("uplifting", 2), ("harmony", 2),
+      ("harmonious", 2), ("calm", 1), ("relaxing", 1), ("soothing", 1),
+      ("comfort", 1), ("comforting", 1), ("celebrate", 2), ("celebration", 2),
+      ("victory", 2), ("accomplish", 2), ("accomplished", 2), ("proud", 2),
+      ("pride", 1), ("honored", 2), ("sincere", 1), ("trustworthy", 2),
+      ("reliable", 1), ("patient", 1), ("patience", 1),
+    ].iter().map(|&(word, score)| (word.to_string(), score)).collect();
+    positive_words.extend(custom_words_map(&custom_words_store, "positive"));
 
-    let drug_words: HashMap<&'static str, i32> = [
+    let mut drug_words: HashMap<String, i32> = [
         ("drug", 1), ("drugs", 1), ("overdose", 3), ("intoxicated", 2),
         ("substance", 1), ("addiction", 2), ("rehab", 1), ("narcotic", 1),
         ("opioid", 2), ("heroin", 3), ("cocaine", 3), ("meth", 3),
@@ -5611,9 +5914,20 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
         ("amphetamine", 2), ("ketamine", 2), ("lsd", 2), ("mdma", 2),
         ("ecstasy", 2), ("benzodiazepine", 2), ("xanax", 2), ("valium", 2),
         ("pill", 1), ("pills", 1), ("sober", 1), ("withdrawal", 2), ("relapse", 2),
-    ].iter().cloned().collect();
+      ("opiate", 2), ("stimulant", 1), ("depressant", 1), ("hallucinogen", 2),
+      ("psychedelic", 1), ("shrooms", 2), ("mushrooms", 1), ("molly", 2),
+      ("crack", 3), ("dope", 1), ("junkie", 2), ("addict", 2), ("addicted", 2),
+      ("overdosed", 3), ("overdosing", 3), ("vape", 1), ("vaping", 1),
+      ("nicotine", 1), ("tobacco", 1), ("cigarette", 1), ("cigarettes", 1),
+      ("joint", 1), ("blunt", 1), ("bong", 1), ("syringe", 2), ("needle", 1),
+      ("dealer", 2), ("dealing", 1), ("trafficking", 3), ("cartel", 2),
+      ("speed", 1), ("tripping", 1), ("stoned", 1), ("drunk", 1), ("wasted", 1),
+      ("hammered", 1), ("buzzed", 1), ("tipsy", 1), ("booze", 1), ("liquor", 1),
+      ("rum", 1), ("gin", 1), ("tequila", 1), ("brandy", 1),
+    ].iter().map(|&(word, score)| (word.to_string(), score)).collect();
+    drug_words.extend(custom_words_map(&custom_words_store, "drug"));
 
-    let slang_words: HashMap<&'static str, i32> = [
+    let mut slang_words: HashMap<String, i32> = [
         ("lol", 0), ("lmao", 0), ("rofl", 0), ("bruh", 0), ("fr", 0),
         ("sus", 1), ("salty", 1), ("ratio", 1), ("based", 0), ("cap", 1),
         ("yeet", 0), ("pog", 0), ("poggers", 0), ("smh", 0), ("ngl", 0),
@@ -5623,7 +5937,17 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
         ("yikes", 1), ("fomo", 0), ("lowkey", 0), ("highkey", 0),
         ("vibe", 0), ("vibes", 0), ("goated", 0), ("cracked", 0),
         ("cope", 1), ("seethe", 1), ("savage", 1),
-    ].iter().cloned().collect();
+      ("yolo", 0), ("stan", 0), ("simp", 1), ("thirsty", 1), ("ghosted", 1),
+      ("ghosting", 1), ("flex", 0), ("flexing", 0), ("clout", 0), ("cringy", 1),
+      ("bet", 0), ("fam", 0), ("lit", 0), ("turnt", 0), ("extra", 0),
+      ("shade", 1), ("tea", 0), ("receipts", 0), ("canceled", 1), ("cancelled", 1),
+      ("triggered", 1), ("woke", 0), ("karen", 1), ("boomer", 1), ("zoomer", 0),
+      ("npc", 0), ("copium", 1), ("doomer", 0), ("bloomer", 0), ("chad", 0),
+      ("gigachad", 0), ("cringelord", 1), ("mood", 0), ("bigmood", 0),
+    ].iter().map(|&(word, score)| (word.to_string(), score)).collect();
+    slang_words.extend(custom_words_map(&custom_words_store, "slang"));
+
+    drop(custom_words_store);
 
     let mut unique_keys: HashSet<String> = HashSet::new();
 
@@ -5907,7 +6231,11 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
             }
         }
 
-        let hard_flags = ["overdose", "kill", "suicide", "self harm"];
+        let hard_flags = [
+          "overdose", "kill", "suicide", "self harm", "self-harm",
+          "kill myself", "want to die", "end my life", "hurt myself",
+          "assault", "rape", "shooting", "bomb threat", "hostage",
+        ];
         let mut hard_hit = false;
         for w in &hard_flags {
             if msg_lower.contains(w) {
@@ -6606,6 +6934,7 @@ th { color: #c5c6c7; }
     <a href="/chatlog/markov">Markov Chat</a>
     <a href="/chatlog/markov.json">Markov JSON</a>
     <a href="/chatlog/markov/transitions.json">Markov Transitions</a>
+    <a href="/chatlog/words">Custom Words</a>
     <a href="/analytics">Text Analytics</a>
     <a href="/forth/ui">Forth Console</a>
     <a href="/ruby">RubyForth API</a>
