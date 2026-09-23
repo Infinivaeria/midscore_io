@@ -1,4 +1,6 @@
 
+#![recursion_limit = "256"]
+
 use std::io::{self, BufRead};
 use tide::utils::After;
 use tide_rustls::TlsListener;
@@ -3963,6 +3965,19 @@ impl Clone for AppState {
 
     let events: Vec<Value> = unique.into_values().collect();
 
+    let markov_messages = chatlog_markov_messages(&raw);
+    let markov_counts = chatlog_markov_transition_counts(&markov_messages);
+    let mut markov_transitions = markov_counts.into_iter().collect::<Vec<_>>();
+    markov_transitions.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+    let markov_transition_total = markov_transitions.iter().map(|(_, count)| *count).sum::<usize>();
+    let markov_readiness = if markov_messages.len() >= 20 && markov_transitions.len() >= 50 {
+      "Ready"
+    } else if markov_messages.len() >= 5 {
+      "Limited corpus"
+    } else {
+      "Needs more messages"
+    };
+
     // ---------------------------------------------------------------------
     // Frequency counters
     // ---------------------------------------------------------------------
@@ -4029,6 +4044,14 @@ impl Clone for AppState {
     out.push_str(&format!("Total unique events: {}\n", events.len()));
     out.push_str(&format!("Unique avatar IDs: {}\n", avatars.len()));
     out.push_str(&format!("Unique message bodies: {}\n", messages.len()));
+    out.push_str(&format!("Markov training messages: {}\n", markov_messages.len()));
+    out.push_str(&format!("Markov word transition states: {}\n", markov_transitions.len()));
+    out.push_str(&format!("Markov word transitions: {}\n", markov_transition_total));
+    out.push_str(&format!("Markov readiness: {}\n", markov_readiness));
+    out.push_str(&format!(
+      "Markov seed suggestions: {}\n",
+      chatlog_markov_seed_suggestions(&markov_messages, 12).join(", ")
+    ));
 
     out.push_str(&format!(
         "First event (PST): {}\n",
@@ -4072,6 +4095,20 @@ impl Clone for AppState {
     out.push_str("\n=== Message Frequency by Day of Month ===\n");
     for day in 1..=31 {
         out.push_str(&format!("{:02} : {}\n", day, day_of_month_freq[day]));
+    }
+
+    out.push_str("\n=== Markov Chatter Model: Top Word Transitions ===\n");
+    out.push_str("Admin routes: /chatlog/markov, /chatlog/markov.json, /chatlog/markov/transitions.json\n");
+    for ((left, right, next), count) in markov_transitions.into_iter().take(25) {
+      let probability = if markov_transition_total == 0 {
+        0.0
+      } else {
+        count as f64 / markov_transition_total as f64
+      };
+      out.push_str(&format!(
+        "({}, {}) -> {} : {} ({:.3})\n",
+        left, right, next, count, probability
+      ));
     }
 
     let mut res = tide::Response::new(tide::StatusCode::Ok);
@@ -5084,6 +5121,299 @@ use chrono_tz::America::Los_Angeles;
 
     use std::fs;
 
+fn chatlog_markov_json_objects(raw: &str) -> Vec<String> {
+  let mut objects = Vec::new();
+  let mut buffer = String::new();
+  let mut depth = 0i32;
+  let mut in_string = false;
+  let mut escaped = false;
+
+  for character in raw.chars() {
+    if depth > 0 || character == '{' {
+      buffer.push(character);
+    }
+
+    if in_string {
+      if escaped {
+        escaped = false;
+      } else if character == '\\' {
+        escaped = true;
+      } else if character == '"' {
+        in_string = false;
+      }
+      continue;
+    }
+
+    match character {
+      '"' => in_string = true,
+      '{' => depth += 1,
+      '}' => {
+        depth -= 1;
+        if depth == 0 {
+          let object = std::mem::take(&mut buffer);
+          if !object.trim().is_empty() {
+            objects.push(object);
+          }
+        }
+      }
+      _ => {}
+    }
+  }
+
+  objects
+}
+
+fn chatlog_markov_messages(raw: &str) -> Vec<String> {
+  let mut messages = chatlog_markov_json_objects(raw)
+    .into_iter()
+    .filter_map(|object| serde_json::from_str::<Value>(&object).ok())
+    .filter_map(|value| value.get("message").and_then(Value::as_str).map(str::to_string))
+    .filter(|message| !message.trim().is_empty())
+    .collect::<Vec<_>>();
+
+  if messages.is_empty() {
+    messages = raw
+      .lines()
+      .filter_map(|line| {
+        let trimmed = line.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+      })
+      .collect();
+  }
+
+  messages
+}
+
+fn chatlog_markov_tokens(message: &str) -> Vec<String> {
+  message
+    .split_whitespace()
+    .map(|token| {
+      token
+        .trim_matches(|character: char| !character.is_alphanumeric() && character != '\'')
+        .to_lowercase()
+    })
+    .filter(|token| token.len() > 1)
+    .take(32)
+    .collect()
+}
+
+fn chatlog_markov_generate(messages: &[String], seed: Option<&str>, max_words: usize, samples: usize) -> Vec<String> {
+  const START: &str = "__start__";
+  let mut transitions: HashMap<(String, String), Vec<String>> = HashMap::new();
+  let mut starts = Vec::new();
+
+  for message in messages {
+    let tokens = chatlog_markov_tokens(message);
+    if tokens.is_empty() {
+      continue;
+    }
+    starts.push(tokens[0].clone());
+    let mut left = START.to_string();
+    let mut right = START.to_string();
+    for token in tokens {
+      transitions.entry((left.clone(), right.clone())).or_default().push(token.clone());
+      left = right;
+      right = token;
+    }
+  }
+
+  if transitions.is_empty() || starts.is_empty() {
+    return vec!["Not enough message text to build a Markov chat model yet.".to_string()];
+  }
+
+  let seed_tokens = seed.map(chatlog_markov_tokens).unwrap_or_default();
+  let mut rng = rand::thread_rng();
+  let sample_count = samples.clamp(1, 8);
+  let word_limit = max_words.clamp(8, 80);
+  let mut generated = Vec::new();
+
+  for _ in 0..sample_count {
+    let mut left = START.to_string();
+    let mut right = START.to_string();
+    let mut output = Vec::new();
+
+    if let Some(seed_token) = seed_tokens.last() {
+      if transitions.keys().any(|(_, next)| next == seed_token) {
+        right = seed_token.clone();
+        output.push(seed_token.clone());
+      }
+    }
+
+    for _ in 0..word_limit {
+      let options = transitions
+        .get(&(left.clone(), right.clone()))
+        .or_else(|| transitions.get(&(START.to_string(), START.to_string())));
+      let Some(options) = options else { break; };
+      if options.is_empty() {
+        break;
+      }
+      use rand::Rng;
+      let token = options[rng.gen_range(0..options.len())].clone();
+      output.push(token.clone());
+      left = right;
+      right = token;
+    }
+
+    if output.is_empty() {
+      use rand::Rng;
+      output.push(starts[rng.gen_range(0..starts.len())].clone());
+    }
+
+    let mut sentence = output.join(" ");
+    if let Some(first) = sentence.get_mut(0..1) {
+      first.make_ascii_uppercase();
+    }
+    if !sentence.ends_with('.') && !sentence.ends_with('!') && !sentence.ends_with('?') {
+      sentence.push('.');
+    }
+    generated.push(sentence);
+  }
+
+  generated
+}
+
+fn chatlog_markov_transition_counts(messages: &[String]) -> HashMap<(String, String, String), usize> {
+  const START: &str = "__start__";
+  let mut counts = HashMap::new();
+
+  for message in messages {
+    let tokens = chatlog_markov_tokens(message);
+    let mut left = START.to_string();
+    let mut right = START.to_string();
+    for token in tokens {
+      *counts.entry((left.clone(), right.clone(), token.clone())).or_insert(0) += 1;
+      left = right;
+      right = token;
+    }
+  }
+
+  counts
+}
+
+fn chatlog_markov_seed_suggestions(messages: &[String], limit: usize) -> Vec<String> {
+  let mut starts = HashMap::new();
+  for message in messages {
+    if let Some(token) = chatlog_markov_tokens(message).first() {
+      *starts.entry(token.clone()).or_insert(0usize) += 1;
+    }
+  }
+  let mut starts = starts.into_iter().collect::<Vec<_>>();
+  starts.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+  starts.into_iter().take(limit).map(|(token, _)| token).collect()
+}
+
+fn render_chatlog_markov_page(messages: &[String], seed: &str, max_words: usize, samples: usize, generated: &[String]) -> String {
+  let rows = generated.iter().map(|line| {
+    format!("<article class=\"line\">{}</article>", escape_html(line))
+  }).collect::<Vec<_>>().join("");
+
+  format!(r#"<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Second Life Markov Chat Console</title>
+<style>
+body{{margin:0;background:#0b0c10;color:#d7e4e2;font-family:system-ui,sans-serif}}main{{max-width:980px;margin:auto;padding:22px}}header{{border-bottom:1px solid #45a29e55;padding-bottom:14px}}h1{{margin:0;color:#66fcf1;font-size:22px}}a{{color:#66fcf1}}.links{{display:flex;flex-wrap:wrap;gap:9px;margin-top:12px}}.links a{{border:1px solid #45a29e66;border-radius:999px;padding:6px 10px;text-decoration:none;font-size:12px}}section{{margin-top:16px;background:#1f2833;border:1px solid #45a29e22;border-radius:8px;padding:14px}}label{{display:block;margin-bottom:6px;font-size:12px;color:#b7c7c4}}input{{width:100%;box-sizing:border-box;background:#0b0c10;color:#f4f6f7;border:1px solid #45a29e66;border-radius:6px;padding:9px}}.grid{{display:grid;grid-template-columns:1fr 120px 120px;gap:10px}}button{{margin-top:10px;background:#0d6b67;color:white;border:0;border-radius:6px;padding:10px 14px;font-weight:700;cursor:pointer}}.line{{background:#0b0c10;border-left:3px solid #66fcf1;padding:10px;margin-top:8px;line-height:1.45}}.small{{color:#9fb2ae;font-size:12px;line-height:1.45}}@media(max-width:720px){{.grid{{grid-template-columns:1fr}}}}
+</style></head><body><main>
+<header><h1>Second Life Markov Chat Console</h1><div class="small">Training corpus: {} messages from the in-memory chatlog store. Synthetic text for scenario review, moderation drills, and tone sampling.</div><nav class="links"><a href="/chatlog">Admin Dashboard</a><a href="/chatlog/summary">Admin JSON</a><a href="/chatlog/recent">Recent JSON</a><a href="/chatlog/markov.json?seed={}&max_words={}&samples={}">Markov JSON</a><a href="/chatlog/markov/transitions.json">Transitions JSON</a><a href="/analytics">Text Analytics</a></nav></header>
+<section><form method="get" action="/chatlog/markov"><div class="grid"><div><label for="seed">Seed phrase</label><input id="seed" name="seed" value="{}" placeholder="region lag, welcome, help, music"></div><div><label for="max_words">Max words</label><input id="max_words" name="max_words" type="number" min="8" max="80" value="{}"></div><div><label for="samples">Samples</label><input id="samples" name="samples" type="number" min="1" max="8" value="{}"></div></div><button type="submit">Generate chatter</button></form></section>
+<section><h2>Generated Markov Chatter</h2>{}</section>
+</main></body></html>"#,
+    messages.len(),
+    escape_html(seed),
+    max_words,
+    samples,
+    escape_html(seed),
+    max_words,
+    samples,
+    rows,
+  )
+}
+
+app.at("/chatlog/summary").get(|_| async move {
+  Ok(redirect("/chatlog?format=summary"))
+});
+
+app.at("/chatlog/recent").get(|_| async move {
+  Ok(redirect("/chatlog?format=recent"))
+});
+
+app.at("/chatlog/admin").get(|_| async move {
+  Ok(redirect("/chatlog?format=summary"))
+});
+
+app.at("/chatlog/markov.json").get(|req: tide::Request<AppState>| async move {
+  let query: HashMap<String, String> = req.query().unwrap_or_default();
+  let seed = query.get("seed").map(String::as_str);
+  let max_words = query.get("max_words").and_then(|value| value.parse::<usize>().ok()).unwrap_or(36);
+  let samples = query.get("samples").and_then(|value| value.parse::<usize>().ok()).unwrap_or(4);
+  let (raw, source_modified) = chatlog_store_snapshot(req.state().chatlog_store.as_ref());
+  let messages = chatlog_markov_messages(&raw);
+  let generated = chatlog_markov_generate(&messages, seed, max_words, samples);
+  Ok(json_response(serde_json::json!({
+    "source": "in-memory chatlog store",
+    "source_modified": source_modified,
+    "message_count": messages.len(),
+    "seed": seed.unwrap_or(""),
+    "max_words": max_words.clamp(8, 80),
+    "samples": samples.clamp(1, 8),
+    "generated": generated,
+  })))
+});
+
+app.at("/chatlog/markov/transitions.json").get(|req: tide::Request<AppState>| async move {
+  let query: HashMap<String, String> = req.query().unwrap_or_default();
+  let limit = query.get("limit").and_then(|value| value.parse::<usize>().ok()).unwrap_or(50).clamp(1, 250);
+  let (raw, source_modified) = chatlog_store_snapshot(req.state().chatlog_store.as_ref());
+  let messages = chatlog_markov_messages(&raw);
+  let counts = chatlog_markov_transition_counts(&messages);
+  let mut transitions = counts.into_iter().collect::<Vec<_>>();
+  transitions.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+  let total_transitions = transitions.iter().map(|(_, count)| *count).sum::<usize>();
+  let unique_state_count = transitions
+    .iter()
+    .map(|((left, right, _), _)| (left.clone(), right.clone()))
+    .collect::<HashSet<_>>()
+    .len();
+  let unique_transition_count = transitions.len();
+  let rows = transitions
+    .into_iter()
+    .take(limit)
+    .map(|((left, right, next), count)| {
+      serde_json::json!({
+        "state": [left, right],
+        "next": next,
+        "count": count,
+        "probability": if total_transitions == 0 { 0.0 } else { count as f64 / total_transitions as f64 },
+      })
+    })
+    .collect::<Vec<_>>();
+
+  Ok(json_response(serde_json::json!({
+    "source": "in-memory chatlog store",
+    "source_modified": source_modified,
+    "message_count": messages.len(),
+    "state_count": unique_state_count,
+    "unique_transition_count": unique_transition_count,
+    "returned_transition_count": rows.len(),
+    "total_transitions": total_transitions,
+    "seed_suggestions": chatlog_markov_seed_suggestions(&messages, 12),
+    "transitions": rows,
+  })))
+});
+
+app.at("/chatlog/markov").get(|req: tide::Request<AppState>| async move {
+  let query: HashMap<String, String> = req.query().unwrap_or_default();
+  let seed = query.get("seed").map(String::as_str).unwrap_or("");
+  let max_words = query.get("max_words").and_then(|value| value.parse::<usize>().ok()).unwrap_or(36).clamp(8, 80);
+  let samples = query.get("samples").and_then(|value| value.parse::<usize>().ok()).unwrap_or(4).clamp(1, 8);
+  let (raw, _) = chatlog_store_snapshot(req.state().chatlog_store.as_ref());
+  let messages = chatlog_markov_messages(&raw);
+  let generated = chatlog_markov_generate(&messages, Some(seed), max_words, samples);
+  let mut res = Response::new(StatusCode::Ok);
+  res.set_body(render_chatlog_markov_page(&messages, seed, max_words, samples, &generated));
+  res.insert_header("Content-Type", "text/html; charset=utf-8");
+  Ok(res)
+});
+
 app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
   use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
     use std::fs;
@@ -5337,6 +5667,19 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
 
     let mut rate_of_change: Vec<(i64, f64)> = Vec::new();
     let mut roc_per_sim: BTreeMap<String, Vec<(i64, f64)>> = BTreeMap::new();
+
+    let markov_messages = chatlog_markov_messages(&raw);
+    let markov_transition_counts = chatlog_markov_transition_counts(&markov_messages);
+    let markov_transition_count = markov_transition_counts.values().sum::<usize>();
+    let markov_state_count = markov_transition_counts.len();
+    let markov_seed_suggestions = chatlog_markov_seed_suggestions(&markov_messages, 10);
+    let markov_readiness = if markov_messages.len() >= 20 && markov_state_count >= 50 {
+      "Ready"
+    } else if markov_messages.len() >= 5 {
+      "Limited corpus"
+    } else {
+      "Needs more messages"
+    };
 
     let mut freq_timestamp: BTreeMap<i64, usize> = BTreeMap::new();
     let mut freq_message_len_bucket: BTreeMap<usize, usize> = BTreeMap::new();
@@ -5858,6 +6201,82 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
     let (peak_day_label, peak_day_count) = peak_day
       .clone()
       .unwrap_or_else(|| ("N/A".to_string(), 0));
+    let first_timestamp = freq_timestamp.keys().next().copied();
+    let last_timestamp = freq_timestamp.keys().next_back().copied();
+    let observed_timespan_days = match (first_timestamp, last_timestamp) {
+      (Some(first), Some(last)) if last >= first => (last - first) as f64 / 86_400.0,
+      _ => 0.0,
+    };
+    let active_days = timeline.len();
+    let observed_hours = freq_epoch_bucket.len();
+    let messages_per_active_day = if active_days == 0 {
+      0.0
+    } else {
+      total_messages as f64 / active_days as f64
+    };
+    let messages_per_observed_hour = if observed_hours == 0 {
+      0.0
+    } else {
+      valid_timestamps as f64 / observed_hours as f64
+    };
+    let timestamp_collision_events = valid_timestamps.saturating_sub(freq_timestamp.len());
+    let timestamp_collision_probability = if valid_timestamps == 0 {
+      0.0
+    } else {
+      timestamp_collision_events as f64 / valid_timestamps as f64
+    };
+    let peak_hour = freq_hour
+      .iter()
+      .max_by_key(|(_, count)| *count)
+      .map(|(hour, count)| (*hour, *count));
+    let (peak_hour_label, peak_hour_count) = peak_hour
+      .map(|(hour, count)| (format!("{:02}:00", hour), count))
+      .unwrap_or_else(|| ("N/A".to_string(), 0));
+    let peak_hour_probability = if valid_timestamps == 0 {
+      0.0
+    } else {
+      peak_hour_count as f64 / valid_timestamps as f64
+    };
+    let peak_weekday = freq_weekday
+      .iter()
+      .max_by_key(|(_, count)| *count)
+      .map(|(weekday, count)| (weekday.clone(), *count))
+      .unwrap_or_else(|| ("N/A".to_string(), 0));
+    let peak_weekday_probability = if valid_timestamps == 0 {
+      0.0
+    } else {
+      peak_weekday.1 as f64 / valid_timestamps as f64
+    };
+    let weekend_probability = if valid_timestamps == 0 {
+      0.0
+    } else {
+      *freq_weekend.get("Weekend").unwrap_or(&0) as f64 / valid_timestamps as f64
+    };
+    let pm_probability = if valid_timestamps == 0 {
+      0.0
+    } else {
+      *freq_ampm.get("PM").unwrap_or(&0) as f64 / valid_timestamps as f64
+    };
+    let hourly_entropy_bits = freq_hour
+      .values()
+      .filter(|count| **count > 0 && valid_timestamps > 0)
+      .map(|count| {
+        let probability = *count as f64 / valid_timestamps as f64;
+        -probability * probability.log2()
+      })
+      .sum::<f64>();
+    let burstiest_hour_bucket = freq_epoch_bucket
+      .iter()
+      .max_by_key(|(_, count)| *count)
+      .map(|(bucket, count)| (*bucket, *count));
+    let (burstiest_hour_label, burstiest_hour_count) = burstiest_hour_bucket
+      .and_then(|(bucket, count)| {
+        Los_Angeles
+          .timestamp_opt(bucket * 3600, 0)
+          .single()
+          .map(|dt| (dt.format("%Y-%m-%d %H:00").to_string(), count))
+      })
+      .unwrap_or_else(|| ("N/A".to_string(), 0));
 
     let mut captured_by_frequency: Vec<(String, usize, f64, i64, f64)> = captured_by_counts
       .iter()
@@ -5890,6 +6309,120 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
       .first()
       .map(|(name, _, share, _, _)| (name.clone(), *share))
       .unwrap_or_else(|| ("N/A".to_string(), 0.0));
+    let parse_success_rate = if integrity.candidate_objects == 0 {
+      0.0
+    } else {
+      integrity.parsed_objects as f64 / integrity.candidate_objects as f64
+    };
+    let timestamp_coverage = if total_messages == 0 { 0.0 } else { valid_timestamps as f64 / total_messages as f64 };
+    let position_coverage = if total_messages == 0 { 0.0 } else { valid_positions as f64 / total_messages as f64 };
+    let quarantine_probability = if total_messages == 0 { 0.0 } else { quarantined_messages as f64 / total_messages as f64 };
+    let hostile_messages = messages_vec.iter().filter(|message| message.hostility_score > 0).count();
+    let positive_messages = messages_vec.iter().filter(|message| message.positive_score > message.hostility_score).count();
+    let hostile_probability = if total_messages == 0 { 0.0 } else { hostile_messages as f64 / total_messages as f64 };
+    let positive_probability = if total_messages == 0 { 0.0 } else { positive_messages as f64 / total_messages as f64 };
+    let average_hostility = if total_messages == 0 {
+      0.0
+    } else {
+      messages_vec.iter().map(|message| message.hostility_score).sum::<i64>() as f64 / total_messages as f64
+    };
+    let data_quality_score = ((parse_success_rate + timestamp_coverage + position_coverage + unique_event_ratio.min(1.0)) / 4.0) * 100.0;
+    let capture_hhi = captured_by_frequency
+      .iter()
+      .map(|(_, _, share, _, _)| share * share)
+      .sum::<f64>();
+    let top_avatar = avatar_counts
+      .iter()
+      .max_by_key(|(_, count)| *count)
+      .map(|(name, count)| (name.clone(), *count))
+      .unwrap_or_else(|| ("N/A".to_string(), 0));
+    let top_sim = sim_counts
+      .iter()
+      .max_by_key(|(_, count)| *count)
+      .map(|(name, count)| (name.clone(), *count))
+      .unwrap_or_else(|| ("N/A".to_string(), 0));
+    let top_avatar_probability = if total_messages == 0 { 0.0 } else { top_avatar.1 as f64 / total_messages as f64 };
+    let top_sim_probability = if total_messages == 0 { 0.0 } else { top_sim.1 as f64 / total_messages as f64 };
+    let operational_risk_score = ((quarantine_probability * 45.0)
+      + (hostile_probability * 25.0)
+      + ((1.0 - data_quality_score / 100.0).max(0.0) * 20.0)
+      + (top_capturer_probability * 10.0))
+      .min(100.0);
+    let operational_health = if operational_risk_score >= 55.0 {
+      "Intervention recommended"
+    } else if operational_risk_score >= 25.0 {
+      "Monitor closely"
+    } else {
+      "Stable"
+    };
+    let logger_redundancy = captured_by_frequency.len();
+    let messages_per_logger = if logger_redundancy == 0 {
+      0.0
+    } else {
+      total_messages as f64 / logger_redundancy as f64
+    };
+    let invalid_record_count = integrity.parse_errors
+      + integrity.missing_avatar_name
+      + integrity.missing_sim_name
+      + integrity.missing_message
+      + integrity.bad_timestamp
+      + integrity.bad_position;
+    let moderation_action = if quarantined_messages > 0 {
+      format!("Review {} flagged chat events", quarantined_messages)
+    } else if hostile_messages > 0 {
+      format!("Spot-check {} hostile chat events", hostile_messages)
+    } else {
+      "No moderation queue backlog".to_string()
+    };
+    let logger_action = if data_quality_score < 80.0 {
+      "Audit in-world logger coverage"
+    } else if top_capturer_probability > 0.65 {
+      "Add a redundant capture source"
+    } else {
+      "Logger coverage acceptable"
+    };
+    let top_sim_transition = sim_transitions
+      .iter()
+      .max_by_key(|(_, count)| *count)
+      .map(|((from, to), count)| {
+        let probability = *sim_transition_prob.get(&(from.clone(), to.clone())).unwrap_or(&0.0);
+        (format!("{} -> {}", from, to), *count, probability)
+      })
+      .unwrap_or_else(|| ("N/A".to_string(), 0, 0.0));
+    let top_avatar_interaction = avatar_interactions
+      .iter()
+      .max_by_key(|(_, count)| *count)
+      .map(|((from, to), count)| {
+        let probability = *avatar_transition_prob.get(&(from.clone(), to.clone())).unwrap_or(&0.0);
+        (format!("{} -> {}", from, to), *count, probability)
+      })
+      .unwrap_or_else(|| ("N/A".to_string(), 0, 0.0));
+    let region_action = if top_sim_probability > 0.45 {
+      format!("Watch region concentration in {}", top_sim.0)
+    } else if top_sim_transition.1 > 0 {
+      format!("Monitor travel corridor {}", top_sim_transition.0)
+    } else {
+      "No dominant region hotspot".to_string()
+    };
+    let mut admin_recommendations = Vec::new();
+    if data_quality_score < 80.0 {
+      admin_recommendations.push("Improve in-world logger coverage: timestamp, position, and parse health are reducing administrative confidence.".to_string());
+    }
+    if operational_risk_score >= 25.0 {
+      admin_recommendations.push("Review the moderation queue before making estate staffing, ban, or escalation decisions.".to_string());
+    }
+    if capture_hhi > 0.45 {
+      admin_recommendations.push("Capture-source concentration is high; add another in-world logger or audit the top capture source.".to_string());
+    }
+    if top_sim_transition.1 > 0 {
+      admin_recommendations.push(format!("Watch the strongest region movement path: {} at {:.1}% transition probability.", top_sim_transition.0, top_sim_transition.2 * 100.0));
+    }
+    if active_days < 7 && total_messages > 0 {
+      admin_recommendations.push("Treat weekly trend conclusions as provisional until at least seven active days are present.".to_string());
+    }
+    if admin_recommendations.is_empty() {
+      admin_recommendations.push("No immediate administrative action detected from current chatlog metrics.".to_string());
+    }
 
     fn json_for_script<T: Serialize>(value: &T) -> String {
       serde_json::to_string(value)
@@ -5953,6 +6486,44 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
           "top_capturer": top_capturer,
           "top_capturer_probability": top_capturer_probability,
           "peak_day": peak_day,
+          "observed_timespan_days": observed_timespan_days,
+          "active_days": active_days,
+          "observed_hours": observed_hours,
+          "messages_per_active_day": messages_per_active_day,
+          "messages_per_observed_hour": messages_per_observed_hour,
+          "timestamp_collision_events": timestamp_collision_events,
+          "timestamp_collision_probability": timestamp_collision_probability,
+          "peak_hour": { "label": peak_hour_label, "count": peak_hour_count, "probability": peak_hour_probability },
+          "peak_weekday": { "label": peak_weekday.0, "count": peak_weekday.1, "probability": peak_weekday_probability },
+          "weekend_probability": weekend_probability,
+          "pm_probability": pm_probability,
+          "hourly_entropy_bits": hourly_entropy_bits,
+          "burstiest_hour": { "label": burstiest_hour_label, "count": burstiest_hour_count },
+          "data_quality_score": data_quality_score,
+          "operational_risk_score": operational_risk_score,
+          "operational_health": operational_health,
+          "hostile_probability": hostile_probability,
+          "positive_probability": positive_probability,
+          "average_hostility": average_hostility,
+          "capture_concentration_hhi": capture_hhi,
+          "top_avatar": { "name": top_avatar.0.clone(), "count": top_avatar.1, "probability": top_avatar_probability },
+          "top_sim": { "name": top_sim.0.clone(), "count": top_sim.1, "probability": top_sim_probability },
+          "top_sim_transition": { "path": top_sim_transition.0.clone(), "count": top_sim_transition.1, "probability": top_sim_transition.2 },
+          "top_avatar_interaction": { "path": top_avatar_interaction.0.clone(), "count": top_avatar_interaction.1, "probability": top_avatar_interaction.2 },
+          "sim_transition_count": sim_transitions.len(),
+          "avatar_interaction_count": avatar_interactions.len(),
+          "logger_redundancy": logger_redundancy,
+          "messages_per_logger": messages_per_logger,
+          "invalid_record_count": invalid_record_count,
+          "moderation_action": moderation_action,
+          "logger_action": logger_action,
+          "region_action": region_action,
+          "markov_message_count": markov_messages.len(),
+          "markov_state_count": markov_state_count,
+          "markov_transition_count": markov_transition_count,
+          "markov_readiness": markov_readiness,
+          "markov_seed_suggestions": markov_seed_suggestions.clone(),
+          "admin_recommendations": admin_recommendations.clone(),
         },
         "timeline": &timeline_data,
         "sentiment": &sentiment_data,
@@ -5973,7 +6544,7 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Second Life Chatlog Dashboard</title>
+<title>Second Life Administrator Chatlog Console</title>
 <style>
 body { font-family: system-ui, sans-serif; background: #0b0c10; color: #c5c6c7; margin: 0; padding: 0; }
 header { padding: 16px 24px; background: #1f2833; border-bottom: 1px solid #45a29e; }
@@ -6006,12 +6577,19 @@ th { color: #c5c6c7; }
 .tag-slang { background: #f4d35e22; color: #f4d35e; }
 .tag-substance { background: #b58cff22; color: #d0b6ff; }
 .tag-hostile, .tag-high-hostility, .tag-urgent { background: #ff6b6b22; color: #ff8b8b; }
+.quick-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.quick-actions a { color: #66fcf1; border: 1px solid #45a29e66; border-radius: 999px; padding: 5px 10px; text-decoration: none; font-size: 12px; }
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.kpi { background: #0b0c10; border: 1px solid #45a29e33; border-radius: 7px; padding: 10px; }
+.kpi span { display: block; color: #c5c6c7; font-size: 11px; }
+.kpi strong { display: block; margin-top: 4px; color: #66fcf1; font-size: 20px; }
+.recommendations { margin: 0; padding-left: 18px; line-height: 1.5; }
 @media (max-width: 900px) { header, main { padding-left: 12px; padding-right: 12px; } main { grid-template-columns: minmax(0, 1fr); } .chart { height: 190px; } }
 </style>
 </head>
 <body>
 <header id="chatlogHeader">
-  <h1>Second Life Chatlog Dashboard</h1>
+  <h1>Second Life Administrator Chatlog Console</h1>
   <div class="small">In-memory partitioned log store &mdash; Parsed objects: "#);
 
     html.push_str(&format!(
@@ -6020,8 +6598,151 @@ th { color: #c5c6c7; }
         unique_keys.len()
     ));
     html.push_str(r#"</div>
+  <nav class="quick-actions" aria-label="Chatlog data routes">
+    <a href="/chatlog">Dashboard</a>
+    <a href="/chatlog/summary">Admin JSON</a>
+    <a href="/chatlog/recent">Recent JSON</a>
+    <a href="/chatlog/admin">Admin Alias</a>
+    <a href="/chatlog/markov">Markov Chat</a>
+    <a href="/chatlog/markov.json">Markov JSON</a>
+    <a href="/chatlog/markov/transitions.json">Markov Transitions</a>
+    <a href="/analytics">Text Analytics</a>
+    <a href="/forth/ui">Forth Console</a>
+    <a href="/ruby">RubyForth API</a>
+    <a href="/forth">Forth Catalog</a>
+    <a href="/forth/example">Forth Example</a>
+    <a href="/program/example">Program Example</a>
+    <a href="/sigil-deck">Sigil Deck</a>
+    <a href="/flashcard">Flashcards</a>
+    <a href="/time">Time</a>
+    <a href="/weather">Weather</a>
+    <a href="/ae">AE Calendar</a>
+    <a href="/tiade/moon">Moon</a>
+    <a href="/tiade/sun">Sun</a>
+    <a href="/rneutrialg">RNeutri</a>
+    <a href="/random">Random</a>
+    <a href="/random2">Random Ratio</a>
+    <a href="/">Home</a>
+  </nav>
 </header>
 <main id="chatlogDashboard">
+<section>
+  <h2>Estate Operations KPIs</h2>
+  <div class="kpi-grid">"#);
+
+    html.push_str(&format!(
+      r#"<div class="kpi"><span>Operational Health</span><strong>{}</strong></div>
+<div class="kpi"><span>Risk Score</span><strong>{:.1}</strong></div>
+<div class="kpi"><span>Data Quality</span><strong>{:.1}%</strong></div>
+<div class="kpi"><span>Quarantine Probability</span><strong>{:.1}%</strong></div>
+<div class="kpi"><span>Hostile Message Probability</span><strong>{:.1}%</strong></div>
+<div class="kpi"><span>Positive Message Probability</span><strong>{:.1}%</strong></div>
+<div class="kpi"><span>Logger Sources</span><strong>{}</strong></div>
+<div class="kpi"><span>Invalid Record Signals</span><strong>{}</strong></div>"#,
+      escape_html(operational_health),
+      operational_risk_score,
+      data_quality_score,
+      quarantine_probability * 100.0,
+      hostile_probability * 100.0,
+      positive_probability * 100.0,
+      logger_redundancy,
+      invalid_record_count,
+    ));
+
+    html.push_str(r#"</div>
+</section>
+<section>
+  <h2>Estate Manager Brief</h2>
+  <table>
+    <tr><th>Action Lane</th><th>Recommended Admin Action</th></tr>"#);
+
+    html.push_str(&format!(
+      r#"<tr><td>Moderation</td><td>{}</td></tr>
+<tr><td>Logger Operations</td><td>{}</td></tr>
+<tr><td>Region Operations</td><td>{}</td></tr>"#,
+      escape_html(&moderation_action),
+      escape_html(logger_action),
+      escape_html(&region_action),
+    ));
+
+    html.push_str(r#"</table>
+  <h2>Administrator Recommendations</h2>
+  <ul class="recommendations">"#);
+
+    for recommendation in &admin_recommendations {
+      html.push_str(&format!("<li>{}</li>", escape_html(recommendation)));
+    }
+
+    html.push_str(r#"</ul>
+</section>
+<section>
+  <h2>Resident, Region, and Logger Concentration</h2>
+  <table>
+    <tr><th>Signal</th><th>Value</th></tr>"#);
+
+    html.push_str(&format!(
+      r#"<tr><td>Top resident share</td><td>{} ({:.1}%)</td></tr>
+<tr><td>Top region share</td><td>{} ({:.1}%)</td></tr>
+<tr><td>Top logger share</td><td>{} ({:.1}%)</td></tr>
+<tr><td>Capture-source HHI concentration</td><td>{:.3}</td></tr>
+<tr><td>Average hostility score / message</td><td>{:.3}</td></tr>
+<tr><td>Messages per logger source</td><td>{:.2}</td></tr>"#,
+      escape_html(&top_avatar.0),
+      top_avatar_probability * 100.0,
+      escape_html(&top_sim.0),
+      top_sim_probability * 100.0,
+      escape_html(&top_capturer),
+      top_capturer_probability * 100.0,
+      capture_hhi,
+      average_hostility,
+      messages_per_logger,
+    ));
+
+    html.push_str(r#"</table>
+</section>
+<section>
+  <h2>Resident Movement Markov Model</h2>
+  <table>
+    <tr><th>Signal</th><th>Value</th></tr>"#);
+
+    html.push_str(&format!(
+      r#"<tr><td>Region transition states</td><td>{}</td></tr>
+<tr><td>Resident interaction states</td><td>{}</td></tr>
+<tr><td>Strongest region path</td><td>{} ({}, {:.1}%)</td></tr>
+<tr><td>Strongest resident interaction</td><td>{} ({}, {:.1}%)</td></tr>"#,
+      sim_transitions.len(),
+      avatar_interactions.len(),
+      escape_html(&top_sim_transition.0),
+      top_sim_transition.1,
+      top_sim_transition.2 * 100.0,
+      escape_html(&top_avatar_interaction.0),
+      top_avatar_interaction.1,
+      top_avatar_interaction.2 * 100.0,
+    ));
+
+    html.push_str(r#"</table>
+</section>
+<section>
+  <h2>Message Chatter Markov Model</h2>
+  <table>
+    <tr><th>Signal</th><th>Value</th></tr>"#);
+
+    html.push_str(&format!(
+      r#"<tr><td>Model readiness</td><td>{}</td></tr>
+<tr><td>Training messages</td><td>{}</td></tr>
+<tr><td>Word transition states</td><td>{}</td></tr>
+<tr><td>Total word transitions</td><td>{}</td></tr>
+<tr><td>Suggested seeds</td><td>{}</td></tr>
+<tr><td>Operator tools</td><td><a href="/chatlog/markov">Generate chatter</a> | <a href="/chatlog/markov/transitions.json">Transition JSON</a></td></tr>"#,
+      escape_html(markov_readiness),
+      markov_messages.len(),
+      markov_state_count,
+      markov_transition_count,
+      escape_html(&markov_seed_suggestions.join(", ")),
+    ));
+
+    html.push_str(r#"</table>
+</section>
 <section>
   <h2>Integrity Report</h2>
   <table>
@@ -6080,6 +6801,16 @@ th { color: #c5c6c7; }
 <tr><td>Mean lexical sentiment</td><td>{:.3}</td></tr>
 <tr><td>Quarantined messages</td><td>{} ({:.1}%)</td></tr>
 <tr><td>Peak day</td><td>{} ({})</td></tr>
+<tr><td>Observed timespan</td><td>{:.2} days across {} active days</td></tr>
+<tr><td>Messages / active day</td><td>{:.2}</td></tr>
+<tr><td>Messages / observed hour</td><td>{:.2}</td></tr>
+<tr><td>Peak hour probability</td><td>{} ({}, {:.1}%)</td></tr>
+<tr><td>Peak weekday probability</td><td>{} ({}, {:.1}%)</td></tr>
+<tr><td>Weekend probability</td><td>{:.1}%</td></tr>
+<tr><td>PM probability</td><td>{:.1}%</td></tr>
+<tr><td>Hourly entropy</td><td>{:.3} bits</td></tr>
+<tr><td>Burstiest observed hour</td><td>{} ({})</td></tr>
+<tr><td>Repeated timestamp probability</td><td>{:.1}% ({} repeated events)</td></tr>
 <tr><td>Top capture probability</td><td>{} ({:.1}%)</td></tr>
 <tr><td>Capture-source entropy</td><td>{:.3} bits</td></tr>"#,
         total_messages,
@@ -6100,6 +6831,23 @@ th { color: #c5c6c7; }
         if total_messages == 0 { 0.0 } else { quarantined_messages as f64 * 100.0 / total_messages as f64 },
         escape_html(&peak_day_label),
         peak_day_count,
+        observed_timespan_days,
+        active_days,
+        messages_per_active_day,
+        messages_per_observed_hour,
+        escape_html(&peak_hour_label),
+        peak_hour_count,
+        peak_hour_probability * 100.0,
+        escape_html(&peak_weekday.0),
+        peak_weekday.1,
+        peak_weekday_probability * 100.0,
+        weekend_probability * 100.0,
+        pm_probability * 100.0,
+        hourly_entropy_bits,
+        escape_html(&burstiest_hour_label),
+        burstiest_hour_count,
+        timestamp_collision_probability * 100.0,
+        timestamp_collision_events,
         escape_html(&top_capturer),
         top_capturer_probability * 100.0,
         capture_entropy_bits,
@@ -6185,20 +6933,49 @@ th { color: #c5c6c7; }
   <div class="small">Positive vs hostile language per day.</div>
 </section>
 <section>
-  <h2>Timestamp Frequency (Raw UNIX, Full)</h2>
+  <h2>Time Probability Model</h2>
   <table>
-    <tr><th>Timestamp</th><th>Count</th></tr>"#);
+    <tr><th>Signal</th><th>Value</th></tr>"#);
 
-    let mut ts_vec: Vec<(i64, usize)> = freq_timestamp
-        .iter()
-        .map(|(ts, c)| (*ts, *c))
-        .collect();
-    ts_vec.sort_by(|a, b| a.0.cmp(&b.0));
+    html.push_str(&format!(
+      r#"<tr><td>First valid timestamp</td><td>{}</td></tr>
+<tr><td>Last valid timestamp</td><td>{}</td></tr>
+<tr><td>Observed hour buckets</td><td>{}</td></tr>
+<tr><td>Peak Pacific hour</td><td>{} ({:.1}% of timestamped messages)</td></tr>
+<tr><td>Peak Pacific weekday</td><td>{} ({:.1}% of timestamped messages)</td></tr>
+<tr><td>Weekend likelihood</td><td>{:.1}%</td></tr>
+<tr><td>PM likelihood</td><td>{:.1}%</td></tr>
+<tr><td>Hourly distribution entropy</td><td>{:.3} bits</td></tr>"#,
+      first_timestamp
+        .and_then(|timestamp| Los_Angeles.timestamp_opt(timestamp, 0).single())
+        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+        .unwrap_or_else(|| "N/A".to_string()),
+      last_timestamp
+        .and_then(|timestamp| Los_Angeles.timestamp_opt(timestamp, 0).single())
+        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+        .unwrap_or_else(|| "N/A".to_string()),
+      observed_hours,
+      escape_html(&peak_hour_label),
+      peak_hour_probability * 100.0,
+      escape_html(&peak_weekday.0),
+      peak_weekday_probability * 100.0,
+      weekend_probability * 100.0,
+      pm_probability * 100.0,
+      hourly_entropy_bits,
+    ));
 
-    for (ts, c) in ts_vec {
+    html.push_str(r#"</table>
+</section>
+<section>
+  <h2>Hour Probability (Pacific)</h2>
+  <table>
+    <tr><th>Hour</th><th>Count</th><th>Probability</th></tr>"#);
+
+    for (hour, count) in &freq_hour {
+        let probability = if valid_timestamps == 0 { 0.0 } else { *count as f64 * 100.0 / valid_timestamps as f64 };
         html.push_str(&format!(
-            "<tr><td>{}</td><td>{}</td></tr>",
-            ts, c
+            "<tr><td>{:02}:00</td><td>{}</td><td>{:.2}%</td></tr>",
+            hour, count, probability
         ));
     }
 
