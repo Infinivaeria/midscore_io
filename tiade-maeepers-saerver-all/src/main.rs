@@ -896,6 +896,12 @@ async fn main() -> tide::Result<()> {
     cache
   }
 
+  fn new_forth_bridge_queue() -> partitioned_array_rust::PartitionedArray {
+    let mut queue = partitioned_array_rust::PartitionedArray::new(1, 64, 1, true);
+    queue.allocate(false);
+    queue
+  }
+
   struct ChatlogStore {
     entries: partitioned_array_rust::PartitionedArray,
     revision: u64,
@@ -913,6 +919,8 @@ async fn main() -> tide::Result<()> {
     chatlog_revision: u64,
     variable_entries: partitioned_array_rust::PartitionedArray,
     variable_history: partitioned_array_rust::PartitionedArray,
+    #[serde(default = "new_forth_bridge_queue")]
+    forth_bridge_queue: partitioned_array_rust::PartitionedArray,
   }
 
   fn new_chatlog_store() -> ChatlogStore {
@@ -942,7 +950,7 @@ async fn main() -> tide::Result<()> {
       })
   }
 
-  fn restore_memory_stores() -> Option<(ChatlogStore, VarsStore)> {
+  fn restore_memory_stores() -> Option<(ChatlogStore, VarsStore, partitioned_array_rust::PartitionedArray)> {
     let bytes = std::fs::read(memory_store_path()).ok()?;
     let snapshot = serde_json::from_slice::<PersistedMemoryStores>(&bytes).ok()?;
     if snapshot.version != 1 {
@@ -957,6 +965,7 @@ async fn main() -> tide::Result<()> {
         entries: snapshot.variable_entries,
         history: snapshot.variable_history,
       },
+      snapshot.forth_bridge_queue,
     ))
   }
 
@@ -967,12 +976,16 @@ async fn main() -> tide::Result<()> {
     let vars_store = state.vars_store.lock().map_err(|_| {
       std::io::Error::other("variable store lock poisoned")
     })?;
+    let forth_bridge_queue = state.forth_bridge_queue.lock().map_err(|_| {
+      std::io::Error::other("Forth bridge queue lock poisoned")
+    })?;
     let snapshot = PersistedMemoryStores {
       version: 1,
       chatlog_entries: chatlog_store.entries.clone(),
       chatlog_revision: chatlog_store.revision,
       variable_entries: vars_store.entries.clone(),
       variable_history: vars_store.history.clone(),
+      forth_bridge_queue: forth_bridge_queue.clone(),
     };
     let payload = serde_json::to_vec_pretty(&snapshot)
       .map_err(std::io::Error::other)?;
@@ -1000,6 +1013,143 @@ async fn main() -> tide::Result<()> {
       let name = row.get("name")?.as_str()?.to_owned();
       let value = row.get("value")?.clone();
       Some((name, value))
+    }).collect()
+  }
+
+  const DEFAULT_SESSION_ID: &str = "default";
+
+  fn session_id(value: Option<&str>) -> Result<String, String> {
+    let value = value.unwrap_or(DEFAULT_SESSION_ID);
+    if value.is_empty() || value.len() > 64 || !value.chars().all(|character| {
+      character.is_ascii_alphanumeric() || character == '_' || character == '-'
+    }) {
+      return Err("session_id must be 1 to 64 ASCII letters, numbers, '_' or '-'".to_string());
+    }
+    Ok(value.to_string())
+  }
+
+  fn session_prefix(session: &str) -> String {
+    if session == DEFAULT_SESSION_ID {
+      return String::new();
+    }
+    let encoded = session.chars().map(|character| match character {
+      '_' => "__".to_string(),
+      '-' => "_d".to_string(),
+      character => character.to_string(),
+    }).collect::<String>();
+    format!("__rf_session_{}__", encoded)
+  }
+
+  fn session_storage_key(session: &str, name: &str) -> String {
+    format!("{}{}", session_prefix(session), name)
+  }
+
+  fn scoped_vars_entry_id(store: &VarsStore, session: &str, name: &str) -> Option<usize> {
+    vars_entry_id(store, &session_storage_key(session, name))
+  }
+
+  fn scoped_program_value(store: &VarsStore, session: &str, name: &str) -> Option<Value> {
+    program_value(store, &session_storage_key(session, name))
+  }
+
+  fn scoped_program_register(store: &VarsStore, session: &str, name: &str) -> Result<i64, String> {
+    match scoped_program_value(store, session, name) {
+      None => Ok(0),
+      Some(value) => value.as_i64().ok_or_else(|| format!("register '{}' must contain an integer", name)),
+    }
+  }
+
+  fn scoped_program_set_value(store: &mut VarsStore, session: &str, name: &str, value: Value) -> Result<(), String> {
+    program_set_value(store, &session_storage_key(session, name), value)
+  }
+
+  fn scoped_program_set_register(store: &mut VarsStore, session: &str, name: &str, value: i64) -> Result<(), String> {
+    scoped_program_set_value(store, session, name, Value::from(value))
+  }
+
+  fn vars_snapshot_scoped(store: &VarsStore, session: &str) -> Map<String, Value> {
+    let prefix = session_prefix(session);
+    store.entries.non_empty_ids().into_iter().filter_map(|id| {
+      let row = store.entries.get(id)?;
+      let stored_name = row.get("name")?.as_str()?;
+      let logical_name = if prefix.is_empty() {
+        (!stored_name.starts_with("__rf_session_")).then_some(stored_name)
+      } else {
+        stored_name.strip_prefix(&prefix)
+      }?;
+      let value = row.get("value")?.clone();
+      Some((logical_name.to_string(), value))
+    }).collect()
+  }
+
+  fn vars_record_history_scoped(store: &mut VarsStore, session: &str, operation: String) {
+    let snapshot = vars_snapshot_scoped(store, session);
+    let session = session.to_string();
+    let _ = store.history.add(|row| {
+      row.insert("session_id".to_string(), Value::String(session.clone()));
+      row.insert("operation".to_string(), Value::String(operation.clone()));
+      row.insert("recorded_at".to_string(), Value::String(Utc::now().to_rfc3339()));
+      row.insert("snapshot".to_string(), Value::Object(snapshot.clone()));
+    });
+  }
+
+  fn vars_set_scoped(store: &mut VarsStore, session: &str, values: &Map<String, Value>) {
+    for (name, value) in values {
+      let key = session_storage_key(session, name);
+      if let Some(id) = vars_entry_id(store, &key) {
+        let _ = store.entries.set_with(id, |row| {
+          row.insert("value".to_string(), value.clone());
+        });
+      } else {
+        let _ = store.entries.add(|row| {
+          row.insert("name".to_string(), Value::String(key.clone()));
+          row.insert("value".to_string(), value.clone());
+        });
+      }
+    }
+    vars_record_history_scoped(store, session, "SET".to_string());
+  }
+
+  fn vars_get_scoped(store: &mut VarsStore, session: &str, name: &str) -> Option<Value> {
+    let value = scoped_vars_entry_id(store, session, name)
+      .and_then(|id| store.entries.get(id))
+      .and_then(|row| row.get("value"))
+      .cloned();
+    let operation = if value.is_some() {
+      format!("GET {}", name)
+    } else {
+      format!("GET {} not found", name)
+    };
+    vars_record_history_scoped(store, session, operation);
+    value
+  }
+
+  fn vars_delete_scoped(store: &mut VarsStore, session: &str, name: &str) {
+    if let Some(id) = scoped_vars_entry_id(store, session, name) {
+      let _ = store.entries.delete(id);
+    }
+    vars_record_history_scoped(store, session, format!("DELETE {}", name));
+  }
+
+  fn vars_clear_scoped(store: &mut VarsStore, session: &str) {
+    let prefix = session_prefix(session);
+    let ids = store.entries.non_empty_ids().into_iter().filter(|id| {
+      let Some(name) = store.entries.get(*id)
+        .and_then(|row| row.get("name"))
+        .and_then(Value::as_str) else { return false; };
+      if prefix.is_empty() { !name.starts_with("__rf_session_") } else { name.starts_with(&prefix) }
+    }).collect::<Vec<_>>();
+    for id in ids {
+      let _ = store.entries.delete(id);
+    }
+    vars_record_history_scoped(store, session, "CLEAR".to_string());
+  }
+
+  fn vars_history_scoped(store: &VarsStore, session: &str) -> Vec<Value> {
+    store.history.non_empty_ids().into_iter().filter_map(|id| {
+      let row = store.history.get(id)?;
+      let recorded_session = row.get("session_id").and_then(Value::as_str).unwrap_or(DEFAULT_SESSION_ID);
+      (recorded_session == session).then_some(Value::Object(row.clone()))
     }).collect()
   }
 
@@ -1054,6 +1204,2310 @@ async fn main() -> tide::Result<()> {
       let _ = store.entries.delete(id);
     }
     vars_record_history(store, "CLEAR".to_string());
+  }
+
+  #[derive(Deserialize)]
+  struct ProgramInstruction {
+    op: String,
+    name: Option<String>,
+    value: Option<Value>,
+    target: Option<String>,
+  }
+
+  #[derive(Deserialize)]
+  struct ProgramRequest {
+    program: Vec<ProgramInstruction>,
+    max_steps: Option<usize>,
+  }
+
+  fn instruction_name(instruction: &ProgramInstruction) -> Result<&str, String> {
+    instruction.name.as_deref().ok_or_else(|| {
+      format!("{} requires a register name", instruction.op)
+    })
+  }
+
+  fn instruction_target(instruction: &ProgramInstruction) -> Result<&str, String> {
+    instruction.target.as_deref().ok_or_else(|| {
+      format!("{} requires a target label", instruction.op)
+    })
+  }
+
+  fn program_value(store: &VarsStore, name: &str) -> Option<Value> {
+    vars_entry_id(store, name)
+      .and_then(|id| store.entries.get(id))
+      .and_then(|row| row.get("value"))
+      .cloned()
+  }
+
+  fn program_register(store: &VarsStore, name: &str) -> Result<i64, String> {
+    match program_value(store, name) {
+      None => Ok(0),
+      Some(value) => value.as_i64().ok_or_else(|| format!("register '{}' must contain an integer", name)),
+    }
+  }
+
+  fn program_set_value(store: &mut VarsStore, name: &str, value: Value) -> Result<(), String> {
+    if let Some(id) = vars_entry_id(store, name) {
+      let updated = store.entries.set_with(id, |row| {
+        row.insert("value".to_string(), value.clone());
+      });
+      if !updated {
+        return Err(format!("could not update register '{}'", name));
+      }
+    } else {
+      store.entries.add(|row| {
+        row.insert("name".to_string(), Value::String(name.to_string()));
+        row.insert("value".to_string(), value.clone());
+      }).ok_or_else(|| "partitioned variable store is full".to_string())?;
+    }
+    Ok(())
+  }
+
+  fn program_set_register(store: &mut VarsStore, name: &str, value: i64) -> Result<(), String> {
+    program_set_value(store, name, Value::from(value))
+  }
+
+  fn run_program(store: &mut VarsStore, request: ProgramRequest) -> Result<Value, String> {
+    const DEFAULT_MAX_STEPS: usize = 10_000;
+    const MAX_STEPS: usize = 1_000_000;
+
+    let max_steps = request.max_steps.unwrap_or(DEFAULT_MAX_STEPS);
+    if max_steps == 0 || max_steps > MAX_STEPS {
+      return Err(format!("max_steps must be between 1 and {}", MAX_STEPS));
+    }
+
+    let mut labels = HashMap::new();
+    for (index, instruction) in request.program.iter().enumerate() {
+      if instruction.op == "label" {
+        let label = instruction_name(instruction)?.to_string();
+        if labels.insert(label.clone(), index).is_some() {
+          return Err(format!("duplicate label '{}'", label));
+        }
+      }
+    }
+
+    let mut program_counter = 0usize;
+    let mut steps = 0usize;
+    let mut halted = false;
+    while program_counter < request.program.len() {
+      if steps == max_steps {
+        return Err(format!("program exceeded max_steps ({})", max_steps));
+      }
+      steps += 1;
+
+      let instruction = &request.program[program_counter];
+      match instruction.op.as_str() {
+        "label" => program_counter += 1,
+        "set" => {
+          let name = instruction_name(instruction)?;
+          let value = instruction.value.as_ref()
+            .and_then(Value::as_i64)
+            .ok_or_else(|| "set requires an integer value".to_string())?;
+          program_set_register(store, name, value)?;
+          program_counter += 1;
+        }
+        "increment" => {
+          let name = instruction_name(instruction)?;
+          let value = program_register(store, name)?
+            .checked_add(1)
+            .ok_or_else(|| format!("register '{}' overflowed", name))?;
+          program_set_register(store, name, value)?;
+          program_counter += 1;
+        }
+        "decrement" => {
+          let name = instruction_name(instruction)?;
+          let value = program_register(store, name)?;
+          program_set_register(store, name, value.saturating_sub(1))?;
+          program_counter += 1;
+        }
+        "jump" => {
+          let target = instruction_target(instruction)?;
+          program_counter = *labels.get(target)
+            .ok_or_else(|| format!("unknown label '{}'", target))?;
+        }
+        "jump_if_nonzero" => {
+          let name = instruction_name(instruction)?;
+          if program_register(store, name)? != 0 {
+            let target = instruction_target(instruction)?;
+            program_counter = *labels.get(target)
+              .ok_or_else(|| format!("unknown label '{}'", target))?;
+          } else {
+            program_counter += 1;
+          }
+        }
+        "halt" => {
+          halted = true;
+          break;
+        }
+        operation => return Err(format!("unknown operation '{}'", operation)),
+      }
+    }
+
+    vars_record_history(store, format!("PROGRAM executed {} steps", steps));
+    Ok(serde_json::json!({
+      "halted": halted,
+      "steps": steps,
+      "vars": vars_snapshot(store),
+    }))
+  }
+
+  #[derive(Deserialize)]
+  struct ForthRunRequest {
+    source: String,
+    max_steps: Option<usize>,
+    #[serde(default)]
+    session_id: Option<String>,
+  }
+
+  #[derive(Deserialize)]
+  struct RubyRunRequest {
+    source: String,
+    max_steps: Option<usize>,
+    #[serde(default)]
+    session_id: Option<String>,
+  }
+
+  #[derive(Deserialize)]
+  struct ForthNotecardRequest {
+    name: String,
+    source: String,
+    #[serde(default)]
+    session_id: Option<String>,
+  }
+
+  #[derive(Deserialize)]
+  struct ForthNotecardNameRequest {
+    name: String,
+    max_steps: Option<usize>,
+    #[serde(default)]
+    session_id: Option<String>,
+  }
+
+  #[derive(Deserialize)]
+  struct ForthFileWriteRequest {
+    name: String,
+    content: String,
+    #[serde(default)]
+    session_id: Option<String>,
+  }
+
+  #[derive(Deserialize)]
+  struct ForthFileNameRequest {
+    name: String,
+    #[serde(default)]
+    session_id: Option<String>,
+  }
+
+  #[derive(Deserialize)]
+  struct ForthAlgebraRequest {
+    expression: String,
+    variable: Option<String>,
+    at: Option<i64>,
+  }
+
+  #[derive(Deserialize)]
+  struct ForthMatrixNameRequest {
+    name: String,
+    #[serde(default)]
+    session_id: Option<String>,
+  }
+
+  #[derive(Deserialize)]
+  struct SessionRequest {
+    #[serde(default)]
+    session_id: Option<String>,
+  }
+
+  #[derive(Deserialize)]
+  struct ForthBridgeEnqueueRequest {
+    token: String,
+    source: String,
+    max_steps: Option<usize>,
+    language: Option<String>,
+    #[serde(default)]
+    session_id: Option<String>,
+  }
+
+  #[derive(Deserialize)]
+  struct ForthBridgePollRequest {
+    token: String,
+    #[serde(default)]
+    session_id: Option<String>,
+  }
+
+  #[derive(Clone, Serialize, Deserialize)]
+  struct ForthMatrix {
+    rows: usize,
+    cols: usize,
+    values: Vec<i64>,
+  }
+
+  #[derive(Clone)]
+  enum ForthValue {
+    Number(i64),
+    Text(String),
+    Json(Value),
+    Address(String),
+  }
+
+  fn forth_notecard_key(name: &str) -> Result<String, String> {
+    if name.is_empty() || !name.chars().all(|character| {
+      character.is_ascii_alphanumeric() || character == '_' || character == '-'
+    }) {
+      return Err("notecard name must use only letters, numbers, '_' or '-'".to_string());
+    }
+    Ok(format!("forth.notecard.{}", name))
+  }
+
+  fn forth_tokens(source: &str) -> Result<Vec<String>, String> {
+    let mut tokens = Vec::new();
+    let mut token = String::new();
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for line in source.lines() {
+      for character in line.chars() {
+        if in_string {
+          token.push(character);
+          if escaped {
+            escaped = false;
+          } else if character == '\\' {
+            escaped = true;
+          } else if character == '"' {
+            tokens.push(std::mem::take(&mut token));
+            in_string = false;
+          }
+          continue;
+        }
+        if character == '\\' {
+          break;
+        }
+        if character == '"' {
+          if !token.is_empty() {
+            tokens.push(std::mem::take(&mut token));
+          }
+          token.push(character);
+          in_string = true;
+        } else if character == ';' {
+          if !token.is_empty() {
+            tokens.push(std::mem::take(&mut token));
+          }
+          tokens.push(";".to_string());
+        } else if character.is_whitespace() {
+          if !token.is_empty() {
+            tokens.push(std::mem::take(&mut token));
+          }
+        } else {
+          token.push(character);
+        }
+      }
+      if in_string {
+        token.push('\n');
+      } else if !token.is_empty() {
+        tokens.push(std::mem::take(&mut token));
+      }
+    }
+    if in_string {
+      return Err("unterminated string literal".to_string());
+    }
+    Ok(tokens)
+  }
+
+  fn forth_expand_words(tokens: Vec<String>) -> Result<Vec<String>, String> {
+    const MAX_EXPANDED_TOKENS: usize = 1_000_000;
+
+    let mut definitions = HashMap::new();
+    let mut program = Vec::new();
+    let mut index = 0usize;
+    while index < tokens.len() {
+      if tokens[index] != ":" {
+        if tokens[index] == ";" {
+          index += 1;
+          continue;
+        }
+        program.push(tokens[index].clone());
+        index += 1;
+        continue;
+      }
+
+      let name = tokens.get(index + 1).ok_or_else(|| "':' requires a word name".to_string())?;
+      forth_variable_name(name)?;
+      if definitions.contains_key(name) {
+        return Err(format!("Forth word '{}' is already defined", name));
+      }
+
+      index += 2;
+      let body_start = index;
+      while index < tokens.len() && tokens[index] != ";" {
+        if tokens[index] == ":" {
+          return Err("nested Forth word definitions are not supported".to_string());
+        }
+        index += 1;
+      }
+      if index == tokens.len() {
+        return Err(format!("Forth word '{}' is missing its closing ';'", name));
+      }
+      definitions.insert(name.clone(), tokens[body_start..index].to_vec());
+      index += 1;
+    }
+
+    fn expand(
+      tokens: &[String],
+      definitions: &HashMap<String, Vec<String>>,
+      active_words: &mut Vec<String>,
+      output: &mut Vec<String>,
+      max_tokens: usize,
+    ) -> Result<(), String> {
+      let mut index = 0usize;
+      while index < tokens.len() {
+        let token = &tokens[index];
+        if token == "ruby" || token == "forth" {
+          let source_token = tokens.get(index + 1).ok_or_else(|| {
+            format!("{} requires a quoted source string", token)
+          })?;
+          let source = serde_json::from_str::<String>(source_token).map_err(|_| {
+            format!("{} requires a quoted source string", token)
+          })?;
+          let bridged_tokens = if token == "ruby" {
+            forth_tokens(&ruby_compile(&source)?)?
+          } else {
+            forth_expand_words(forth_tokens(&source)?)?
+          };
+          expand(&bridged_tokens, definitions, active_words, output, max_tokens)?;
+          index += 2;
+          continue;
+        }
+        if let Some(body) = definitions.get(token) {
+          if active_words.iter().any(|name| name == token) {
+            return Err(format!("recursive Forth word '{}' is not supported", token));
+          }
+          active_words.push(token.clone());
+          expand(body, definitions, active_words, output, max_tokens)?;
+          active_words.pop();
+        } else {
+          output.push(token.clone());
+          if output.len() > max_tokens {
+            return Err(format!("expanded Forth program exceeds {} tokens", max_tokens));
+          }
+        }
+        index += 1;
+      }
+      Ok(())
+    }
+
+    let mut expanded = Vec::new();
+    expand(&program, &definitions, &mut Vec::new(), &mut expanded, MAX_EXPANDED_TOKENS)?;
+    Ok(expanded)
+  }
+
+  fn forth_pop_number(stack: &mut Vec<ForthValue>) -> Result<i64, String> {
+    match stack.pop() {
+      Some(ForthValue::Number(value)) => Ok(value),
+      Some(ForthValue::Text(_)) => Err("expected a number, found text".to_string()),
+      Some(ForthValue::Json(_)) => Err("expected a number, found a structured value".to_string()),
+      Some(ForthValue::Address(_)) => Err("expected a number, found a variable address".to_string()),
+      None => Err("stack underflow".to_string()),
+    }
+  }
+
+  fn forth_pop_address(stack: &mut Vec<ForthValue>) -> Result<String, String> {
+    match stack.pop() {
+      Some(ForthValue::Address(name)) => Ok(name),
+      Some(ForthValue::Text(_)) => Err("expected a variable address, found text".to_string()),
+      Some(ForthValue::Json(_)) => Err("expected a variable address, found a structured value".to_string()),
+      Some(ForthValue::Number(_)) => Err("expected a variable address, found a number".to_string()),
+      None => Err("stack underflow".to_string()),
+    }
+  }
+
+  fn forth_pop_text(stack: &mut Vec<ForthValue>) -> Result<String, String> {
+    match stack.pop() {
+      Some(ForthValue::Text(value)) => Ok(value),
+      Some(ForthValue::Number(value)) => Ok(value.to_string()),
+      Some(ForthValue::Json(Value::String(value))) => Ok(value),
+      Some(ForthValue::Json(_)) => Err("expected text, found a structured value".to_string()),
+      Some(ForthValue::Address(_)) => Err("expected text, found a variable address".to_string()),
+      None => Err("stack underflow".to_string()),
+    }
+  }
+
+  fn forth_value_from_json(value: Value) -> Result<ForthValue, String> {
+    match value {
+      Value::Number(value) => Ok(ForthValue::Number(value.as_i64()
+        .ok_or_else(|| "numbers must be signed 64-bit integers".to_string())?)),
+      Value::String(value) => Ok(ForthValue::Text(value)),
+      value @ (Value::Array(_) | Value::Object(_) | Value::Bool(_) | Value::Null) => Ok(ForthValue::Json(value)),
+    }
+  }
+
+  fn forth_value_to_json(value: ForthValue) -> Result<Value, String> {
+    match value {
+      ForthValue::Number(value) => Ok(Value::from(value)),
+      ForthValue::Text(value) => Ok(Value::String(value)),
+      ForthValue::Json(value) => Ok(value),
+      ForthValue::Address(_) => Err("cannot store a variable address as a value".to_string()),
+    }
+  }
+
+  fn forth_pop_key(stack: &mut Vec<ForthValue>) -> Result<String, String> {
+    let value = stack.pop().ok_or_else(|| "stack underflow".to_string())?;
+    forth_value_key(value)
+  }
+
+  fn forth_value_key(value: ForthValue) -> Result<String, String> {
+    match value {
+      ForthValue::Text(value) => Ok(value),
+      ForthValue::Number(value) => Ok(value.to_string()),
+      ForthValue::Json(Value::String(value)) => Ok(value),
+      ForthValue::Json(_) => Err("collection keys must be text or numbers".to_string()),
+      ForthValue::Address(_) => Err("collection keys cannot be variable addresses".to_string()),
+    }
+  }
+
+  fn forth_value_index(value: ForthValue) -> Result<usize, String> {
+    match value {
+      ForthValue::Number(value) => forth_usize(value, "array index"),
+      ForthValue::Text(_) | ForthValue::Json(_) | ForthValue::Address(_) => {
+        Err("array indexes must be non-negative integers".to_string())
+      }
+    }
+  }
+
+  fn forth_pop_collection(stack: &mut Vec<ForthValue>) -> Result<Value, String> {
+    match stack.pop() {
+      Some(ForthValue::Json(value @ Value::Array(_))) | Some(ForthValue::Json(value @ Value::Object(_))) => Ok(value),
+      Some(_) => Err("expected an array or hash".to_string()),
+      None => Err("stack underflow".to_string()),
+    }
+  }
+
+  fn forth_interpolate(store: &VarsStore, session: &str, template: &str) -> Result<String, String> {
+    let mut rendered = String::new();
+    let mut remaining = template;
+    while let Some(start) = remaining.find("#{") {
+      rendered.push_str(&remaining[..start]);
+      let name_start = start + 2;
+      let end = remaining[name_start..].find('}')
+        .ok_or_else(|| "unterminated interpolation; expected '}'".to_string())? + name_start;
+      let name = &remaining[name_start..end];
+      forth_variable_name(name)?;
+      let value = match scoped_program_value(store, session, name) {
+        None => ForthValue::Number(0),
+        Some(value) => forth_value_from_json(value)?,
+      };
+      rendered.push_str(&forth_display(value));
+      remaining = &remaining[end + 1..];
+    }
+    rendered.push_str(remaining);
+    Ok(rendered)
+  }
+
+  fn forth_display(value: ForthValue) -> String {
+    match value {
+      ForthValue::Number(value) => value.to_string(),
+      ForthValue::Text(value) => value,
+      ForthValue::Json(value) => value.to_string(),
+      ForthValue::Address(name) => format!("&{}", name),
+    }
+  }
+
+  fn forth_channel(value: i64) -> Result<i32, String> {
+    i32::try_from(value).map_err(|_| "Second Life channels must fit a signed 32-bit integer".to_string())
+  }
+
+  fn forth_usize(value: i64, label: &str) -> Result<usize, String> {
+    usize::try_from(value).map_err(|_| format!("{} must be a non-negative integer", label))
+  }
+
+  fn forth_memory_key(address: i64) -> String {
+    format!("__forth_mem_{}", address)
+  }
+
+  fn forth_memory_key_scoped(session: &str, address: i64) -> String {
+    session_storage_key(session, &forth_memory_key(address))
+  }
+
+  fn forth_memory_clear(store: &mut VarsStore) {
+    let cell_ids = store.entries.non_empty_ids().into_iter().filter(|id| {
+      store.entries.get(*id)
+        .and_then(|row| row.get("name"))
+        .and_then(Value::as_str)
+        .is_some_and(|name| name.starts_with("__forth_mem_"))
+    }).collect::<Vec<_>>();
+    for id in cell_ids {
+      let _ = store.entries.delete(id);
+    }
+  }
+
+  fn forth_memory_clear_scoped(store: &mut VarsStore, session: &str) {
+    let prefix = session_storage_key(session, "__forth_mem_");
+    let cell_ids = store.entries.non_empty_ids().into_iter().filter(|id| {
+      store.entries.get(*id)
+        .and_then(|row| row.get("name"))
+        .and_then(Value::as_str)
+        .is_some_and(|name| name.starts_with(&prefix))
+    }).collect::<Vec<_>>();
+    for id in cell_ids {
+      let _ = store.entries.delete(id);
+    }
+  }
+
+  fn forth_push_call(calls: &mut Vec<Value>, call: Value) -> Result<(), String> {
+    const MAX_HOST_CALLS: usize = 128;
+    if calls.len() == MAX_HOST_CALLS {
+      return Err(format!("Forth program exceeded max host calls ({})", MAX_HOST_CALLS));
+    }
+    calls.push(call);
+    Ok(())
+  }
+
+  fn forth_variable_name(name: &str) -> Result<(), String> {
+    if name.is_empty() || !name.chars().enumerate().all(|(index, character)| {
+      if index == 0 {
+        character == '_' || character.is_ascii_alphabetic()
+      } else {
+        character == '_' || character.is_ascii_alphanumeric()
+      }
+    }) {
+      return Err(format!("invalid variable name '{}'", name));
+    }
+    Ok(())
+  }
+
+  fn ruby_strip_comment(line: &str) -> String {
+    let mut quote = None;
+    let mut escaped = false;
+    for (index, character) in line.char_indices() {
+      if let Some(active_quote) = quote {
+        if escaped {
+          escaped = false;
+        } else if character == '\\' {
+          escaped = true;
+        } else if character == active_quote {
+          quote = None;
+        }
+      } else if character == '\'' || character == '"' {
+        quote = Some(character);
+      } else if character == '#' {
+        return line[..index].trim().to_string();
+      }
+    }
+    line.trim().to_string()
+  }
+
+  fn ruby_split_statements(line: &str) -> Result<Vec<String>, String> {
+    let mut statements = Vec::new();
+    let mut start = 0usize;
+    let mut quote = None;
+    let mut escaped = false;
+    let mut square_depth = 0usize;
+    let mut curly_depth = 0usize;
+    let mut paren_depth = 0usize;
+    for (index, character) in line.char_indices() {
+      if let Some(active_quote) = quote {
+        if escaped {
+          escaped = false;
+        } else if character == '\\' {
+          escaped = true;
+        } else if character == active_quote {
+          quote = None;
+        }
+        continue;
+      }
+      match character {
+        '\'' | '"' => quote = Some(character),
+        '[' => square_depth += 1,
+        ']' => square_depth = square_depth.checked_sub(1).ok_or_else(|| "unmatched ']' in Ruby statement".to_string())?,
+        '{' => curly_depth += 1,
+        '}' => curly_depth = curly_depth.checked_sub(1).ok_or_else(|| "unmatched '}' in Ruby statement".to_string())?,
+        '(' => paren_depth += 1,
+        ')' => paren_depth = paren_depth.checked_sub(1).ok_or_else(|| "unmatched ')' in Ruby statement".to_string())?,
+        ';' if square_depth == 0 && curly_depth == 0 && paren_depth == 0 => {
+          let statement = line[start..index].trim();
+          if !statement.is_empty() {
+            statements.push(statement.to_string());
+          }
+          start = index + character.len_utf8();
+        }
+        _ => {}
+      }
+    }
+    if quote.is_some() || square_depth != 0 || curly_depth != 0 || paren_depth != 0 {
+      return Err("unclosed Ruby delimiter while splitting statements".to_string());
+    }
+    let statement = line[start..].trim();
+    if !statement.is_empty() {
+      statements.push(statement.to_string());
+    }
+    Ok(statements)
+  }
+
+  fn ruby_expression_tokens(expression: &str) -> Result<Vec<String>, String> {
+    let characters = expression.chars().collect::<Vec<_>>();
+    let mut tokens = Vec::new();
+    let mut index = 0usize;
+    while index < characters.len() {
+      let character = characters[index];
+      if character.is_whitespace() {
+        index += 1;
+      } else if character == '\'' || character == '"' {
+        let quote = character;
+        index += 1;
+        let mut value = String::new();
+        while index < characters.len() && characters[index] != quote {
+          if characters[index] == '\\' {
+            index += 1;
+            let escaped = *characters.get(index).ok_or_else(|| "unterminated string escape".to_string())?;
+            value.push(match escaped {
+              'n' => '\n',
+              'r' => '\r',
+              't' => '\t',
+              other => other,
+            });
+          } else {
+            value.push(characters[index]);
+          }
+          index += 1;
+        }
+        if index == characters.len() {
+          return Err("unterminated Ruby string".to_string());
+        }
+        let encoded = serde_json::to_string(&value).map_err(|error| error.to_string())?;
+        if value.contains("#{") {
+          tokens.push(format!("__ruby_interpolate__:{}", encoded));
+        } else {
+          tokens.push(encoded);
+        }
+        index += 1;
+      } else if character.is_ascii_digit() {
+        let start = index;
+        while index < characters.len() && (characters[index].is_ascii_digit() || characters[index] == '_') {
+          index += 1;
+        }
+        tokens.push(characters[start..index].iter().collect::<String>().replace('_', ""));
+      } else if character.is_ascii_alphabetic() || character == '_' {
+        let start = index;
+        while index < characters.len() && (characters[index].is_ascii_alphanumeric() || characters[index] == '_') {
+          index += 1;
+        }
+        tokens.push(characters[start..index].iter().collect());
+      } else {
+        let pair = if index + 1 < characters.len() {
+          Some([character, characters[index + 1]].iter().collect::<String>())
+        } else {
+          None
+        };
+        if let Some(operator @ ("==" | "!=" | "<=" | ">=" | "&&" | "||")) = pair.as_deref() {
+          tokens.push(operator.to_string());
+          index += 2;
+        } else if matches!(character, '+' | '-' | '*' | '/' | '%' | '<' | '>' | '!' | '(' | ')') {
+          tokens.push(character.to_string());
+          index += 1;
+        } else {
+          return Err(format!("unsupported Ruby expression character '{}'", character));
+        }
+      }
+    }
+    Ok(tokens)
+  }
+
+  fn ruby_operator_precedence(operator: &str) -> Option<u8> {
+    match operator {
+      "!" => Some(6),
+      "*" | "/" | "%" => Some(5),
+      "+" | "-" => Some(4),
+      "<" | "<=" | ">" | ">=" => Some(3),
+      "==" | "!=" => Some(2),
+      "&&" => Some(1),
+      "||" => Some(0),
+      _ => None,
+    }
+  }
+
+  fn ruby_forth_operator(operator: &str) -> &str {
+    match operator {
+      "==" => "=",
+      "%" => "mod",
+      "&&" => "and",
+      "||" => "or",
+      other => other,
+    }
+  }
+
+  fn ruby_split_top_level(source: &str, separator: char) -> Result<Vec<String>, String> {
+    if source.trim().is_empty() {
+      return Ok(Vec::new());
+    }
+    let mut parts = Vec::new();
+    let mut start = 0usize;
+    let mut quote = None;
+    let mut escaped = false;
+    let mut square_depth = 0usize;
+    let mut curly_depth = 0usize;
+    let mut paren_depth = 0usize;
+    for (index, character) in source.char_indices() {
+      if let Some(active_quote) = quote {
+        if escaped {
+          escaped = false;
+        } else if character == '\\' {
+          escaped = true;
+        } else if character == active_quote {
+          quote = None;
+        }
+        continue;
+      }
+      match character {
+        '\'' | '"' => quote = Some(character),
+        '[' => square_depth += 1,
+        ']' => square_depth = square_depth.checked_sub(1).ok_or_else(|| "unmatched ']' in Ruby collection".to_string())?,
+        '{' => curly_depth += 1,
+        '}' => curly_depth = curly_depth.checked_sub(1).ok_or_else(|| "unmatched '}' in Ruby collection".to_string())?,
+        '(' => paren_depth += 1,
+        ')' => paren_depth = paren_depth.checked_sub(1).ok_or_else(|| "unmatched ')' in Ruby collection".to_string())?,
+        _ if character == separator && square_depth == 0 && curly_depth == 0 && paren_depth == 0 => {
+          let part = source[start..index].trim();
+          if part.is_empty() {
+            return Err("empty Ruby collection entry".to_string());
+          }
+          parts.push(part.to_string());
+          start = index + character.len_utf8();
+        }
+        _ => {}
+      }
+    }
+    if quote.is_some() || square_depth != 0 || curly_depth != 0 || paren_depth != 0 {
+      return Err("unclosed Ruby collection delimiter".to_string());
+    }
+    let part = source[start..].trim();
+    if part.is_empty() {
+      return Err("empty Ruby collection entry".to_string());
+    }
+    parts.push(part.to_string());
+    Ok(parts)
+  }
+
+  fn ruby_top_level_hash_arrow(source: &str) -> Result<Option<usize>, String> {
+    let mut quote = None;
+    let mut escaped = false;
+    let mut square_depth = 0usize;
+    let mut curly_depth = 0usize;
+    let mut paren_depth = 0usize;
+    for (index, character) in source.char_indices() {
+      if let Some(active_quote) = quote {
+        if escaped {
+          escaped = false;
+        } else if character == '\\' {
+          escaped = true;
+        } else if character == active_quote {
+          quote = None;
+        }
+        continue;
+      }
+      match character {
+        '\'' | '"' => quote = Some(character),
+        '[' => square_depth += 1,
+        ']' => square_depth = square_depth.checked_sub(1).ok_or_else(|| "unmatched ']' in Ruby hash".to_string())?,
+        '{' => curly_depth += 1,
+        '}' => curly_depth = curly_depth.checked_sub(1).ok_or_else(|| "unmatched '}' in Ruby hash".to_string())?,
+        '(' => paren_depth += 1,
+        ')' => paren_depth = paren_depth.checked_sub(1).ok_or_else(|| "unmatched ')' in Ruby hash".to_string())?,
+        '=' if square_depth == 0 && curly_depth == 0 && paren_depth == 0 && source[index..].starts_with("=>") => return Ok(Some(index)),
+        _ => {}
+      }
+    }
+    if quote.is_some() || square_depth != 0 || curly_depth != 0 || paren_depth != 0 {
+      return Err("unclosed Ruby hash delimiter".to_string());
+    }
+    Ok(None)
+  }
+
+  fn ruby_compile_collection_expression(expression: &str) -> Result<Option<Vec<String>>, String> {
+    let expression = expression.trim();
+    if let Some(inner) = expression.strip_prefix('[').and_then(|value| value.strip_suffix(']')) {
+      let values = ruby_split_top_level(inner, ',')?;
+      let count = values.len();
+      let mut compiled = Vec::new();
+      for value in values {
+        compiled.extend(ruby_compile_expression(&value)?);
+      }
+      compiled.push(count.to_string());
+      compiled.push("array".to_string());
+      return Ok(Some(compiled));
+    }
+    if let Some(inner) = expression.strip_prefix('{').and_then(|value| value.strip_suffix('}')) {
+      let entries = ruby_split_top_level(inner, ',')?;
+      let mut compiled = Vec::new();
+      for entry in &entries {
+        let arrow = ruby_top_level_hash_arrow(entry)?.ok_or_else(|| "Ruby hash entries require '=>'".to_string())?;
+        let key = entry[..arrow].trim();
+        let value = entry[arrow + 2..].trim();
+        if key.is_empty() || value.is_empty() {
+          return Err("Ruby hash entries require both a key and a value".to_string());
+        }
+        compiled.extend(ruby_compile_expression(key)?);
+        compiled.extend(ruby_compile_expression(value)?);
+      }
+      compiled.push(entries.len().to_string());
+      compiled.push("hash".to_string());
+      return Ok(Some(compiled));
+    }
+
+    let Some(open) = expression.find('(') else { return Ok(None); };
+    if !expression.ends_with(')') || open == 0 {
+      return Ok(None);
+    }
+    let name = expression[..open].trim();
+    if !name.chars().all(|character| character == '_' || character.is_ascii_alphanumeric()) {
+      return Ok(None);
+    }
+    let arguments = ruby_split_top_level(&expression[open + 1..expression.len() - 1], ',')?;
+    let word = match (name, arguments.len()) {
+      ("get", 2) => "c.get",
+      ("set", 3) => "c.set",
+      ("push", 2) => "c.push",
+      ("pop", 1) => "c.pop",
+      ("delete", 2) => "c.delete",
+      ("keys", 1) => "c.keys",
+      ("length", 1) | ("len", 1) => "c.len",
+      ("has", 2) => "c.has?",
+      _ => return Ok(None),
+    };
+    let mut compiled = Vec::new();
+    for argument in arguments {
+      compiled.extend(ruby_compile_expression(&argument)?);
+    }
+    compiled.push(word.to_string());
+    Ok(Some(compiled))
+  }
+
+  fn ruby_compile_expression(expression: &str) -> Result<Vec<String>, String> {
+    if let Some(compiled) = ruby_compile_collection_expression(expression)? {
+      return Ok(compiled);
+    }
+    let tokens = ruby_expression_tokens(expression)?;
+    if tokens.is_empty() {
+      return Err("Ruby expression is empty".to_string());
+    }
+    let mut output = Vec::new();
+    let mut operators = Vec::new();
+    let mut index = 0usize;
+    let mut expects_value = true;
+    while index < tokens.len() {
+      let token = &tokens[index];
+      if token == "(" {
+        operators.push(token.clone());
+        expects_value = true;
+      } else if token == ")" {
+        while operators.last().is_some_and(|operator| operator != "(") {
+          output.push(ruby_forth_operator(&operators.pop().unwrap()).to_string());
+        }
+        if operators.pop().as_deref() != Some("(") {
+          return Err("unmatched ')' in Ruby expression".to_string());
+        }
+        expects_value = false;
+      } else if let Some(precedence) = ruby_operator_precedence(token) {
+        if token == "-" && expects_value {
+          let next = tokens.get(index + 1).ok_or_else(|| "unary '-' requires a value".to_string())?;
+          if next.chars().all(|character| character.is_ascii_digit()) {
+            output.push(format!("-{}", next));
+            index += 1;
+            expects_value = false;
+          } else {
+            return Err("unary '-' is supported only for integer literals".to_string());
+          }
+        } else {
+          while operators.last().and_then(|operator| ruby_operator_precedence(operator)).is_some_and(|top| top >= precedence) {
+            output.push(ruby_forth_operator(&operators.pop().unwrap()).to_string());
+          }
+          operators.push(token.clone());
+          expects_value = true;
+        }
+      } else {
+        if let Some(value) = token.strip_prefix("__ruby_interpolate__:") {
+          output.push(value.to_string());
+          output.push("interpolate".to_string());
+        } else if token == "true" || token == "false" || token == "nil" || token.starts_with('"') {
+          output.push(token.clone());
+        } else if token.chars().all(|character| character.is_ascii_digit()) {
+          output.push(token.clone());
+        } else {
+          forth_variable_name(token)?;
+          output.push(format!("${}", token));
+        }
+        expects_value = false;
+      }
+      index += 1;
+    }
+    while let Some(operator) = operators.pop() {
+      if operator == "(" {
+        return Err("unmatched '(' in Ruby expression".to_string());
+      }
+      output.push(ruby_forth_operator(&operator).to_string());
+    }
+    Ok(output)
+  }
+
+  fn ruby_assignment(line: &str) -> Option<(&str, &str, &str)> {
+    let operators = ["+=", "-=", "*=" , "/=", "="];
+    for operator in operators {
+      if let Some(index) = line.find(operator) {
+        let left = line[..index].trim();
+        let right = line[index + operator.len()..].trim();
+        let previous = line[..index].chars().last();
+        let next = line[index + operator.len()..].chars().next();
+        let is_comparison = operator == "=" &&
+          (matches!(previous, Some('!' | '<' | '>' | '=')) || matches!(next, Some('=' | '>')));
+        if !left.is_empty() && !right.is_empty() && !is_comparison {
+          return Some((left, operator, right));
+        }
+      }
+    }
+    None
+  }
+
+  fn ruby_compile_statement(line: &str) -> Result<Vec<String>, String> {
+    if let Some(source) = line.strip_prefix("forth ") {
+      let source = source.trim();
+      let mut tokens = ruby_expression_tokens(source)?;
+      if tokens.len() != 1 || !tokens[0].starts_with('"') {
+        return Err("forth requires one quoted Forth source string".to_string());
+      }
+      let source = serde_json::from_str::<String>(&tokens.remove(0))
+        .map_err(|_| "forth requires one quoted Forth source string".to_string())?;
+      return Ok(vec!["forth".to_string(), serde_json::to_string(&source).map_err(|error| error.to_string())?]);
+    }
+    if let Some(expression) = line.strip_prefix("puts ").or_else(|| line.strip_prefix("p ")) {
+      let mut compiled = ruby_compile_expression(expression)?;
+      compiled.push("puts".to_string());
+      return Ok(compiled);
+    }
+    if line == "return" {
+      return Ok(vec!["bye".to_string()]);
+    }
+    if let Some((name, operator, expression)) = ruby_assignment(line) {
+      forth_variable_name(name)?;
+      let mut compiled = ruby_compile_expression(expression)?;
+      match operator {
+        "=" => compiled.push(format!("{}=", name)),
+        "+=" => compiled.push(format!("{}+=", name)),
+        "-=" => compiled.push(format!("{}-=", name)),
+        "*=" | "/=" => {
+          compiled.insert(0, format!("${}", name));
+          compiled.push(if operator == "*=" { "*" } else { "/" }.to_string());
+          compiled.push(format!("{}=", name));
+        }
+        _ => unreachable!(),
+      }
+      return Ok(compiled);
+    }
+    ruby_compile_expression(line)
+  }
+
+  fn ruby_compile_conditional(
+    lines: &[String],
+    index: &mut usize,
+    mut condition: Vec<String>,
+  ) -> Result<Vec<String>, String> {
+    let then_body = ruby_compile_block(lines, index)?;
+    if let Some(elsif_condition) = lines.get(*index).and_then(|line| line.strip_prefix("elsif ")) {
+      *index += 1;
+      let nested = ruby_compile_conditional(lines, index, ruby_compile_expression(elsif_condition)?)?;
+      condition.push("if".to_string());
+      condition.extend(then_body);
+      condition.push("else".to_string());
+      condition.extend(nested);
+      condition.push("then".to_string());
+      return Ok(condition);
+    }
+    let else_body = if lines.get(*index).is_some_and(|line| line == "else") {
+      *index += 1;
+      ruby_compile_block(lines, index)?
+    } else {
+      Vec::new()
+    };
+    if lines.get(*index).is_none_or(|line| line != "end") {
+      return Err("if/unless requires a matching end".to_string());
+    }
+    *index += 1;
+    condition.push("if".to_string());
+    condition.extend(then_body);
+    if !else_body.is_empty() {
+      condition.push("else".to_string());
+      condition.extend(else_body);
+    }
+    condition.push("then".to_string());
+    Ok(condition)
+  }
+
+  fn ruby_take_forth_block(lines: &[String], index: &mut usize) -> Result<String, String> {
+    let start = *index;
+    while *index < lines.len() {
+      if lines[*index] == "end" {
+        let source = lines[start..*index].join("\n");
+        *index += 1;
+        if source.trim().is_empty() {
+          return Err("forth do requires at least one Forth source line".to_string());
+        }
+        return Ok(source);
+      }
+      *index += 1;
+    }
+    Err("forth do requires a matching end".to_string())
+  }
+
+  fn ruby_compile_block(lines: &[String], index: &mut usize) -> Result<Vec<String>, String> {
+    let mut compiled = Vec::new();
+    while *index < lines.len() {
+      let line = &lines[*index];
+      if line == "end" || line == "else" || line.starts_with("elsif ") {
+        break;
+      }
+      if line == "forth do" {
+        *index += 1;
+        let source = ruby_take_forth_block(lines, index)?;
+        compiled.push("forth".to_string());
+        compiled.push(serde_json::to_string(&source).map_err(|error| error.to_string())?);
+        continue;
+      }
+      if let Some(condition) = line.strip_prefix("if ") {
+        *index += 1;
+        compiled.extend(ruby_compile_conditional(lines, index, ruby_compile_expression(condition)? )?);
+        continue;
+      }
+      if let Some(condition) = line.strip_prefix("unless ") {
+        *index += 1;
+        let mut condition = ruby_compile_expression(condition)?;
+        condition.push("not".to_string());
+        compiled.extend(ruby_compile_conditional(lines, index, condition)?);
+        continue;
+      }
+      if let Some(condition) = line.strip_prefix("while ").or_else(|| line.strip_prefix("until ")) {
+        let is_until = line.starts_with("until ");
+        *index += 1;
+        let mut condition = ruby_compile_expression(condition.trim_end_matches(" do").trim())?;
+        if is_until {
+          condition.push("not".to_string());
+        }
+        let body = ruby_compile_block(lines, index)?;
+        if lines.get(*index).is_none_or(|line| line != "end") {
+          return Err("while/until requires a matching end".to_string());
+        }
+        *index += 1;
+        compiled.push("begin".to_string());
+        compiled.extend(condition);
+        compiled.push("if".to_string());
+        compiled.extend(body);
+        compiled.push("again".to_string());
+        compiled.push("then".to_string());
+        continue;
+      }
+      if let Some(count) = line.strip_suffix(".times do").or_else(|| line.strip_suffix(".times")) {
+        let loop_name = format!("__ruby_times_{}", *index);
+        let count = ruby_compile_expression(count.trim())?;
+        *index += 1;
+        let body = ruby_compile_block(lines, index)?;
+        if lines.get(*index).is_none_or(|line| line != "end") {
+          return Err("times requires a matching end".to_string());
+        }
+        *index += 1;
+        compiled.extend(count);
+        compiled.push(format!("{}=", loop_name));
+        compiled.push("begin".to_string());
+        compiled.push(format!("${}", loop_name));
+        compiled.push("0".to_string());
+        compiled.push(">".to_string());
+        compiled.push("if".to_string());
+        compiled.extend(body);
+        compiled.push("1".to_string());
+        compiled.push(format!("{}-=", loop_name));
+        compiled.push("again".to_string());
+        compiled.push("then".to_string());
+        continue;
+      }
+      compiled.extend(ruby_compile_statement(line)?);
+      *index += 1;
+    }
+    Ok(compiled)
+  }
+
+  fn ruby_compile(source: &str) -> Result<String, String> {
+    if source.len() > 65_536 {
+      return Err("Ruby source may not exceed 65536 bytes".to_string());
+    }
+    let mut lines = Vec::new();
+    let mut in_forth_block = false;
+    for raw_line in source.lines() {
+      let line = ruby_strip_comment(raw_line);
+      if line.is_empty() {
+        continue;
+      }
+      if in_forth_block {
+        if line == "end" {
+          in_forth_block = false;
+        }
+        lines.push(line);
+        continue;
+      }
+      if line == "forth do" {
+        in_forth_block = true;
+        lines.push(line);
+        continue;
+      }
+      lines.extend(ruby_split_statements(&line)?);
+    }
+    if in_forth_block {
+      return Err("forth do requires a matching end".to_string());
+    }
+    let mut index = 0usize;
+    let compiled = ruby_compile_block(&lines, &mut index)?;
+    if index != lines.len() {
+      return Err(format!("unexpected Ruby block terminator '{}'", lines[index]));
+    }
+    Ok(compiled.join(" "))
+  }
+
+  fn forth_validate_bridge_token(token: &str) -> Result<(), String> {
+    let expected = std::env::var("MSSL_FORTH_BRIDGE_TOKEN")
+      .ok()
+      .filter(|value| !value.is_empty())
+      .ok_or_else(|| "Second Life bridge is disabled; set MSSL_FORTH_BRIDGE_TOKEN".to_string())?;
+    let mut difference = (expected.len() ^ token.len()) as u8;
+    for (left, right) in expected.bytes().zip(token.bytes()) {
+      difference |= left ^ right;
+    }
+    if difference == 0 {
+      Ok(())
+    } else {
+      Err("invalid Second Life bridge token".to_string())
+    }
+  }
+
+  fn run_forth(store: &mut VarsStore, session: &str, request: ForthRunRequest) -> Result<Value, String> {
+    const DEFAULT_MAX_STEPS: usize = 10_000;
+    const MAX_STEPS: usize = 1_000_000;
+
+    let max_steps = request.max_steps.unwrap_or(DEFAULT_MAX_STEPS);
+    if max_steps == 0 || max_steps > MAX_STEPS {
+      return Err(format!("max_steps must be between 1 and {}", MAX_STEPS));
+    }
+    let tokens = forth_expand_words(forth_tokens(&request.source)?)?;
+    let mut begin_stack = Vec::new();
+    let mut begin_to_end = HashMap::new();
+    let mut end_to_begin = HashMap::new();
+    let mut if_stack = Vec::new();
+    let mut if_to_else_or_then = HashMap::new();
+    let mut else_to_then = HashMap::new();
+    for (index, token) in tokens.iter().enumerate() {
+      match token.as_str() {
+        "begin" => begin_stack.push(index),
+        "until" | "again" => {
+          let begin = begin_stack.pop().ok_or_else(|| format!("{} without begin", token))?;
+          begin_to_end.insert(begin, index);
+          end_to_begin.insert(index, begin);
+        }
+        "if" => if_stack.push(index),
+        "else" => {
+          let if_index = if_stack.pop().ok_or_else(|| "else without if".to_string())?;
+          if_to_else_or_then.insert(if_index, index);
+          if_stack.push(index);
+        }
+        "then" => {
+          let branch = if_stack.pop().ok_or_else(|| "then without if".to_string())?;
+          if tokens[branch] == "else" {
+            else_to_then.insert(branch, index);
+          } else {
+            if_to_else_or_then.insert(branch, index);
+          }
+        }
+        _ => {}
+      }
+    }
+    if !begin_stack.is_empty() || !if_stack.is_empty() {
+      return Err("unclosed begin or if block".to_string());
+    }
+
+    let mut stack = Vec::new();
+    let mut output = Vec::new();
+    let mut calls = Vec::new();
+    let mut program_counter = 0usize;
+    let mut steps = 0usize;
+    while program_counter < tokens.len() {
+      if steps == max_steps {
+        return Err(format!("Forth program exceeded max_steps ({})", max_steps));
+      }
+      steps += 1;
+      let token = &tokens[program_counter];
+      if let Ok(number) = token.parse::<i64>() {
+        stack.push(ForthValue::Number(number));
+        program_counter += 1;
+        continue;
+      }
+      if let Some(name) = token.strip_prefix('$') {
+        forth_variable_name(name)?;
+        let value = match scoped_program_value(store, session, name) {
+          None => ForthValue::Number(0),
+          Some(value) => forth_value_from_json(value)?,
+        };
+        stack.push(value);
+        program_counter += 1;
+        continue;
+      }
+      if let Some(name) = token.strip_suffix("+=") {
+        forth_variable_name(name)?;
+        let amount = forth_pop_number(&mut stack)?;
+        let value = scoped_program_register(store, session, name)?.checked_add(amount)
+          .ok_or_else(|| "integer overflow".to_string())?;
+        scoped_program_set_register(store, session, name, value)?;
+        program_counter += 1;
+        continue;
+      }
+      if let Some(name) = token.strip_suffix("-=") {
+        forth_variable_name(name)?;
+        let amount = forth_pop_number(&mut stack)?;
+        let value = scoped_program_register(store, session, name)?.checked_sub(amount)
+          .ok_or_else(|| "integer overflow".to_string())?;
+        scoped_program_set_register(store, session, name, value)?;
+        program_counter += 1;
+        continue;
+      }
+      if !matches!(token.as_str(), "=" | "!=" | "<=" | ">=") {
+        if let Some(name) = token.strip_suffix('=') {
+          forth_variable_name(name)?;
+          let value = forth_value_to_json(stack.pop().ok_or_else(|| "stack underflow".to_string())?)?;
+          scoped_program_set_value(store, session, name, value)?;
+          program_counter += 1;
+          continue;
+        }
+      }
+
+      if token.starts_with('"') && token.ends_with('"') {
+        let text = serde_json::from_str::<String>(token)
+          .map_err(|_| "invalid string literal".to_string())?;
+        stack.push(ForthValue::Text(text));
+        program_counter += 1;
+        continue;
+      }
+      match token.as_str() {
+        "+" => {
+          let right = stack.pop().ok_or_else(|| "stack underflow".to_string())?;
+          let left = stack.pop().ok_or_else(|| "stack underflow".to_string())?;
+          let value = match (left, right) {
+            (ForthValue::Number(left), ForthValue::Number(right)) => ForthValue::Number(
+              left.checked_add(right).ok_or_else(|| "integer overflow".to_string())?
+            ),
+            (ForthValue::Text(left), ForthValue::Text(right)) => ForthValue::Text(format!("{}{}", left, right)),
+            _ => return Err("+ requires two integers or two strings".to_string()),
+          };
+          stack.push(value);
+          program_counter += 1;
+        }
+        "=" | "!=" => {
+          let right = stack.pop().ok_or_else(|| "stack underflow".to_string())?;
+          let left = stack.pop().ok_or_else(|| "stack underflow".to_string())?;
+          let equal = match (left, right) {
+            (ForthValue::Number(left), ForthValue::Number(right)) => left == right,
+            (ForthValue::Text(left), ForthValue::Text(right)) => left == right,
+            (ForthValue::Json(left), ForthValue::Json(right)) => left == right,
+            (ForthValue::Address(left), ForthValue::Address(right)) => left == right,
+            _ => false,
+          };
+          stack.push(ForthValue::Number(i64::from(if token == "=" { equal } else { !equal })));
+          program_counter += 1;
+        }
+        "-" | "*" | "/" | "mod" | "<" | ">" | "<=" | ">=" => {
+          let right = forth_pop_number(&mut stack)?;
+          let left = forth_pop_number(&mut stack)?;
+          let value = match token.as_str() {
+            "-" => left.checked_sub(right).ok_or_else(|| "integer overflow".to_string())?,
+            "*" => left.checked_mul(right).ok_or_else(|| "integer overflow".to_string())?,
+            "/" => left.checked_div(right).ok_or_else(|| "division by zero or overflow".to_string())?,
+            "mod" => left.checked_rem(right).ok_or_else(|| "division by zero or overflow".to_string())?,
+            "<" => i64::from(left < right),
+            ">" => i64::from(left > right),
+            "<=" => i64::from(left <= right),
+            ">=" => i64::from(left >= right),
+            _ => unreachable!(),
+          };
+          stack.push(ForthValue::Number(value));
+          program_counter += 1;
+        }
+        "0=" => {
+          let value = forth_pop_number(&mut stack)?;
+          stack.push(ForthValue::Number(i64::from(value == 0)));
+          program_counter += 1;
+        }
+        "true" => {
+          stack.push(ForthValue::Number(1));
+          program_counter += 1;
+        }
+        "false" | "nil" => {
+          stack.push(ForthValue::Number(0));
+          program_counter += 1;
+        }
+        "not" => {
+          let value = forth_pop_number(&mut stack)?;
+          stack.push(ForthValue::Number(i64::from(value == 0)));
+          program_counter += 1;
+        }
+        "&&" | "and" | "||" | "or" => {
+          let right = forth_pop_number(&mut stack)? != 0;
+          let left = forth_pop_number(&mut stack)? != 0;
+          let value = if token == "&&" || token == "and" { left && right } else { left || right };
+          stack.push(ForthValue::Number(i64::from(value)));
+          program_counter += 1;
+        }
+        "abs" => {
+          let value = forth_pop_number(&mut stack)?.checked_abs()
+            .ok_or_else(|| "integer overflow".to_string())?;
+          stack.push(ForthValue::Number(value));
+          program_counter += 1;
+        }
+        "min" | "max" => {
+          let right = forth_pop_number(&mut stack)?;
+          let left = forth_pop_number(&mut stack)?;
+          stack.push(ForthValue::Number(if token == "min" { left.min(right) } else { left.max(right) }));
+          program_counter += 1;
+        }
+        "now" => {
+          stack.push(ForthValue::Number(Utc::now().timestamp()));
+          program_counter += 1;
+        }
+        "rand" => {
+          let upper_bound = forth_pop_number(&mut stack)?;
+          if upper_bound <= 0 {
+            return Err("rand requires a positive upper bound".to_string());
+          }
+          use rand::Rng;
+          stack.push(ForthValue::Number(rand::thread_rng().gen_range(0..upper_bound)));
+          program_counter += 1;
+        }
+        "dup" => {
+          let value = stack.last().cloned().ok_or_else(|| "stack underflow".to_string())?;
+          stack.push(value);
+          program_counter += 1;
+        }
+        "drop" => {
+          stack.pop().ok_or_else(|| "stack underflow".to_string())?;
+          program_counter += 1;
+        }
+        "swap" => {
+          if stack.len() < 2 { return Err("stack underflow".to_string()); }
+          let end = stack.len() - 1;
+          stack.swap(end, end - 1);
+          program_counter += 1;
+        }
+        "over" => {
+          if stack.len() < 2 { return Err("stack underflow".to_string()); }
+          stack.push(stack[stack.len() - 2].clone());
+          program_counter += 1;
+        }
+        "." | "puts" | "p" => {
+          let value = stack.pop().ok_or_else(|| "stack underflow".to_string())?;
+          output.push(forth_display(value));
+          program_counter += 1;
+        }
+        "sl.say" | "sl.whisper" | "sl.shout" | "sl.region_say" => {
+          let message = forth_pop_text(&mut stack)?;
+          let channel = forth_channel(forth_pop_number(&mut stack)?)?;
+          let operation = match token.as_str() {
+            "sl.say" => "say",
+            "sl.whisper" => "whisper",
+            "sl.shout" => "shout",
+            "sl.region_say" => "region_say",
+            _ => unreachable!(),
+          };
+          forth_push_call(&mut calls, serde_json::json!({
+            "op": operation,
+            "channel": channel,
+            "message": message,
+          }))?;
+          program_counter += 1;
+        }
+        "sl.owner_say" => {
+          let message = forth_pop_text(&mut stack)?;
+          forth_push_call(&mut calls, serde_json::json!({ "op": "owner_say", "message": message }))?;
+          program_counter += 1;
+        }
+        "sl.set_text" => {
+          let alpha = forth_pop_number(&mut stack)?;
+          let blue = forth_pop_number(&mut stack)?;
+          let green = forth_pop_number(&mut stack)?;
+          let red = forth_pop_number(&mut stack)?;
+          let text = forth_pop_text(&mut stack)?;
+          forth_push_call(&mut calls, serde_json::json!({
+            "op": "set_text",
+            "text": text,
+            "red": red,
+            "green": green,
+            "blue": blue,
+            "alpha": alpha,
+          }))?;
+          program_counter += 1;
+        }
+        "sl.set_color" => {
+          let face = forth_pop_number(&mut stack)?;
+          let blue = forth_pop_number(&mut stack)?;
+          let green = forth_pop_number(&mut stack)?;
+          let red = forth_pop_number(&mut stack)?;
+          forth_push_call(&mut calls, serde_json::json!({
+            "op": "set_color",
+            "face": face,
+            "red": red,
+            "green": green,
+            "blue": blue,
+          }))?;
+          program_counter += 1;
+        }
+        "sl.set_alpha" => {
+          let face = forth_pop_number(&mut stack)?;
+          let alpha = forth_pop_number(&mut stack)?;
+          forth_push_call(&mut calls, serde_json::json!({ "op": "set_alpha", "face": face, "alpha": alpha }))?;
+          program_counter += 1;
+        }
+        "sl.play_sound" => {
+          let volume = forth_pop_number(&mut stack)?;
+          let sound = forth_pop_text(&mut stack)?;
+          forth_push_call(&mut calls, serde_json::json!({ "op": "play_sound", "sound": sound, "volume": volume }))?;
+          program_counter += 1;
+        }
+        "sl.set_timer" => {
+          let seconds = forth_pop_number(&mut stack)?;
+          forth_push_call(&mut calls, serde_json::json!({ "op": "set_timer", "seconds": seconds }))?;
+          program_counter += 1;
+        }
+        "sl.set_region_pos" => {
+          let z = forth_pop_number(&mut stack)?;
+          let y = forth_pop_number(&mut stack)?;
+          let x = forth_pop_number(&mut stack)?;
+          forth_push_call(&mut calls, serde_json::json!({ "op": "set_region_pos", "x": x, "y": y, "z": z }))?;
+          program_counter += 1;
+        }
+        "sl.link_message" => {
+          let id = forth_pop_text(&mut stack)?;
+          let message = forth_pop_text(&mut stack)?;
+          let code = forth_pop_number(&mut stack)?;
+          let link = forth_pop_number(&mut stack)?;
+          forth_push_call(&mut calls, serde_json::json!({
+            "op": "link_message",
+            "link": link,
+            "code": code,
+            "message": message,
+            "id": id,
+          }))?;
+          program_counter += 1;
+        }
+        "matrix" => {
+          let name = tokens.get(program_counter + 1).ok_or_else(|| "matrix requires a name".to_string())?;
+          let cols = forth_usize(forth_pop_number(&mut stack)?, "matrix columns")?;
+          let rows = forth_usize(forth_pop_number(&mut stack)?, "matrix rows")?;
+          forth_matrix_save_scoped(store, session, name, forth_matrix_new(rows, cols)?)?;
+          program_counter += 2;
+        }
+        "m.identity" => {
+          let name = tokens.get(program_counter + 1).ok_or_else(|| "m.identity requires a name".to_string())?;
+          let size = forth_usize(forth_pop_number(&mut stack)?, "identity size")?;
+          let mut matrix = forth_matrix_new(size, size)?;
+          for index in 0..size {
+            matrix.values[index * size + index] = 1;
+          }
+          forth_matrix_save_scoped(store, session, name, matrix)?;
+          program_counter += 2;
+        }
+        "mget" => {
+          let name = tokens.get(program_counter + 1).ok_or_else(|| "mget requires a matrix name".to_string())?;
+          let col = forth_usize(forth_pop_number(&mut stack)?, "matrix column")?;
+          let row = forth_usize(forth_pop_number(&mut stack)?, "matrix row")?;
+          let matrix = forth_matrix_load_scoped(store, session, name)?;
+          stack.push(ForthValue::Number(matrix.values[forth_matrix_index(&matrix, row, col)?]));
+          program_counter += 2;
+        }
+        "mset" => {
+          let name = tokens.get(program_counter + 1).ok_or_else(|| "mset requires a matrix name".to_string())?;
+          let col = forth_usize(forth_pop_number(&mut stack)?, "matrix column")?;
+          let row = forth_usize(forth_pop_number(&mut stack)?, "matrix row")?;
+          let value = forth_pop_number(&mut stack)?;
+          let mut matrix = forth_matrix_load_scoped(store, session, name)?;
+          let index = forth_matrix_index(&matrix, row, col)?;
+          matrix.values[index] = value;
+          forth_matrix_save_scoped(store, session, name, matrix)?;
+          program_counter += 2;
+        }
+        "m.fill" => {
+          let name = tokens.get(program_counter + 1).ok_or_else(|| "m.fill requires a matrix name".to_string())?;
+          let value = forth_pop_number(&mut stack)?;
+          let mut matrix = forth_matrix_load_scoped(store, session, name)?;
+          matrix.values.fill(value);
+          forth_matrix_save_scoped(store, session, name, matrix)?;
+          program_counter += 2;
+        }
+        "m.scale" => {
+          let source_name = tokens.get(program_counter + 1).ok_or_else(|| "m.scale requires a source matrix".to_string())?;
+          let target_name = tokens.get(program_counter + 2).ok_or_else(|| "m.scale requires a target matrix".to_string())?;
+          let scalar = forth_pop_number(&mut stack)?;
+          let matrix = forth_matrix_scale(&forth_matrix_load_scoped(store, session, source_name)?, scalar)?;
+          forth_matrix_save_scoped(store, session, target_name, matrix)?;
+          program_counter += 3;
+        }
+        "m.add" | "m.sub" | "m.mul" => {
+          let left_name = tokens.get(program_counter + 1).ok_or_else(|| format!("{} requires a left matrix", token))?;
+          let right_name = tokens.get(program_counter + 2).ok_or_else(|| format!("{} requires a right matrix", token))?;
+          let target_name = tokens.get(program_counter + 3).ok_or_else(|| format!("{} requires a target matrix", token))?;
+          let left = forth_matrix_load_scoped(store, session, left_name)?;
+          let right = forth_matrix_load_scoped(store, session, right_name)?;
+          let result = match token.as_str() {
+            "m.add" => forth_matrix_add(&left, &right, false)?,
+            "m.sub" => forth_matrix_add(&left, &right, true)?,
+            "m.mul" => forth_matrix_multiply(&left, &right)?,
+            _ => unreachable!(),
+          };
+          forth_matrix_save_scoped(store, session, target_name, result)?;
+          program_counter += 4;
+        }
+        "m.solve" => {
+          let left_name = tokens.get(program_counter + 1).ok_or_else(|| "m.solve requires a left matrix".to_string())?;
+          let right_name = tokens.get(program_counter + 2).ok_or_else(|| "m.solve requires a right matrix".to_string())?;
+          let target_name = tokens.get(program_counter + 3).ok_or_else(|| "m.solve requires a target matrix".to_string())?;
+          let solution = forth_matrix_solve(
+            &forth_matrix_load_scoped(store, session, left_name)?,
+            &forth_matrix_load_scoped(store, session, right_name)?,
+          )?;
+          forth_matrix_save_scoped(store, session, target_name, solution)?;
+          program_counter += 4;
+        }
+        "m.transpose" => {
+          let source_name = tokens.get(program_counter + 1).ok_or_else(|| "m.transpose requires a source matrix".to_string())?;
+          let target_name = tokens.get(program_counter + 2).ok_or_else(|| "m.transpose requires a target matrix".to_string())?;
+          let matrix = forth_matrix_transpose(&forth_matrix_load_scoped(store, session, source_name)?)?;
+          forth_matrix_save_scoped(store, session, target_name, matrix)?;
+          program_counter += 3;
+        }
+        "m.det" => {
+          let name = tokens.get(program_counter + 1).ok_or_else(|| "m.det requires a matrix name".to_string())?;
+          stack.push(ForthValue::Number(forth_matrix_determinant(&forth_matrix_load_scoped(store, session, name)?)?));
+          program_counter += 2;
+        }
+        "m.rows" | "m.cols" => {
+          let name = tokens.get(program_counter + 1).ok_or_else(|| format!("{} requires a matrix name", token))?;
+          let matrix = forth_matrix_load_scoped(store, session, name)?;
+          let dimension = if token == "m.rows" { matrix.rows } else { matrix.cols };
+          stack.push(ForthValue::Number(i64::try_from(dimension).map_err(|_| "matrix dimension overflow".to_string())?));
+          program_counter += 2;
+        }
+        "m.show" => {
+          let name = tokens.get(program_counter + 1).ok_or_else(|| "m.show requires a matrix name".to_string())?;
+          let matrix = forth_matrix_load_scoped(store, session, name)?;
+          output.push(serde_json::to_string(&matrix).map_err(|error| error.to_string())?);
+          program_counter += 2;
+        }
+        "array" => {
+          let count = forth_usize(forth_pop_number(&mut stack)?, "array item count")?;
+          if count > stack.len() {
+            return Err("array requires more stack values than are available".to_string());
+          }
+          let start = stack.len() - count;
+          let values = stack.split_off(start).into_iter()
+            .map(forth_value_to_json)
+            .collect::<Result<Vec<_>, _>>()?;
+          stack.push(ForthValue::Json(Value::Array(values)));
+          program_counter += 1;
+        }
+        "hash" => {
+          let count = forth_usize(forth_pop_number(&mut stack)?, "hash pair count")?;
+          let required = count.checked_mul(2).ok_or_else(|| "hash pair count is too large".to_string())?;
+          if required > stack.len() {
+            return Err("hash requires key/value pairs that are not on the stack".to_string());
+          }
+          let start = stack.len() - required;
+          let mut entries = stack.split_off(start).into_iter();
+          let mut object = Map::new();
+          while let Some(key) = entries.next() {
+            let value = entries.next().expect("validated key/value pair count");
+            object.insert(forth_value_key(key)?, forth_value_to_json(value)?);
+          }
+          stack.push(ForthValue::Json(Value::Object(object)));
+          program_counter += 1;
+        }
+        "c.len" | "a.len" | "h.len" => {
+          let collection = forth_pop_collection(&mut stack)?;
+          let length = match collection {
+            Value::Array(values) => values.len(),
+            Value::Object(values) => values.len(),
+            _ => unreachable!(),
+          };
+          stack.push(ForthValue::Number(i64::try_from(length).map_err(|_| "collection length overflow".to_string())?));
+          program_counter += 1;
+        }
+        "c.get" | "a.get" | "h.get" => {
+          let key = stack.pop().ok_or_else(|| "stack underflow".to_string())?;
+          let collection = forth_pop_collection(&mut stack)?;
+          let value = match collection {
+            Value::Array(values) => values.get(forth_value_index(key)?)
+              .cloned().ok_or_else(|| "array index is out of bounds".to_string())?,
+            Value::Object(values) => values.get(&forth_value_key(key)?)
+              .cloned().unwrap_or(Value::Null),
+            _ => unreachable!(),
+          };
+          stack.push(forth_value_from_json(value)?);
+          program_counter += 1;
+        }
+        "c.set" | "a.set" | "h.set" => {
+          let value = forth_value_to_json(stack.pop().ok_or_else(|| "stack underflow".to_string())?)?;
+          let key = stack.pop().ok_or_else(|| "stack underflow".to_string())?;
+          let mut collection = forth_pop_collection(&mut stack)?;
+          match &mut collection {
+            Value::Array(values) => {
+              let index = forth_value_index(key)?;
+              let slot = values.get_mut(index).ok_or_else(|| "array index is out of bounds".to_string())?;
+              *slot = value;
+            }
+            Value::Object(values) => {
+              values.insert(forth_value_key(key)?, value);
+            }
+            _ => unreachable!(),
+          }
+          stack.push(ForthValue::Json(collection));
+          program_counter += 1;
+        }
+        "c.push" | "a.push" => {
+          let value = forth_value_to_json(stack.pop().ok_or_else(|| "stack underflow".to_string())?)?;
+          let mut collection = forth_pop_collection(&mut stack)?;
+          match &mut collection {
+            Value::Array(values) => values.push(value),
+            Value::Object(_) => return Err("c.push requires an array".to_string()),
+            _ => unreachable!(),
+          }
+          stack.push(ForthValue::Json(collection));
+          program_counter += 1;
+        }
+        "c.pop" | "a.pop" => {
+          let mut collection = forth_pop_collection(&mut stack)?;
+          let value = match &mut collection {
+            Value::Array(values) => values.pop().unwrap_or(Value::Null),
+            Value::Object(_) => return Err("c.pop requires an array".to_string()),
+            _ => unreachable!(),
+          };
+          stack.push(forth_value_from_json(value)?);
+          stack.push(ForthValue::Json(collection));
+          program_counter += 1;
+        }
+        "c.delete" | "a.delete" | "h.delete" => {
+          let key = stack.pop().ok_or_else(|| "stack underflow".to_string())?;
+          let mut collection = forth_pop_collection(&mut stack)?;
+          match &mut collection {
+            Value::Array(values) => {
+              let index = forth_value_index(key)?;
+              if index >= values.len() {
+                return Err("array index is out of bounds".to_string());
+              }
+              values.remove(index);
+            }
+            Value::Object(values) => {
+              values.remove(&forth_value_key(key)?);
+            }
+            _ => unreachable!(),
+          }
+          stack.push(ForthValue::Json(collection));
+          program_counter += 1;
+        }
+        "c.has?" | "h.has?" => {
+          let key = stack.pop().ok_or_else(|| "stack underflow".to_string())?;
+          let collection = forth_pop_collection(&mut stack)?;
+          let exists = match collection {
+            Value::Array(values) => forth_value_index(key).ok().is_some_and(|index| index < values.len()),
+            Value::Object(values) => values.contains_key(&forth_value_key(key)?),
+            _ => unreachable!(),
+          };
+          stack.push(ForthValue::Number(i64::from(exists)));
+          program_counter += 1;
+        }
+        "c.keys" | "h.keys" => {
+          let collection = forth_pop_collection(&mut stack)?;
+          let values = match collection {
+            Value::Object(values) => values.into_iter().map(|(key, _)| Value::String(key)).collect(),
+            Value::Array(_) => return Err("c.keys requires a hash".to_string()),
+            _ => unreachable!(),
+          };
+          stack.push(ForthValue::Json(Value::Array(values)));
+          program_counter += 1;
+        }
+        "null" => {
+          stack.push(ForthValue::Json(Value::Null));
+          program_counter += 1;
+        }
+        "null?" => {
+          let is_null = matches!(stack.pop(), Some(ForthValue::Json(Value::Null)));
+          stack.push(ForthValue::Number(i64::from(is_null)));
+          program_counter += 1;
+        }
+        "interpolate" | "interp" => {
+          let template = forth_pop_text(&mut stack)?;
+          stack.push(ForthValue::Text(forth_interpolate(store, session, &template)?));
+          program_counter += 1;
+        }
+        "mem@" => {
+          let address = forth_pop_number(&mut stack)?;
+          stack.push(ForthValue::Number(program_register(store, &forth_memory_key_scoped(session, address))?));
+          program_counter += 1;
+        }
+        "mem!" => {
+          let address = forth_pop_number(&mut stack)?;
+          let value = forth_pop_number(&mut stack)?;
+          program_set_register(store, &forth_memory_key_scoped(session, address), value)?;
+          program_counter += 1;
+        }
+        "mem.clear" => {
+          forth_memory_clear_scoped(store, session);
+          program_counter += 1;
+        }
+        "variable" | "let" => {
+          let name = tokens.get(program_counter + 1).ok_or_else(|| "variable requires a name".to_string())?;
+          forth_variable_name(name)?;
+          if scoped_vars_entry_id(store, session, name).is_none() {
+            scoped_program_set_register(store, session, name, 0)?;
+          }
+          program_counter += 2;
+        }
+        "@" => {
+          let name = forth_pop_address(&mut stack)?;
+          let value = match scoped_program_value(store, session, &name) {
+            None => ForthValue::Number(0),
+            Some(value) => forth_value_from_json(value)?,
+          };
+          stack.push(value);
+          program_counter += 1;
+        }
+        "!" => {
+          let name = forth_pop_address(&mut stack)?;
+          let value = forth_value_to_json(stack.pop().ok_or_else(|| "stack underflow".to_string())?)?;
+          scoped_program_set_value(store, session, &name, value)?;
+          program_counter += 1;
+        }
+        "if" => {
+          if forth_pop_number(&mut stack)? == 0 {
+            program_counter = if_to_else_or_then.get(&program_counter)
+              .ok_or_else(|| "if without then".to_string())? + 1;
+          } else {
+            program_counter += 1;
+          }
+        }
+        "else" => {
+          program_counter = else_to_then.get(&program_counter)
+            .ok_or_else(|| "else without then".to_string())? + 1;
+        }
+        "then" | "begin" => program_counter += 1,
+        "until" => {
+          if forth_pop_number(&mut stack)? == 0 {
+            program_counter = end_to_begin.get(&program_counter)
+              .ok_or_else(|| "until without begin".to_string())? + 1;
+          } else {
+            program_counter += 1;
+          }
+        }
+        "again" => {
+          program_counter = end_to_begin.get(&program_counter)
+            .ok_or_else(|| "again without begin".to_string())? + 1;
+        }
+        "bye" => break,
+        name if scoped_vars_entry_id(store, session, name).is_some() => {
+          stack.push(ForthValue::Address(name.to_string()));
+          program_counter += 1;
+        }
+        word => return Err(format!("unknown Forth word '{}'", word)),
+      }
+    }
+
+    vars_record_history_scoped(store, session, format!("FORTH executed {} steps", steps));
+    let stack = stack.into_iter().map(|value| match value {
+      ForthValue::Address(name) => Ok(Value::String(format!("&{}", name))),
+      value => forth_value_to_json(value),
+    }).collect::<Result<Vec<_>, _>>()?;
+    Ok(serde_json::json!({
+      "steps": steps,
+      "output": output.join(" "),
+      "calls": calls,
+      "stack": stack,
+      "session_id": session,
+      "vars": vars_snapshot_scoped(store, session),
+    }))
+  }
+
+  fn forth_save_notecard(store: &mut VarsStore, name: &str, source: String) -> Result<(), String> {
+    let key = forth_notecard_key(name)?;
+    let mut values = Map::new();
+    values.insert(key, Value::String(source));
+    vars_set(store, &values);
+    Ok(())
+  }
+
+  fn forth_save_notecard_scoped(store: &mut VarsStore, session: &str, name: &str, source: String) -> Result<(), String> {
+    let key = session_storage_key(session, &forth_notecard_key(name)?);
+    let mut values = Map::new();
+    values.insert(key, Value::String(source));
+    vars_set(store, &values);
+    Ok(())
+  }
+
+  fn forth_load_notecard(store: &VarsStore, name: &str) -> Result<String, String> {
+    let key = forth_notecard_key(name)?;
+    vars_entry_id(store, &key)
+      .and_then(|id| store.entries.get(id))
+      .and_then(|row| row.get("value"))
+      .and_then(Value::as_str)
+      .map(str::to_string)
+      .ok_or_else(|| format!("notecard '{}' was not found", name))
+  }
+
+  fn forth_load_notecard_scoped(store: &VarsStore, session: &str, name: &str) -> Result<String, String> {
+    let key = session_storage_key(session, &forth_notecard_key(name)?);
+    vars_entry_id(store, &key)
+      .and_then(|id| store.entries.get(id))
+      .and_then(|row| row.get("value"))
+      .and_then(Value::as_str)
+      .map(str::to_string)
+      .ok_or_else(|| format!("notecard '{}' was not found", name))
+  }
+
+  fn forth_file_root() -> std::path::PathBuf {
+    std::env::var("MSSL_FORTH_FILE_ROOT")
+      .map(std::path::PathBuf::from)
+      .unwrap_or_else(|_| {
+        std::path::PathBuf::from("/root/midscore_io/tiade-maeepers-saerver-all/forth_files")
+      })
+  }
+
+  fn forth_file_root_scoped(session: &str) -> std::path::PathBuf {
+    forth_file_root().join(session)
+  }
+
+  fn forth_file_path(name: &str) -> Result<std::path::PathBuf, String> {
+    if name.is_empty() || name.len() > 128 || name.starts_with('.') || name.contains("..") ||
+      !name.chars().all(|character| {
+        character.is_ascii_alphanumeric() || character == '_' || character == '-' || character == '.'
+      }) {
+      return Err("file name must be a safe basename of up to 128 characters".to_string());
+    }
+    let root = forth_file_root();
+    std::fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+    Ok(root.join(name))
+  }
+
+  fn forth_file_path_scoped(session: &str, name: &str) -> Result<std::path::PathBuf, String> {
+    let path = forth_file_path(name)?;
+    let file_name = path.file_name().ok_or_else(|| "invalid file name".to_string())?;
+    let root = forth_file_root_scoped(session);
+    std::fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+    Ok(root.join(file_name))
+  }
+
+  fn forth_write_file(name: &str, content: &str) -> Result<usize, String> {
+    const MAX_FILE_BYTES: usize = 65_536;
+    if content.len() > MAX_FILE_BYTES {
+      return Err(format!("file content may not exceed {} bytes", MAX_FILE_BYTES));
+    }
+    let path = forth_file_path(name)?;
+    std::fs::write(path, content).map_err(|error| error.to_string())?;
+    Ok(content.len())
+  }
+
+  fn forth_read_file(name: &str) -> Result<String, String> {
+    let path = forth_file_path(name)?;
+    std::fs::read_to_string(path).map_err(|error| error.to_string())
+  }
+
+  fn forth_list_files() -> Result<Vec<String>, String> {
+    let root = forth_file_root();
+    std::fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+    let mut files = std::fs::read_dir(root).map_err(|error| error.to_string())?
+      .filter_map(Result::ok)
+      .filter_map(|entry| {
+        entry.file_type().ok()?.is_file().then(|| entry.file_name().into_string().ok()).flatten()
+      })
+      .collect::<Vec<_>>();
+    files.sort();
+    Ok(files)
+  }
+
+  fn forth_delete_file(name: &str) -> Result<bool, String> {
+    let path = forth_file_path(name)?;
+    match std::fs::remove_file(path) {
+      Ok(()) => Ok(true),
+      Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+      Err(error) => Err(error.to_string()),
+    }
+  }
+
+  fn forth_write_file_scoped(session: &str, name: &str, content: &str) -> Result<usize, String> {
+    const MAX_FILE_BYTES: usize = 65_536;
+    if content.len() > MAX_FILE_BYTES {
+      return Err(format!("file content may not exceed {} bytes", MAX_FILE_BYTES));
+    }
+    let path = forth_file_path_scoped(session, name)?;
+    std::fs::write(path, content).map_err(|error| error.to_string())?;
+    Ok(content.len())
+  }
+
+  fn forth_read_file_scoped(session: &str, name: &str) -> Result<String, String> {
+    let path = forth_file_path_scoped(session, name)?;
+    std::fs::read_to_string(path).map_err(|error| error.to_string())
+  }
+
+  fn forth_list_files_scoped(session: &str) -> Result<Vec<String>, String> {
+    let root = forth_file_root_scoped(session);
+    std::fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+    let mut files = std::fs::read_dir(root).map_err(|error| error.to_string())?
+      .filter_map(Result::ok)
+      .filter_map(|entry| entry.file_type().ok()?.is_file().then(|| entry.file_name().into_string().ok()).flatten())
+      .collect::<Vec<_>>();
+    files.sort();
+    Ok(files)
+  }
+
+  fn forth_delete_file_scoped(session: &str, name: &str) -> Result<bool, String> {
+    let path = forth_file_path_scoped(session, name)?;
+    match std::fs::remove_file(path) {
+      Ok(()) => Ok(true),
+      Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+      Err(error) => Err(error.to_string()),
+    }
+  }
+
+  fn forth_matrix_key(name: &str) -> Result<String, String> {
+    forth_variable_name(name)?;
+    Ok(format!("forth.matrix.{}", name))
+  }
+
+  fn forth_matrix_validate(matrix: &ForthMatrix) -> Result<(), String> {
+    const MAX_MATRIX_DIMENSION: usize = 64;
+    const MAX_MATRIX_CELLS: usize = 4_096;
+    if matrix.rows == 0 || matrix.cols == 0 || matrix.rows > MAX_MATRIX_DIMENSION || matrix.cols > MAX_MATRIX_DIMENSION {
+      return Err(format!("matrix dimensions must be between 1 and {}", MAX_MATRIX_DIMENSION));
+    }
+    let cells = matrix.rows.checked_mul(matrix.cols).ok_or_else(|| "matrix dimensions overflow".to_string())?;
+    if cells > MAX_MATRIX_CELLS || matrix.values.len() != cells {
+      return Err(format!("matrix must contain exactly {} cells", cells));
+    }
+    Ok(())
+  }
+
+  fn forth_store_json(store: &mut VarsStore, name: &str, value: Value) -> Result<(), String> {
+    if let Some(id) = vars_entry_id(store, name) {
+      if !store.entries.set_with(id, |row| {
+        row.insert("value".to_string(), value.clone());
+      }) {
+        return Err(format!("could not update '{}'", name));
+      }
+    } else {
+      store.entries.add(|row| {
+        row.insert("name".to_string(), Value::String(name.to_string()));
+        row.insert("value".to_string(), value.clone());
+      }).ok_or_else(|| "partitioned variable store is full".to_string())?;
+    }
+    Ok(())
+  }
+
+  fn forth_matrix_load(store: &VarsStore, name: &str) -> Result<ForthMatrix, String> {
+    let key = forth_matrix_key(name)?;
+    let value = vars_entry_id(store, &key)
+      .and_then(|id| store.entries.get(id))
+      .and_then(|row| row.get("value"))
+      .cloned()
+      .ok_or_else(|| format!("matrix '{}' was not found", name))?;
+    let matrix = serde_json::from_value::<ForthMatrix>(value)
+      .map_err(|_| format!("matrix '{}' is invalid", name))?;
+    forth_matrix_validate(&matrix)?;
+    Ok(matrix)
+  }
+
+  fn forth_matrix_save(store: &mut VarsStore, name: &str, matrix: ForthMatrix) -> Result<(), String> {
+    forth_matrix_validate(&matrix)?;
+    let key = forth_matrix_key(name)?;
+    forth_store_json(store, &key, serde_json::to_value(matrix).map_err(|error| error.to_string())?)
+  }
+
+  fn forth_matrix_load_scoped(store: &VarsStore, session: &str, name: &str) -> Result<ForthMatrix, String> {
+    let key = session_storage_key(session, &forth_matrix_key(name)?);
+    let value = vars_entry_id(store, &key)
+      .and_then(|id| store.entries.get(id))
+      .and_then(|row| row.get("value"))
+      .cloned()
+      .ok_or_else(|| format!("matrix '{}' was not found", name))?;
+    let matrix = serde_json::from_value::<ForthMatrix>(value)
+      .map_err(|_| format!("matrix '{}' is invalid", name))?;
+    forth_matrix_validate(&matrix)?;
+    Ok(matrix)
+  }
+
+  fn forth_matrix_save_scoped(store: &mut VarsStore, session: &str, name: &str, matrix: ForthMatrix) -> Result<(), String> {
+    forth_matrix_validate(&matrix)?;
+    let key = session_storage_key(session, &forth_matrix_key(name)?);
+    forth_store_json(store, &key, serde_json::to_value(matrix).map_err(|error| error.to_string())?)
+  }
+
+  fn forth_matrix_new(rows: usize, cols: usize) -> Result<ForthMatrix, String> {
+    let cells = rows.checked_mul(cols).ok_or_else(|| "matrix dimensions overflow".to_string())?;
+    let matrix = ForthMatrix { rows, cols, values: vec![0; cells] };
+    forth_matrix_validate(&matrix)?;
+    Ok(matrix)
+  }
+
+  fn forth_matrix_index(matrix: &ForthMatrix, row: usize, col: usize) -> Result<usize, String> {
+    if row >= matrix.rows || col >= matrix.cols {
+      return Err(format!("matrix index ({}, {}) is outside {}x{}", row, col, matrix.rows, matrix.cols));
+    }
+    Ok(row * matrix.cols + col)
+  }
+
+  fn forth_matrix_add(left: &ForthMatrix, right: &ForthMatrix, subtract: bool) -> Result<ForthMatrix, String> {
+    if left.rows != right.rows || left.cols != right.cols {
+      return Err("matrix dimensions must match".to_string());
+    }
+    let values = left.values.iter().zip(&right.values).map(|(left, right)| {
+      if subtract { left.checked_sub(*right) } else { left.checked_add(*right) }
+        .ok_or_else(|| "matrix arithmetic overflow".to_string())
+    }).collect::<Result<Vec<_>, _>>()?;
+    Ok(ForthMatrix { rows: left.rows, cols: left.cols, values })
+  }
+
+  fn forth_matrix_multiply(left: &ForthMatrix, right: &ForthMatrix) -> Result<ForthMatrix, String> {
+    if left.cols != right.rows {
+      return Err(format!("cannot multiply {}x{} by {}x{}", left.rows, left.cols, right.rows, right.cols));
+    }
+    let mut result = forth_matrix_new(left.rows, right.cols)?;
+    for row in 0..left.rows {
+      for col in 0..right.cols {
+        let mut total = 0i64;
+        for index in 0..left.cols {
+          let product = left.values[row * left.cols + index].checked_mul(right.values[index * right.cols + col])
+            .ok_or_else(|| "matrix arithmetic overflow".to_string())?;
+          total = total.checked_add(product).ok_or_else(|| "matrix arithmetic overflow".to_string())?;
+        }
+        result.values[row * result.cols + col] = total;
+      }
+    }
+    Ok(result)
+  }
+
+  fn forth_matrix_scale(matrix: &ForthMatrix, scalar: i64) -> Result<ForthMatrix, String> {
+    let values = matrix.values.iter().map(|value| {
+      value.checked_mul(scalar).ok_or_else(|| "matrix arithmetic overflow".to_string())
+    }).collect::<Result<Vec<_>, _>>()?;
+    Ok(ForthMatrix { rows: matrix.rows, cols: matrix.cols, values })
+  }
+
+  fn forth_matrix_transpose(matrix: &ForthMatrix) -> Result<ForthMatrix, String> {
+    let mut result = forth_matrix_new(matrix.cols, matrix.rows)?;
+    for row in 0..matrix.rows {
+      for col in 0..matrix.cols {
+        result.values[col * result.cols + row] = matrix.values[row * matrix.cols + col];
+      }
+    }
+    Ok(result)
+  }
+
+  fn forth_matrix_determinant(matrix: &ForthMatrix) -> Result<i64, String> {
+    if matrix.rows != matrix.cols {
+      return Err("determinant requires a square matrix".to_string());
+    }
+    if matrix.rows > 16 {
+      return Err("determinant is limited to 16x16 matrices".to_string());
+    }
+    let size = matrix.rows;
+    if size == 0 { return Ok(1); }
+    if size == 1 { return Ok(matrix.values[0]); }
+    let mut data = matrix.values.iter().map(|value| i128::from(*value)).collect::<Vec<_>>();
+    let mut sign = 1i128;
+    let mut previous_pivot = 1i128;
+    for pivot_index in 0..size - 1 {
+      let pivot_row = (pivot_index..size).find(|row| data[row * size + pivot_index] != 0);
+      let Some(pivot_row) = pivot_row else { return Ok(0); };
+      if pivot_row != pivot_index {
+        for col in 0..size {
+          data.swap(pivot_index * size + col, pivot_row * size + col);
+        }
+        sign = -sign;
+      }
+      let pivot = data[pivot_index * size + pivot_index];
+      for row in pivot_index + 1..size {
+        for col in pivot_index + 1..size {
+          let left = data[row * size + col].checked_mul(pivot).ok_or_else(|| "determinant overflow".to_string())?;
+          let right = data[row * size + pivot_index].checked_mul(data[pivot_index * size + col])
+            .ok_or_else(|| "determinant overflow".to_string())?;
+          let numerator = left.checked_sub(right).ok_or_else(|| "determinant overflow".to_string())?;
+          if numerator % previous_pivot != 0 {
+            return Err("non-exact determinant division".to_string());
+          }
+          data[row * size + col] = numerator / previous_pivot;
+        }
+        data[row * size + pivot_index] = 0;
+      }
+      previous_pivot = pivot;
+    }
+    i64::try_from(sign.checked_mul(data[size * size - 1]).ok_or_else(|| "determinant overflow".to_string())?)
+      .map_err(|_| "determinant exceeds 64-bit integer range".to_string())
+  }
+
+  fn forth_matrix_solve(left: &ForthMatrix, right: &ForthMatrix) -> Result<ForthMatrix, String> {
+    if left.rows != left.cols || right.rows != left.rows {
+      return Err("m.solve requires a square left matrix and a compatible right matrix".to_string());
+    }
+    let determinant = forth_matrix_determinant(left)?;
+    if determinant == 0 {
+      return Err("m.solve requires an invertible left matrix".to_string());
+    }
+    let mut solution = forth_matrix_new(left.cols, right.cols)?;
+    for right_column in 0..right.cols {
+      for solution_row in 0..left.cols {
+        let mut replaced = left.clone();
+        for row in 0..left.rows {
+          replaced.values[row * replaced.cols + solution_row] = right.values[row * right.cols + right_column];
+        }
+        let numerator = forth_matrix_determinant(&replaced)?;
+        if numerator % determinant != 0 {
+          return Err("m.solve only returns exact integer solutions".to_string());
+        }
+        solution.values[solution_row * solution.cols + right_column] = numerator / determinant;
+      }
+    }
+    Ok(solution)
+  }
+
+  fn algebra_variable(value: Option<String>) -> Result<String, String> {
+    let variable = value.unwrap_or_else(|| "x".to_string());
+    if variable.is_empty() || variable.len() > 16 || !variable.chars().enumerate().all(|(index, character)| {
+      if index == 0 { character.is_ascii_alphabetic() } else { character.is_ascii_alphanumeric() || character == '_' }
+    }) {
+      return Err("variable must be an identifier up to 16 characters".to_string());
+    }
+    Ok(variable)
+  }
+
+  fn algebra_parse_term(term: &str, variable: &str) -> Result<(u32, i64), String> {
+    if term.is_empty() {
+      return Err("empty algebra term".to_string());
+    }
+    let Some(variable_index) = term.find(variable) else {
+      return term.parse::<i64>()
+        .map(|coefficient| (0, coefficient))
+        .map_err(|_| format!("invalid constant '{}'", term));
+    };
+    if term[variable_index + variable.len()..].contains(variable) {
+      return Err(format!("term '{}' contains the variable more than once", term));
+    }
+    let coefficient_text = term[..variable_index].strip_suffix('*').unwrap_or(&term[..variable_index]);
+    let coefficient = if coefficient_text.is_empty() || coefficient_text == "+" {
+      1
+    } else if coefficient_text == "-" {
+      -1
+    } else {
+      coefficient_text.parse::<i64>().map_err(|_| format!("invalid coefficient in '{}'", term))?
+    };
+    let suffix = &term[variable_index + variable.len()..];
+    let exponent = if suffix.is_empty() {
+      1
+    } else if let Some(exponent) = suffix.strip_prefix('^') {
+      exponent.parse::<u32>().map_err(|_| format!("invalid exponent in '{}'", term))?
+    } else {
+      return Err(format!("invalid variable term '{}'", term));
+    };
+    Ok((exponent, coefficient))
+  }
+
+  fn algebra_parse(expression: &str, variable: &str) -> Result<BTreeMap<u32, i64>, String> {
+    if expression.len() > 4_096 {
+      return Err("expression may not exceed 4096 characters".to_string());
+    }
+    let expression = expression.chars().filter(|character| !character.is_whitespace()).collect::<String>();
+    if expression.is_empty() {
+      return Err("expression is empty".to_string());
+    }
+    let mut terms = Vec::new();
+    let mut start = 0usize;
+    for (index, character) in expression.char_indices().skip(1) {
+      if character == '+' || character == '-' {
+        terms.push(&expression[start..index]);
+        start = index;
+      }
+    }
+    terms.push(&expression[start..]);
+
+    let mut polynomial = BTreeMap::new();
+    for term in terms {
+      let (exponent, coefficient) = algebra_parse_term(term, variable)?;
+      let combined = polynomial.get(&exponent).copied().unwrap_or(0i64).checked_add(coefficient)
+        .ok_or_else(|| "coefficient overflow".to_string())?;
+      if combined == 0 {
+        polynomial.remove(&exponent);
+      } else {
+        polynomial.insert(exponent, combined);
+      }
+    }
+    Ok(polynomial)
+  }
+
+  fn algebra_term(exponent: u32, coefficient: i64, variable: &str) -> String {
+    if exponent == 0 {
+      return coefficient.to_string();
+    }
+    let symbol = if exponent == 1 { variable.to_string() } else { format!("{}^{}", variable, exponent) };
+    match coefficient {
+      1 => symbol,
+      -1 => format!("-{}", symbol),
+      _ => format!("{}*{}", coefficient, symbol),
+    }
+  }
+
+  fn algebra_format(polynomial: &BTreeMap<u32, i64>, variable: &str) -> String {
+    let terms = polynomial.iter().rev().filter_map(|(exponent, coefficient)| {
+      (*coefficient != 0).then(|| algebra_term(*exponent, *coefficient, variable))
+    }).collect::<Vec<_>>();
+    if terms.is_empty() { "0".to_string() } else {
+      terms.into_iter().enumerate().map(|(index, term)| {
+        if index == 0 || term.starts_with('-') { term } else { format!("+ {}", term) }
+      }).collect::<Vec<_>>().join(" ")
+    }
+  }
+
+  fn algebra_derivative(polynomial: &BTreeMap<u32, i64>) -> Result<BTreeMap<u32, i64>, String> {
+    let mut derivative = BTreeMap::new();
+    for (exponent, coefficient) in polynomial {
+      if *exponent > 0 {
+        let derivative_coefficient = coefficient.checked_mul(i64::from(*exponent))
+          .ok_or_else(|| "coefficient overflow".to_string())?;
+        derivative.insert(exponent - 1, derivative_coefficient);
+      }
+    }
+    Ok(derivative)
+  }
+
+  fn algebra_integral(polynomial: &BTreeMap<u32, i64>, variable: &str) -> Result<String, String> {
+    let mut terms = Vec::new();
+    for (exponent, coefficient) in polynomial.iter().rev() {
+      let next_exponent = exponent.checked_add(1).ok_or_else(|| "exponent overflow".to_string())?;
+      let divisor = i64::from(next_exponent);
+      let symbol = if next_exponent == 1 { variable.to_string() } else { format!("{}^{}", variable, next_exponent) };
+      let term = if coefficient % divisor == 0 {
+        algebra_term(next_exponent, coefficient / divisor, variable)
+      } else if *coefficient == 1 {
+        format!("{}/{}", symbol, divisor)
+      } else if *coefficient == -1 {
+        format!("-{}/{}", symbol, divisor)
+      } else {
+        format!("{}*{}/{}", coefficient, symbol, divisor)
+      };
+      terms.push(term);
+    }
+    if terms.is_empty() { return Ok("C".to_string()); }
+    Ok(format!("{} + C", terms.into_iter().enumerate().map(|(index, term)| {
+      if index == 0 || term.starts_with('-') { term } else { format!("+ {}", term) }
+    }).collect::<Vec<_>>().join(" ")))
+  }
+
+  fn algebra_evaluate(polynomial: &BTreeMap<u32, i64>, at: i64) -> Result<i64, String> {
+    polynomial.iter().try_fold(0i64, |total, (exponent, coefficient)| {
+      let power = at.checked_pow(*exponent).ok_or_else(|| "evaluation overflow".to_string())?;
+      let term = coefficient.checked_mul(power).ok_or_else(|| "evaluation overflow".to_string())?;
+      total.checked_add(term).ok_or_else(|| "evaluation overflow".to_string())
+    })
   }
 
   fn chatlog_store_snapshot(store: &Mutex<ChatlogStore>) -> (String, String) {
@@ -1129,14 +3583,15 @@ async fn main() -> tide::Result<()> {
   }
 
     // Main HTTPS server - handling all defined routes
-let (chatlog_store, vars_store) = restore_memory_stores()
-  .unwrap_or_else(|| (new_chatlog_store(), new_vars_store()));
+let (chatlog_store, vars_store, forth_bridge_queue) = restore_memory_stores()
+  .unwrap_or_else(|| (new_chatlog_store(), new_vars_store(), new_forth_bridge_queue()));
 let state = AppState {
     queue: Mutex::new(Vec::new()),
     results: Mutex::new(Vec::new()),
   chatlog_cache: Arc::new(Mutex::new(new_chatlog_memory_cache())),
   chatlog_store: Arc::new(Mutex::new(chatlog_store)),
   vars_store: Arc::new(Mutex::new(vars_store)),
+  forth_bridge_queue: Arc::new(Mutex::new(forth_bridge_queue)),
 };
 let mut app = tide::with_state(state.clone());
     let state_for_shutdown = state.clone();
@@ -1284,6 +3739,18 @@ struct CompletedResult {
     error: String,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+struct ForthBridgeMessage {
+  id: u64,
+  #[serde(default)]
+  session_id: String,
+  source: String,
+  max_steps: Option<usize>,
+  #[serde(default)]
+  language: String,
+  queued_at: String,
+}
+
 // --------------------------------------------------------
 // AppState (Tide server state)
 // --------------------------------------------------------
@@ -1295,6 +3762,7 @@ struct AppState {
   chatlog_cache: Arc<Mutex<partitioned_array_rust::PartitionedArray>>,
     chatlog_store: Arc<Mutex<ChatlogStore>>,
     vars_store: Arc<Mutex<VarsStore>>,
+    forth_bridge_queue: Arc<Mutex<partitioned_array_rust::PartitionedArray>>,
 }
 
 impl Default for AppState {
@@ -1305,6 +3773,7 @@ impl Default for AppState {
           chatlog_cache: Arc::new(Mutex::new(new_chatlog_memory_cache())),
           chatlog_store: Arc::new(Mutex::new(new_chatlog_store())),
           vars_store: Arc::new(Mutex::new(new_vars_store())),
+          forth_bridge_queue: Arc::new(Mutex::new(new_forth_bridge_queue())),
         }
     }
 }
@@ -1319,6 +3788,7 @@ impl Clone for AppState {
           chatlog_cache: Arc::clone(&self.chatlog_cache),
           chatlog_store: Arc::clone(&self.chatlog_store),
           vars_store: Arc::clone(&self.vars_store),
+          forth_bridge_queue: Arc::clone(&self.forth_bridge_queue),
         }
     }
 }
@@ -1815,6 +4285,13 @@ app.at("/vars/status").post(|_req: Request<AppState>| async move {
       store.revision = store.revision.saturating_add(1);
       drop(store);
 
+      persist_memory_stores(req.state()).map_err(|error| {
+        tide::Error::from_str(
+          StatusCode::InternalServerError,
+          format!("chatlog entry was not persisted: {}", error),
+        )
+      })?;
+
         // Respond
         let mut res = Response::new(StatusCode::Ok);
       res.set_body(format!("Log entry stored in memory with id {}.", row_id));
@@ -1845,10 +4322,15 @@ app.at("/vars/set").post(|mut req: Request<AppState>| async move {
     res.insert_header("Content-Type", "text/plain");
     return Ok(res);
   };
+  let session = session_id(body.get("session_id").and_then(Value::as_str)).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let mut values = values.clone();
+  values.remove("session_id");
   let mut store = req.state().vars_store.lock().map_err(|_| {
     tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
   })?;
-  vars_set(&mut store, values);
+  vars_set_scoped(&mut store, &session, &values);
 
     let mut res = Response::new(StatusCode::Ok);
     //res.set_body("set complete"); -- we don't need to send a body for this response
@@ -1867,11 +4349,14 @@ app.at("/vars/get").post(|mut req: Request<AppState>| async move {
         .and_then(|v| v.as_str())
         .ok_or_else(|| tide::Error::from_str(StatusCode::BadRequest, "missing name"))?
         .to_string();
+    let session = session_id(body.get("session_id").and_then(Value::as_str)).map_err(|error| {
+      tide::Error::from_str(StatusCode::BadRequest, error)
+    })?;
 
     let mut store = req.state().vars_store.lock().map_err(|_| {
       tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
     })?;
-    let val_opt = vars_get(&mut store, &name);
+    let val_opt = vars_get_scoped(&mut store, &session, &name);
 
     if let Some(val) = val_opt {
         let mut res = Response::new(StatusCode::Ok);
@@ -1890,12 +4375,16 @@ app.at("/vars/get").post(|mut req: Request<AppState>| async move {
 });
 
 /// /vars/view
-app.at("/vars/view").post(|req: Request<AppState>| async move {
+app.at("/vars/view").post(|mut req: Request<AppState>| async move {
+  let body: Value = req.body_json().await.unwrap_or_else(|_| Value::Object(Map::new()));
+  let session = session_id(body.get("session_id").and_then(Value::as_str)).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
   let mut store = req.state().vars_store.lock().map_err(|_| {
     tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
   })?;
-  let snapshot_map = vars_snapshot(&store);
-  vars_record_history(&mut store, "VIEW".to_string());
+  let snapshot_map = vars_snapshot_scoped(&store, &session);
+  vars_record_history_scoped(&mut store, &session, "VIEW".to_string());
 
     let mut res = Response::new(StatusCode::Ok);
     res.set_body(serde_json::to_string(&snapshot_map)?);
@@ -1913,11 +4402,14 @@ app.at("/vars/delete").post(|mut req: Request<AppState>| async move {
         .and_then(|v| v.as_str())
         .ok_or_else(|| tide::Error::from_str(StatusCode::BadRequest, "missing name"))?
         .to_string();
+    let session = session_id(body.get("session_id").and_then(Value::as_str)).map_err(|error| {
+      tide::Error::from_str(StatusCode::BadRequest, error)
+    })?;
 
     let mut store = req.state().vars_store.lock().map_err(|_| {
       tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
     })?;
-    vars_delete(&mut store, &name);
+    vars_delete_scoped(&mut store, &session, &name);
 
     let mut res = Response::new(StatusCode::Ok);
     //res.set_body(format!("Deleted {}", name)); -- we don't need to send a body for this response
@@ -1927,11 +4419,15 @@ app.at("/vars/delete").post(|mut req: Request<AppState>| async move {
 });
 
 /// /vars/clear
-app.at("/vars/clear").post(|req: Request<AppState>| async move {
+app.at("/vars/clear").post(|mut req: Request<AppState>| async move {
+  let body: Value = req.body_json().await.unwrap_or_else(|_| Value::Object(Map::new()));
+  let session = session_id(body.get("session_id").and_then(Value::as_str)).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
   let mut store = req.state().vars_store.lock().map_err(|_| {
     tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
   })?;
-  vars_clear(&mut store);
+  vars_clear_scoped(&mut store, &session);
 
     let body = serde_json::json!({
         "result": "cleared",
@@ -1946,13 +4442,15 @@ app.at("/vars/clear").post(|req: Request<AppState>| async move {
 });
 
 /// /vars/history
-app.at("/vars/history").post(|req: Request<AppState>| async move {
+app.at("/vars/history").post(|mut req: Request<AppState>| async move {
+  let body: Value = req.body_json().await.unwrap_or_else(|_| Value::Object(Map::new()));
+  let session = session_id(body.get("session_id").and_then(Value::as_str)).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
   let store = req.state().vars_store.lock().map_err(|_| {
     tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
   })?;
-  let history = store.history.non_empty_ids().into_iter().filter_map(|id| {
-    store.history.get(id).cloned().map(Value::Object)
-  }).collect::<Vec<_>>();
+  let history = vars_history_scoped(&store, &session);
   let mut res = Response::new(StatusCode::Ok);
   res.set_body(serde_json::to_string(&history)?);
   res.insert_header("Content-Type", "application/json; charset=utf-8");
@@ -1960,14 +4458,19 @@ app.at("/vars/history").post(|req: Request<AppState>| async move {
 });
 
 /// /vars/status
-app.at("/vars/status").post(|req: Request<AppState>| async move {
+app.at("/vars/status").post(|mut req: Request<AppState>| async move {
+  let body: Value = req.body_json().await.unwrap_or_else(|_| Value::Object(Map::new()));
+  let session = session_id(body.get("session_id").and_then(Value::as_str)).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
   let store = req.state().vars_store.lock().map_err(|_| {
     tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
   })?;
-  let count = store.entries.non_empty_ids().len();
+  let count = vars_snapshot_scoped(&store, &session).len();
 
     let status = serde_json::json!({
         "vars_count": count,
+        "session_id": session,
         "server": true,
         "debug": true,
         "public": true
@@ -1990,6 +4493,563 @@ app.at("/vars/status").post(|req: Request<AppState>| async move {
         }
     }
     Ok(res)
+});
+
+// Executes a loop-capable register program against the partitioned variable store.
+app.at("/program/run").post(|mut req: Request<AppState>| async move {
+  let program: ProgramRequest = req.body_json().await
+    .map_err(|error| tide::Error::from_str(
+      StatusCode::BadRequest,
+      format!("invalid program body: {}", error),
+    ))?;
+  let mut store = req.state().vars_store.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+  })?;
+  let result = run_program(&mut store, program).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+
+  let mut response = Response::new(StatusCode::Ok);
+  response.set_body(result.to_string());
+  response.insert_header("Content-Type", "application/json; charset=utf-8");
+  Ok(response)
+});
+
+// Returns a decrementing loop suitable for POST /program/run.
+app.at("/program/example").get(|_| async move {
+  let mut response = Response::new(StatusCode::Ok);
+  response.set_body(serde_json::json!({
+    "max_steps": 100,
+    "program": [
+      { "op": "set", "name": "counter", "value": 3 },
+      { "op": "label", "name": "loop" },
+      { "op": "decrement", "name": "counter" },
+      { "op": "jump_if_nonzero", "name": "counter", "target": "loop" },
+      { "op": "halt" }
+    ]
+  }).to_string());
+  response.insert_header("Content-Type", "application/json; charset=utf-8");
+  Ok(response)
+});
+
+// Describes the built-in Forth/Ruby-like runtime and its public API surface.
+app.at("/forth").get(|_| async move {
+  Ok(json_response(serde_json::json!({
+    "language": "Midscore Forth",
+    "implementation": "built into src/main.rs without an external Forth or CAS runtime",
+    "interface": "GET /forth/ui",
+    "ruby_frontend": "GET /ruby; POST /ruby/eval",
+    "storage": {
+      "partitioned_array": ["session-scoped variables", "history", "notecards", "matrices", "Second Life bridge queue"],
+      "sandboxed_files": "POST /forth/files/*"
+    },
+    "bridge": { "languages": ["forth", "ruby"], "queue": "POST /forth/bridge/enqueue" },
+    "routes": [
+      "POST /forth/eval",
+      "POST /ruby/eval",
+      "POST /sessions/:session_id/forth/eval",
+      "POST /sessions/:session_id/ruby/eval",
+      "GET /sessions/:session_id/status",
+      "POST /ruby/notecards/run",
+      "POST /forth/algebra",
+      "POST /forth/notecards/save",
+      "POST /forth/notecards/get",
+      "POST /forth/notecards/list",
+      "POST /forth/notecards/run",
+      "POST /forth/notecards/delete",
+      "POST /forth/files/write",
+      "POST /forth/files/read",
+      "POST /forth/files/list",
+      "POST /forth/files/delete",
+      "POST /forth/matrices/get",
+      "POST /forth/bridge/enqueue",
+      "POST /forth/bridge/poll"
+    ],
+    "words": {
+      "math": ["+", "-", "*", "/", "mod", "abs", "min", "max", "rand", "now"],
+      "comparison": ["=", "!=", "<", "<=", ">", ">=", "true", "false", "nil", "not", "and", "or"],
+      "variables": ["variable", "let", "@", "!", "$name", "name=", "name+=", "name-=", "interpolate"],
+      "collections": ["array", "hash", "c.len", "c.get", "c.set", "c.push", "c.pop", "c.delete", "c.has?", "c.keys", "a.*", "h.*", "null", "null?"],
+      "definitions": [": <name> <body> ;", "non-recursive named words expanded before execution"],
+      "sequencing": ["; separates Forth statements outside definitions", "; separates RubyForth statements outside strings and collections"],
+      "bridging": ["ruby \"<RubyForth source>\" from Forth", "forth \"<Forth source>\" from RubyForth", "forth do ... end multiline blocks in RubyForth"],
+      "control": ["if ... else ... then", "begin ... until", "begin ... again", "bye"],
+      "matrices": ["matrix", "m.identity", "mget", "mset", "m.fill", "m.scale", "m.add", "m.sub", "m.mul", "m.solve", "m.transpose", "m.det", "m.rows", "m.cols", "m.show"],
+      "second_life": ["sl.say", "sl.whisper", "sl.shout", "sl.region_say", "sl.owner_say", "sl.set_text", "sl.set_color", "sl.set_alpha", "sl.play_sound", "sl.set_timer", "sl.set_region_pos", "sl.link_message"]
+    },
+    "sessions": { "body_field": "session_id", "path_routes": "/sessions/:session_id/*", "default": "default", "lsl_default": "prim UUID" },
+    "limits": { "max_steps": 1000000, "max_matrix_dimension": 64, "max_matrix_cells": 4096, "max_file_bytes": 65536 },
+    "matrix_example": "2 2 matrix A 1 0 0 mset A 2 1 1 mset A m.det A puts",
+    "definition_example": ": square dup * ; 6 square puts",
+    "collection_example": "\"name\" \"Ada\" 1 hash \"name\" \"Lin\" 1 hash 2 array people= $people 0 c.get \"name\" c.get puts",
+    "bridge_example": ": square dup * ; 6 ruby \"puts 2 + 3\" square puts",
+    "sequencing_example": "2 3 + puts; : square dup * ; 4 square puts"
+  })))
+});
+
+// Browser console for Forth evaluation, algebra, and authenticated bridge jobs.
+app.at("/forth/ui").get(|_| async move {
+  let mut response = Response::new(StatusCode::Ok);
+  response.set_body(r###"<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Midscore Forth</title>
+<style>
+:root{--ink:#17262b;--paper:#f4f0e5;--panel:#fffdf7;--line:#9eb0a7;--sea:#0d6b67;--coral:#ba4936}*{box-sizing:border-box}body{margin:0;background:repeating-linear-gradient(0deg,rgba(13,107,103,.045) 0 1px,transparent 1px 30px),var(--paper);color:var(--ink);font-family:Georgia,serif}main{max-width:1120px;margin:auto;padding:30px 18px 44px}header{display:flex;justify-content:space-between;align-items:end;border-bottom:2px solid var(--ink);padding-bottom:14px;gap:14px}h1{margin:0;font-size:30px}.route,label,button,input,textarea,pre{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.route,label{font-size:12px;color:#526863}.grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(280px,.7fr);gap:20px;margin-top:20px}.panel{background:var(--panel);border:1px solid var(--line);padding:16px;box-shadow:5px 5px 0 rgba(23,38,43,.08)}label{display:block;text-transform:uppercase;margin:0 0 7px;font-weight:700}textarea,input{width:100%;border:1px solid var(--line);background:#fff;padding:10px;color:var(--ink);font-size:14px}textarea{height:300px;resize:vertical;line-height:1.45}.row{display:grid;grid-template-columns:1fr 120px;gap:10px;margin-top:12px}.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}button{border:1px solid var(--ink);background:var(--sea);color:#fff;padding:9px 12px;font-weight:700;cursor:pointer}button.bridge{background:var(--coral)}button.plain{background:var(--panel);color:var(--ink)}pre{margin:0;min-height:200px;max-height:420px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;background:#14272c;color:#dff1ea;font-size:13px;line-height:1.4}.status{min-height:18px;margin-top:9px;color:#526863;font:12px ui-monospace,SFMono-Regular,Consolas,monospace}@media(max-width:760px){header{align-items:start;flex-direction:column}.grid{grid-template-columns:1fr}.row{grid-template-columns:1fr}}
+</style></head><body><main><header><h1>Midscore Forth</h1><div class="route">partitioned-array console</div></header><div class="grid"><section class="panel"><label for="source">Source</label><textarea id="source">let counter 3 counter ! begin $counter puts 1 counter-= $counter 0= until</textarea><div class="row"><div><label for="token">Second Life bridge token</label><input id="token" type="password" autocomplete="off"></div><div><label for="steps">Max steps</label><input id="steps" type="number" min="1" max="1000000" value="10000"></div></div><div class="actions"><button id="run">Run Forth</button><button id="ruby" class="plain">Run RubyForth</button><button id="queue" class="bridge">Queue Forth for SL</button><button id="queueRuby" class="bridge">Queue Ruby for SL</button><button id="catalog" class="plain">Catalog</button></div><div id="status" class="status"></div></section><section class="panel"><label for="expression">Integer polynomial</label><input id="expression" value="3*x^2 - 2*x + 7"><div class="actions"><button id="algebra" class="plain">Analyze</button></div><div style="margin-top:18px"><label for="output">Response</label><pre id="output">Ready.</pre></div></section></div></main><script>
+const $=s=>document.querySelector(s),out=$('#output'),status=$('#status');
+async function post(path,body){status.textContent='Working...';try{const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await r.json().catch(async()=>({error:await r.text()}));out.textContent=JSON.stringify(data,null,2);status.textContent=r.ok?'Done.':'Request failed.';return data}catch(e){out.textContent=String(e);status.textContent='Network error.'}}
+function program(){return{source:$('#source').value,max_steps:Number($('#steps').value)||10000}}
+$('#run').onclick=()=>post('/forth/eval',program());$('#ruby').onclick=()=>post('/ruby/eval',program());$('#queue').onclick=()=>post('/forth/bridge/enqueue',{...program(),token:$('#token').value,language:'forth'});$('#queueRuby').onclick=()=>post('/forth/bridge/enqueue',{...program(),token:$('#token').value,language:'ruby'});$('#algebra').onclick=()=>post('/forth/algebra',{expression:$('#expression').value});$('#catalog').onclick=async()=>{const r=await fetch('/forth');out.textContent=JSON.stringify(await r.json(),null,2);status.textContent='Catalog loaded.'};
+</script></body></html>"###);
+  response.insert_header("Content-Type", "text/html; charset=utf-8");
+  Ok(response)
+});
+
+// Executes Forth source against integer variables in the partitioned array.
+app.at("/forth/eval").post(|mut req: Request<AppState>| async move {
+  let program: ForthRunRequest = req.body_json().await.map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, format!("invalid Forth body: {}", error))
+  })?;
+  let session = session_id(program.session_id.as_deref()).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let mut store = req.state().vars_store.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+  })?;
+  let result = run_forth(&mut store, &session, program).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let mut response = Response::new(StatusCode::Ok);
+  response.set_body(result.to_string());
+  response.insert_header("Content-Type", "application/json; charset=utf-8");
+  Ok(response)
+});
+
+// Executes Forth in the session named by the route instead of the request body.
+app.at("/sessions/:session_id/forth/eval").post(|mut req: Request<AppState>| async move {
+  let requested_session = req.param("session_id")?.to_string();
+  let session = session_id(Some(&requested_session)).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let mut program: ForthRunRequest = req.body_json().await.map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, format!("invalid Forth body: {}", error))
+  })?;
+  program.session_id = Some(session.clone());
+  let mut store = req.state().vars_store.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+  })?;
+  let result = run_forth(&mut store, &session, program).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  Ok(json_response(result))
+});
+
+// Returns the logical values visible in one durable partitioned-array session.
+app.at("/sessions/:session_id/status").get(|req: Request<AppState>| async move {
+  let requested_session = req.param("session_id")?.to_string();
+  let session = session_id(Some(&requested_session)).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let store = req.state().vars_store.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+  })?;
+  let values = vars_snapshot_scoped(&store, &session);
+  Ok(json_response(serde_json::json!({
+    "session_id": session,
+    "value_count": values.len(),
+    "values": values,
+  })))
+});
+
+// Documents the Ruby-shaped frontend that compiles into the Forth runtime.
+app.at("/ruby").get(|_| async move {
+  Ok(json_response(serde_json::json!({
+    "language": "RubyForth",
+    "endpoint": "POST /ruby/eval",
+    "compiles_to": "Midscore Forth",
+    "notecard_runner": "POST /ruby/notecards/run",
+    "supported": ["integer and string expressions", "#{name} string interpolation", "semicolon statement separation", "one-line array and hash literals", "get", "set", "push", "pop", "delete", "keys", "length", "has", "assignment", "+=", "-=", "*=", "/=", "puts", "p", "if", "unless", "elsif", "else", "while", "until", "Integer#times", "forth string bridge", "forth do ... end", "end"],
+    "not_supported": ["arbitrary Ruby gems", "eval", "require", "classes", "methods", "arbitrary interpolation expressions", "multiline collection literals"],
+    "example": "count = 0\nwhile count < 3\n  puts count\n  count += 1\nend"
+  })))
+});
+
+// Compiles a Ruby-shaped subset into Forth and executes it against the same partitioned state.
+app.at("/ruby/eval").post(|mut req: Request<AppState>| async move {
+  let program: RubyRunRequest = req.body_json().await.map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, format!("invalid Ruby body: {}", error))
+  })?;
+  let session = session_id(program.session_id.as_deref()).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let compiled_forth = ruby_compile(&program.source).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let mut store = req.state().vars_store.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+  })?;
+  let mut result = run_forth(&mut store, &session, ForthRunRequest {
+    source: compiled_forth.clone(),
+    max_steps: program.max_steps,
+    session_id: None,
+  }).map_err(|error| tide::Error::from_str(StatusCode::BadRequest, error))?;
+  if let Value::Object(result) = &mut result {
+    result.insert("compiled_forth".to_string(), Value::String(compiled_forth));
+    result.insert("language".to_string(), Value::String("RubyForth".to_string()));
+  }
+  Ok(json_response(result))
+});
+
+// Executes RubyForth in the session named by the route instead of the request body.
+app.at("/sessions/:session_id/ruby/eval").post(|mut req: Request<AppState>| async move {
+  let requested_session = req.param("session_id")?.to_string();
+  let session = session_id(Some(&requested_session)).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let mut program: RubyRunRequest = req.body_json().await.map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, format!("invalid Ruby body: {}", error))
+  })?;
+  program.session_id = Some(session.clone());
+  let compiled_forth = ruby_compile(&program.source).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let mut store = req.state().vars_store.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+  })?;
+  let mut result = run_forth(&mut store, &session, ForthRunRequest {
+    source: compiled_forth.clone(),
+    max_steps: program.max_steps,
+    session_id: None,
+  }).map_err(|error| tide::Error::from_str(StatusCode::BadRequest, error))?;
+  if let Value::Object(result) = &mut result {
+    result.insert("compiled_forth".to_string(), Value::String(compiled_forth));
+    result.insert("language".to_string(), Value::String("RubyForth".to_string()));
+  }
+  Ok(json_response(result))
+});
+
+// Loads a persisted notecard, compiles its Ruby-shaped source, and executes it.
+app.at("/ruby/notecards/run").post(|mut req: Request<AppState>| async move {
+  let notecard: ForthNotecardNameRequest = req.body_json().await.map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, format!("invalid Ruby notecard body: {}", error))
+  })?;
+  let session = session_id(notecard.session_id.as_deref()).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let mut store = req.state().vars_store.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+  })?;
+  let source = forth_load_notecard_scoped(&store, &session, &notecard.name).map_err(|error| {
+    tide::Error::from_str(StatusCode::NotFound, error)
+  })?;
+  let compiled_forth = ruby_compile(&source).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let mut result = run_forth(&mut store, &session, ForthRunRequest {
+    source: compiled_forth.clone(),
+    max_steps: notecard.max_steps,
+    session_id: None,
+  }).map_err(|error| tide::Error::from_str(StatusCode::BadRequest, error))?;
+  if let Value::Object(result) = &mut result {
+    result.insert("notecard".to_string(), Value::String(notecard.name));
+    result.insert("compiled_forth".to_string(), Value::String(compiled_forth));
+    result.insert("language".to_string(), Value::String("RubyForth".to_string()));
+  }
+  Ok(json_response(result))
+});
+
+// Queues Forth source for the configured in-world bridge object.
+app.at("/forth/bridge/enqueue").post(|mut req: Request<AppState>| async move {
+  const MAX_BRIDGE_QUEUE: usize = 128;
+  const MAX_BRIDGE_SOURCE_BYTES: usize = 65_536;
+
+  let command: ForthBridgeEnqueueRequest = req.body_json().await.map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, format!("invalid bridge body: {}", error))
+  })?;
+  forth_validate_bridge_token(&command.token).map_err(|error| {
+    tide::Error::from_str(StatusCode::Unauthorized, error)
+  })?;
+  let session = session_id(command.session_id.as_deref()).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  if command.source.len() > MAX_BRIDGE_SOURCE_BYTES {
+    return Err(tide::Error::from_str(StatusCode::BadRequest, "bridge source exceeds 65536 bytes"));
+  }
+  if command.max_steps.is_some_and(|steps| steps == 0 || steps > 1_000_000) {
+    return Err(tide::Error::from_str(StatusCode::BadRequest, "max_steps must be between 1 and 1000000"));
+  }
+
+  let mut queue = req.state().forth_bridge_queue.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "Forth bridge queue lock poisoned")
+  })?;
+  if queue.non_empty_ids().len() >= MAX_BRIDGE_QUEUE {
+    return Err(tide::Error::from_str(StatusCode::ServiceUnavailable, "Forth bridge queue is full"));
+  }
+  let source = command.source;
+  let max_steps = command.max_steps;
+  let language = command.language.unwrap_or_else(|| "forth".to_string());
+  if language != "forth" && language != "ruby" {
+    return Err(tide::Error::from_str(StatusCode::BadRequest, "bridge language must be 'forth' or 'ruby'"));
+  }
+  let queued_at = Utc::now().to_rfc3339();
+  let id = queue.add(|row| {
+    row.insert("session_id".to_string(), Value::String(session.clone()));
+    row.insert("source".to_string(), Value::String(source.clone()));
+    if let Some(max_steps) = max_steps {
+      row.insert("max_steps".to_string(), Value::from(max_steps as u64));
+    }
+    row.insert("language".to_string(), Value::String(language.clone()));
+    row.insert("queued_at".to_string(), Value::String(queued_at.clone()));
+  }).ok_or_else(|| tide::Error::from_str(StatusCode::InsufficientStorage, "Forth bridge queue is full"))?;
+  let message = ForthBridgeMessage {
+    id: id as u64,
+    session_id: session,
+    source,
+    max_steps,
+    language,
+    queued_at,
+  };
+  Ok(json_response(serde_json::json!({ "queued": message })))
+});
+
+// Delivers one queued Forth program to an authenticated in-world bridge object.
+app.at("/forth/bridge/poll").post(|mut req: Request<AppState>| async move {
+  let request: ForthBridgePollRequest = req.body_json().await.map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, format!("invalid bridge body: {}", error))
+  })?;
+  forth_validate_bridge_token(&request.token).map_err(|error| {
+    tide::Error::from_str(StatusCode::Unauthorized, error)
+  })?;
+  let session = session_id(request.session_id.as_deref()).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let mut queue = req.state().forth_bridge_queue.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "Forth bridge queue lock poisoned")
+  })?;
+  let message_id = queue.non_empty_ids().into_iter().find(|id| {
+    queue.get(*id)
+      .and_then(|row| row.get("session_id"))
+      .and_then(Value::as_str)
+      .map(|value| value == session)
+      .unwrap_or(false)
+  });
+  let message = message_id.and_then(|id| {
+    let message = queue.get(id).and_then(|row| {
+      Some(ForthBridgeMessage {
+        id: id as u64,
+        session_id: session.clone(),
+        source: row.get("source")?.as_str()?.to_string(),
+        max_steps: row.get("max_steps").and_then(Value::as_u64).and_then(|value| usize::try_from(value).ok()),
+        language: row.get("language").and_then(Value::as_str).filter(|value| !value.is_empty()).unwrap_or("forth").to_string(),
+        queued_at: row.get("queued_at")?.as_str()?.to_string(),
+      })
+    });
+    let _ = queue.delete(id);
+    message
+  });
+  Ok(json_response(serde_json::json!({ "message": message, "pending": queue.non_empty_ids().len() })))
+});
+
+// Simplifies, differentiates, integrates, and optionally evaluates an integer polynomial.
+app.at("/forth/algebra").post(|mut req: Request<AppState>| async move {
+  let request: ForthAlgebraRequest = req.body_json().await.map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, format!("invalid algebra body: {}", error))
+  })?;
+  let variable = algebra_variable(request.variable).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let polynomial = algebra_parse(&request.expression, &variable).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let derivative = algebra_derivative(&polynomial).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let integral = algebra_integral(&polynomial, &variable).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let value = request.at.map(|at| algebra_evaluate(&polynomial, at)).transpose().map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  Ok(json_response(serde_json::json!({
+    "variable": variable,
+    "simplified": algebra_format(&polynomial, &variable),
+    "derivative": algebra_format(&derivative, &variable),
+    "integral": integral,
+    "at": request.at,
+    "value": value,
+  })))
+});
+
+// Retrieves a persisted matrix created through the Forth matrix words.
+app.at("/forth/matrices/get").post(|mut req: Request<AppState>| async move {
+  let request: ForthMatrixNameRequest = req.body_json().await.map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, format!("invalid matrix body: {}", error))
+  })?;
+  let session = session_id(request.session_id.as_deref()).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let store = req.state().vars_store.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+  })?;
+  let matrix = forth_matrix_load_scoped(&store, &session, &request.name).map_err(|error| {
+    tide::Error::from_str(StatusCode::NotFound, error)
+  })?;
+  Ok(json_response(serde_json::json!({ "name": request.name, "matrix": matrix })))
+});
+
+// Saves a named Forth notecard source in the partitioned variable store.
+app.at("/forth/notecards/save").post(|mut req: Request<AppState>| async move {
+  let notecard: ForthNotecardRequest = req.body_json().await.map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, format!("invalid notecard body: {}", error))
+  })?;
+  let session = session_id(notecard.session_id.as_deref()).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let mut store = req.state().vars_store.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+  })?;
+  forth_save_notecard_scoped(&mut store, &session, &notecard.name, notecard.source).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  Ok(json_response(serde_json::json!({ "saved": notecard.name })))
+});
+
+// Retrieves a named Forth notecard source.
+app.at("/forth/notecards/get").post(|mut req: Request<AppState>| async move {
+  let notecard: ForthNotecardNameRequest = req.body_json().await.map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, format!("invalid notecard body: {}", error))
+  })?;
+  let session = session_id(notecard.session_id.as_deref()).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let store = req.state().vars_store.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+  })?;
+  let source = forth_load_notecard_scoped(&store, &session, &notecard.name).map_err(|error| {
+    tide::Error::from_str(StatusCode::NotFound, error)
+  })?;
+  Ok(json_response(serde_json::json!({ "name": notecard.name, "source": source })))
+});
+
+// Lists the Forth notecards currently stored in the partitioned variable store.
+app.at("/forth/notecards/list").post(|mut req: Request<AppState>| async move {
+  let body: Value = req.body_json().await.unwrap_or_else(|_| Value::Object(Map::new()));
+  let session = session_id(body.get("session_id").and_then(Value::as_str)).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let store = req.state().vars_store.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+  })?;
+  let prefix = session_storage_key(&session, "forth.notecard.");
+  let notecards = store.entries.non_empty_ids().into_iter().filter_map(|id| {
+    let row = store.entries.get(id)?;
+    let name = row.get("name")?.as_str()?.strip_prefix(&prefix)?.to_string();
+    Some(serde_json::json!({ "name": name }))
+  }).collect::<Vec<_>>();
+  Ok(json_response(serde_json::json!({ "notecards": notecards })))
+});
+
+// Runs a saved Forth notecard.
+app.at("/forth/notecards/run").post(|mut req: Request<AppState>| async move {
+  let notecard: ForthNotecardNameRequest = req.body_json().await.map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, format!("invalid notecard body: {}", error))
+  })?;
+  let session = session_id(notecard.session_id.as_deref()).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let mut store = req.state().vars_store.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+  })?;
+  let source = forth_load_notecard_scoped(&store, &session, &notecard.name).map_err(|error| {
+    tide::Error::from_str(StatusCode::NotFound, error)
+  })?;
+  let result = run_forth(&mut store, &session, ForthRunRequest {
+    source,
+    max_steps: notecard.max_steps,
+    session_id: None,
+  }).map_err(|error| tide::Error::from_str(StatusCode::BadRequest, error))?;
+  Ok(json_response(result))
+});
+
+// Removes a saved Forth notecard.
+app.at("/forth/notecards/delete").post(|mut req: Request<AppState>| async move {
+  let notecard: ForthNotecardNameRequest = req.body_json().await.map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, format!("invalid notecard body: {}", error))
+  })?;
+  let session = session_id(notecard.session_id.as_deref()).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let key = session_storage_key(&session, &forth_notecard_key(&notecard.name).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?);
+  let mut store = req.state().vars_store.lock().map_err(|_| {
+    tide::Error::from_str(StatusCode::InternalServerError, "variable store lock poisoned")
+  })?;
+  if let Some(id) = vars_entry_id(&store, &key) {
+    let _ = store.entries.delete(id);
+  }
+  Ok(json_response(serde_json::json!({ "deleted": notecard.name })))
+});
+
+// Writes a UTF-8 file into the server-side Forth sandbox.
+app.at("/forth/files/write").post(|mut req: Request<AppState>| async move {
+  let file: ForthFileWriteRequest = req.body_json().await.map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, format!("invalid file body: {}", error))
+  })?;
+  let session = session_id(file.session_id.as_deref()).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let bytes = forth_write_file_scoped(&session, &file.name, &file.content).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  Ok(json_response(serde_json::json!({ "name": file.name, "bytes": bytes })))
+});
+
+// Reads a UTF-8 file from the server-side Forth sandbox.
+app.at("/forth/files/read").post(|mut req: Request<AppState>| async move {
+  let file: ForthFileNameRequest = req.body_json().await.map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, format!("invalid file body: {}", error))
+  })?;
+  let session = session_id(file.session_id.as_deref()).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let content = forth_read_file_scoped(&session, &file.name).map_err(|error| {
+    tide::Error::from_str(StatusCode::NotFound, error)
+  })?;
+  Ok(json_response(serde_json::json!({ "name": file.name, "content": content })))
+});
+
+// Lists files in the server-side Forth sandbox.
+ app.at("/forth/files/list").post(|mut req: Request<AppState>| async move {
+  let body: Value = req.body_json().await.unwrap_or_else(|_| Value::Object(Map::new()));
+  let session = session_id(body.get("session_id").and_then(Value::as_str)).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let files = forth_list_files_scoped(&session).map_err(|error| {
+    tide::Error::from_str(StatusCode::InternalServerError, error)
+  })?;
+  Ok(json_response(serde_json::json!({ "files": files })))
+});
+
+// Deletes a file from the server-side Forth sandbox.
+app.at("/forth/files/delete").post(|mut req: Request<AppState>| async move {
+  let file: ForthFileNameRequest = req.body_json().await.map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, format!("invalid file body: {}", error))
+  })?;
+  let session = session_id(file.session_id.as_deref()).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  let deleted = forth_delete_file_scoped(&session, &file.name).map_err(|error| {
+    tide::Error::from_str(StatusCode::BadRequest, error)
+  })?;
+  Ok(json_response(serde_json::json!({ "name": file.name, "deleted": deleted })))
+});
+
+// Returns a Forth notecard that counts down and prints zero.
+app.at("/forth/example").get(|_| async move {
+  Ok(json_response(serde_json::json!({
+    "name": "countdown",
+    "source": "variable counter 3 counter ! begin counter @ 1 - dup counter ! dup 0= until ."
+  })))
 });
 
       use tide::prelude::*;

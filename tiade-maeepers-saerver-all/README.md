@@ -12,6 +12,102 @@ Tide-based Rust server that ports the Roda-era behavior and now uses LineDB-back
 - LineDB integrated as the primary persistence backend.
 - Blog and gallery state load/save through LineDB table mapping.
 - Gallery image processing pipeline with derivative generation (original, thumbnail, resized).
+- Partitioned-array-backed register programs with loop-capable control flow.
+
+## Program Routes
+
+- `GET /program/example` returns a runnable decrementing-loop program.
+- `POST /program/run` executes a JSON program against the shared partitioned variable store.
+
+Programs use named integer registers in the existing partitioned array. Supported
+operations are `set`, `increment`, `decrement`, `label`, `jump`,
+`jump_if_nonzero`, and `halt`. `jump` and `jump_if_nonzero` target a label name;
+`set` accepts an integer `value`. Each request may set `max_steps` from 1 through
+1,000,000 and returns the final variable snapshot. The per-request limit prevents
+an accidental infinite loop from holding the HTTP handler indefinitely.
+
+```json
+{
+	"max_steps": 100,
+	"program": [
+		{ "op": "set", "name": "counter", "value": 3 },
+		{ "op": "label", "name": "loop" },
+		{ "op": "decrement", "name": "counter" },
+		{ "op": "jump_if_nonzero", "name": "counter", "target": "loop" },
+		{ "op": "halt" }
+	]
+}
+```
+
+## Forth Console And Second Life Bridge
+
+- `GET /forth` returns the machine-readable Forth API catalog.
+- `GET /forth/ui` provides a browser console for evaluation, algebra, and bridge jobs.
+- `POST /forth/eval` executes Forth/Ruby-like source and returns output, stack state,
+  partitioned variables, matrices, and allowlisted Second Life calls.
+- `POST /forth/bridge/enqueue` queues source for an in-world bridge object.
+- `POST /forth/bridge/poll` delivers one queued source program to that object.
+
+Forth variables, history, notecards, matrices, and pending Second Life bridge
+jobs are persisted through `partitioned_array_rust`. The file routes remain a
+separate sandboxed UTF-8 file store because they intentionally model file I/O.
+
+To enable the bridge, set the same nonempty token in the server environment and
+the `BRIDGE_TOKEN` constant in `src/Relote.Stack.Service.lsl`:
+
+```sh
+export MSSL_FORTH_BRIDGE_TOKEN='replace-with-a-long-random-token'
+```
+
+After deploying the script, the owner can use `/1111 bridge-on`. The browser
+console queues Forth source with that token; the object polls, evaluates it
+through the normal runtime, and executes only documented `sl.*` calls. Second
+Life permissions, parcel restrictions, and LSL function availability still
+apply.
+
+Bridge jobs may include `"language":"forth"` or `"language":"ruby"`; the
+browser console provides a separate queue action for each. The LSL poller sends
+Ruby jobs through `POST /ruby/eval` and Forth jobs through `POST /forth/eval`.
+
+## RubyForth
+
+`POST /ruby/eval` compiles a Ruby-shaped language into the same Forth runtime,
+so variables, matrices, notecards, bridge jobs, and allowed `sl.*` actions use
+the partitioned store and the existing execution limits. The browser console at
+`GET /forth/ui` includes a `Run RubyForth` command, and the LSL script supports
+`/1111 ruby ...`, `/1111 ruby-say <channel> ...`, `/1111 ruby-run <notecard>`,
+and `/1111 ruby-run-say <channel> <notecard>`.
+
+Supported syntax includes integer and string expressions, `=`, `+=`, `-=`,
+`*=`, `/=`, `puts`, `p`, `if`, `unless`, `elsif`, `else`, `while`, `until`,
+`n.times do ... end`, and `end`.
+It deliberately does not expose Ruby `eval`, `require`, gems, classes, methods,
+or arbitrary subprocess/file access.
+
+```ruby
+count = 0
+while count < 3
+	puts count
+	count += 1
+end
+```
+
+## Matrix Forth
+
+Matrices are stored in the same partitioned variable store as Forth state.
+`m.scale <source> <target>` consumes an integer scalar from the stack, while
+`m.solve <left> <right> <target>` solves $A X = B$ only when $A$ is invertible
+and every result is an exact integer. The runtime rejects fractional or
+overflowing results.
+
+```forth
+2 2 matrix A
+2 0 0 mset A 1 1 1 mset A
+2 1 matrix B
+4 0 0 mset B 6 1 0 mset B
+m.solve A B X
+m.show X
+```
 
 ## Persistence
 
