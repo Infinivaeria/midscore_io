@@ -109,6 +109,8 @@ language state and are not automatically executable.
 | POST | `/forth/bridge/enqueue` | Queue Forth or RubyForth using `token`, `source`, optional `language`, optional `max_steps`, and optional `session_id`. |
 | POST | `/forth/bridge/poll` | Authenticated LSL poll; returns one matching queued job. |
 | POST | `/sl_logger` | Store incoming Second Life log data in the Rust `partitioned_array_rust` chatlog array and immediately persist the full memory snapshot to disk. |
+| POST | `/avatarfrequency` | Store a cumulative nearby-avatar scan snapshot containing UUIDs, names, encounter counts, scan totals, and timing metadata. |
+| GET | `/avatarfrequency` | Render the live avatar-frequency HTML dashboard. Add `?format=json` for probabilities, encounter rates, count deltas, and per-source scan statistics. |
 
 Set `MSSL_FORTH_BRIDGE_TOKEN` on the server and the same `BRIDGE_TOKEN` in the
 LSL object. Use `/1111 bridge-on` to start polling. The LSL client polls
@@ -128,6 +130,11 @@ immediately, then on its timer interval, and prevents overlapping polls with
   JSON snapshot configured by `MSSL_MEMORY_STORE_PATH`.
 6. Atomically replace the snapshot file through a temporary file and rename.
 7. Return success only after the disk write succeeds.
+
+`/avatarfrequency` uses a separate persisted partitioned array. The LSL scanner
+posts a cumulative snapshot on every timer scan, so the read route can derive
+current probabilities, encounter rates, count deltas, and source-level scan
+statistics without mixing presence observations into chat moderation records.
 
 `/chatlog` is read-only. It reads the current in-memory partitioned array and
 may cache rendered dashboard output, but it does not create a second log store.

@@ -1,2 +1,6 @@
-    Blocking waiting for file lock on package cache
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.36s
+    Checking rustls v0.23.44
+    Checking rb-sys v0.9.130
+    Checking magnus v0.9.0 (https://github.com/matsadler/magnus#9407bd98)
+    Checking ureq v3.4.1
+    Checking ollama_game_client_magnus v3.0.0 (/root/midscore_io/ollama_game_client_magnus)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 11.84s

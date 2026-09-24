@@ -126,6 +126,11 @@ m.show X
 - `GET /chatlog/markov` and `GET /chatlog/markov.json` generate Markov-chain
   sentence samples from the logged chat; `GET /chatlog/markov/transitions.json`
   exposes the underlying state-transition table.
+- `GET /avatarfrequency` opens the timer-driven nearby-avatar frequency HTML
+	dashboard; `GET /avatarfrequency?format=json` exposes the underlying table,
+	including UUID/name pairs, probabilities, encounter rates, count deltas, and
+	per-source scan statistics. The `/chatlog` dashboard embeds and auto-refreshes
+	this view; LSL scanners upload snapshots with `POST /avatarfrequency`.
 
 ### Custom Alert Words
 

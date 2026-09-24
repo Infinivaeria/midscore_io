@@ -910,6 +910,12 @@ async fn main() -> tide::Result<()> {
     store
   }
 
+  fn new_avatar_frequency_store() -> partitioned_array_rust::PartitionedArray {
+    let mut store = partitioned_array_rust::PartitionedArray::new(1, 1024, 1, true);
+    store.allocate(false);
+    store
+  }
+
   struct ChatlogStore {
     entries: partitioned_array_rust::PartitionedArray,
     revision: u64,
@@ -932,6 +938,8 @@ async fn main() -> tide::Result<()> {
     // Defaults to an empty store so snapshots saved before this feature existed still load.
     #[serde(default = "new_custom_words_store")]
     custom_words: partitioned_array_rust::PartitionedArray,
+    #[serde(default = "new_avatar_frequency_store")]
+    avatar_frequency: partitioned_array_rust::PartitionedArray,
   }
 
   fn new_chatlog_store() -> ChatlogStore {
@@ -961,7 +969,7 @@ async fn main() -> tide::Result<()> {
       })
   }
 
-  fn restore_memory_stores() -> Option<(ChatlogStore, VarsStore, partitioned_array_rust::PartitionedArray, partitioned_array_rust::PartitionedArray)> {
+  fn restore_memory_stores() -> Option<(ChatlogStore, VarsStore, partitioned_array_rust::PartitionedArray, partitioned_array_rust::PartitionedArray, partitioned_array_rust::PartitionedArray)> {
     let bytes = std::fs::read(memory_store_path()).ok()?;
     let snapshot = serde_json::from_slice::<PersistedMemoryStores>(&bytes).ok()?;
     if snapshot.version != 1 {
@@ -978,6 +986,7 @@ async fn main() -> tide::Result<()> {
       },
       snapshot.forth_bridge_queue,
       snapshot.custom_words,
+      snapshot.avatar_frequency,
     ))
   }
 
@@ -994,6 +1003,9 @@ async fn main() -> tide::Result<()> {
     let custom_words = state.custom_words.lock().map_err(|_| {
       std::io::Error::other("custom word store lock poisoned")
     })?;
+    let avatar_frequency = state.avatar_frequency.lock().map_err(|_| {
+      std::io::Error::other("avatar frequency store lock poisoned")
+    })?;
     let snapshot = PersistedMemoryStores {
       version: 1,
       chatlog_entries: chatlog_store.entries.clone(),
@@ -1002,6 +1014,7 @@ async fn main() -> tide::Result<()> {
       variable_history: vars_store.history.clone(),
       forth_bridge_queue: forth_bridge_queue.clone(),
       custom_words: custom_words.clone(),
+      avatar_frequency: avatar_frequency.clone(),
     };
     let payload = serde_json::to_vec_pretty(&snapshot)
       .map_err(std::io::Error::other)?;
@@ -3599,8 +3612,8 @@ async fn main() -> tide::Result<()> {
   }
 
     // Main HTTPS server - handling all defined routes
-let (chatlog_store, vars_store, forth_bridge_queue, custom_words) = restore_memory_stores()
-  .unwrap_or_else(|| (new_chatlog_store(), new_vars_store(), new_forth_bridge_queue(), new_custom_words_store()));
+let (chatlog_store, vars_store, forth_bridge_queue, custom_words, avatar_frequency) = restore_memory_stores()
+  .unwrap_or_else(|| (new_chatlog_store(), new_vars_store(), new_forth_bridge_queue(), new_custom_words_store(), new_avatar_frequency_store()));
 let state = AppState {
     queue: Mutex::new(Vec::new()),
     results: Mutex::new(Vec::new()),
@@ -3609,6 +3622,7 @@ let state = AppState {
   vars_store: Arc::new(Mutex::new(vars_store)),
   forth_bridge_queue: Arc::new(Mutex::new(forth_bridge_queue)),
   custom_words: Arc::new(Mutex::new(custom_words)),
+  avatar_frequency: Arc::new(Mutex::new(avatar_frequency)),
 };
 let mut app = tide::with_state(state.clone());
     let state_for_shutdown = state.clone();
@@ -3782,6 +3796,7 @@ struct AppState {
     forth_bridge_queue: Arc<Mutex<partitioned_array_rust::PartitionedArray>>,
     // Admin-managed words from /chatlog/words, merged into the built-in scoring dictionaries.
     custom_words: Arc<Mutex<partitioned_array_rust::PartitionedArray>>,
+    avatar_frequency: Arc<Mutex<partitioned_array_rust::PartitionedArray>>,
 }
 
 impl Default for AppState {
@@ -3794,6 +3809,7 @@ impl Default for AppState {
           vars_store: Arc::new(Mutex::new(new_vars_store())),
           forth_bridge_queue: Arc::new(Mutex::new(new_forth_bridge_queue())),
           custom_words: Arc::new(Mutex::new(new_custom_words_store())),
+          avatar_frequency: Arc::new(Mutex::new(new_avatar_frequency_store())),
         }
     }
 }
@@ -3810,6 +3826,7 @@ impl Clone for AppState {
           vars_store: Arc::clone(&self.vars_store),
           forth_bridge_queue: Arc::clone(&self.forth_bridge_queue),
           custom_words: Arc::clone(&self.custom_words),
+          avatar_frequency: Arc::clone(&self.avatar_frequency),
         }
     }
 }
@@ -4354,6 +4371,142 @@ app.at("/vars/status").post(|_req: Request<AppState>| async move {
         res.insert_header("Content-Type", "text/plain; charset=utf-8");
         Ok(res)
     });
+
+app.at("/avatarfrequency").post(|mut req: Request<AppState>| async move {
+    let body: Value = req.body_json().await
+      .map_err(|error| tide::Error::from_str(StatusCode::BadRequest, format!("invalid avatar frequency JSON: {}", error)))?;
+    if !body.is_object() || !body.get("avatars").is_some_and(Value::is_array) {
+      return Err(tide::Error::from_str(StatusCode::BadRequest, "expected an object with an avatars array"));
+    }
+    let mut store = req.state().avatar_frequency.lock().map_err(|_| {
+      tide::Error::from_str(StatusCode::InternalServerError, "avatar frequency store lock poisoned")
+    })?;
+    let row_id = store.add(|row| {
+      row.insert("body".to_string(), body.clone());
+      row.insert("received_at".to_string(), Value::String(Utc::now().to_rfc3339()));
+    }).ok_or_else(|| tide::Error::from_str(StatusCode::InsufficientStorage, "avatar frequency store is full"))?;
+    drop(store);
+    persist_memory_stores(req.state()).map_err(|error| {
+      tide::Error::from_str(StatusCode::InternalServerError, format!("avatar frequency was not persisted: {}", error))
+    })?;
+    let mut response = Response::new(StatusCode::Ok);
+    response.set_body(json!({"stored": true, "id": row_id}));
+    Ok(response)
+});
+
+app.at("/avatarfrequency").get(|req: Request<AppState>| async move {
+    use std::collections::HashMap;
+    let store = req.state().avatar_frequency.lock().map_err(|_| {
+      tide::Error::from_str(StatusCode::InternalServerError, "avatar frequency store lock poisoned")
+    })?;
+    let mut current: HashMap<String, Value> = HashMap::new();
+    let mut previous: HashMap<String, (i64, i64)> = HashMap::new();
+    let mut sources: HashMap<String, Value> = HashMap::new();
+    let mut source_previous: HashMap<String, Value> = HashMap::new();
+    for id in store.non_empty_ids() {
+      let Some(row) = store.get(id) else { continue };
+      let Some(body) = row.get("body") else { continue };
+      let source = body.get("captured_by").and_then(Value::as_str).unwrap_or("unknown").to_string();
+      if let Some(old_snapshot) = sources.get(&source) {
+        source_previous.insert(source.clone(), old_snapshot.clone());
+      }
+      sources.insert(source.clone(), body.clone());
+      let scan_at = body.get("scan_at").and_then(Value::as_i64).unwrap_or(0);
+      let Some(avatars) = body.get("avatars").and_then(Value::as_array) else { continue };
+      for avatar in avatars {
+        let Some(uuid) = avatar.get("uuid").and_then(Value::as_str) else { continue };
+        let key = format!("{}:{}", source, uuid);
+        let count = avatar.get("count").and_then(Value::as_i64).unwrap_or(0);
+        if let Some(current_avatar) = current.get(&key) {
+          let old_count = current_avatar.get("count").and_then(Value::as_i64).unwrap_or(0);
+          let old_at = current_avatar.get("scan_at").and_then(Value::as_i64).unwrap_or(scan_at);
+          previous.insert(key.clone(), (old_count, old_at));
+        }
+        let mut normalized = avatar.clone();
+        normalized["source"] = Value::String(source.clone());
+        normalized["scan_at"] = Value::from(scan_at);
+        current.insert(key, normalized);
+      }
+    }
+    drop(store);
+    let total_count: i64 = current.values().map(|avatar| avatar.get("count").and_then(Value::as_i64).unwrap_or(0)).sum();
+    let mut avatars = Vec::new();
+    for (key, mut avatar) in current {
+      let count = avatar.get("count").and_then(Value::as_i64).unwrap_or(0);
+      let scan_at = avatar.get("scan_at").and_then(Value::as_i64).unwrap_or(0);
+      let (previous_count, previous_at) = previous.get(&key).copied().unwrap_or((0, scan_at));
+      let elapsed = (scan_at - previous_at).max(0) as f64;
+      let delta = count - previous_count;
+      avatar["probability"] = if total_count > 0 { Value::from(count as f64 / total_count as f64) } else { Value::from(0.0) };
+      avatar["delta_count"] = Value::from(delta);
+      avatar["encounter_rate_per_second"] = if elapsed > 0.0 { Value::from(delta as f64 / elapsed) } else { Value::from(0.0) };
+      avatars.push(avatar);
+    }
+    avatars.sort_by(|left, right| right.get("count").and_then(Value::as_i64).unwrap_or(0).cmp(&left.get("count").and_then(Value::as_i64).unwrap_or(0)));
+    let mut source_stats = Vec::new();
+    for (source, snapshot) in sources {
+      let encounters = snapshot.get("total_encounters").and_then(Value::as_i64).unwrap_or(0);
+      let scans = snapshot.get("scan_count").and_then(Value::as_i64).unwrap_or(0);
+      let interval = snapshot.get("scan_interval_seconds").and_then(Value::as_f64).unwrap_or(30.0);
+      let duration = (scans as f64 * interval).max(1.0);
+      let previous_encounters = source_previous.get(&source)
+        .and_then(|old| old.get("total_encounters"))
+        .and_then(Value::as_i64)
+        .unwrap_or(encounters);
+      let previous_scans = source_previous.get(&source)
+        .and_then(|old| old.get("scan_count"))
+        .and_then(Value::as_i64)
+        .unwrap_or(scans);
+      let previous_rate = if previous_scans > 0 {
+        previous_encounters as f64 / (previous_scans as f64 * interval).max(1.0)
+      } else {
+        0.0
+      };
+      source_stats.push(json!({
+        "source": source,
+        "scan_count": scans,
+        "total_encounters": encounters,
+        "encounter_rate_per_second": encounters as f64 / duration,
+        "encounter_rate_change_per_second": encounters as f64 / duration - previous_rate,
+        "delta_encounters": encounters - previous_encounters,
+        "scan_interval_seconds": interval,
+        "last_scan_at": snapshot.get("scan_at").cloned().unwrap_or(Value::Null)
+      }));
+    }
+    let payload = json!({
+      "source": "avatar frequency store",
+      "avatar_count": avatars.len(),
+      "total_current_encounters": total_count,
+      "avatars": avatars,
+      "sources": source_stats
+    });
+    let wants_json = req.url().query_pairs().any(|(key, value)| {
+      (key == "format" && value == "json") || key == "json"
+    });
+    if !wants_json {
+      let mut response = Response::new(StatusCode::Ok);
+      response.set_body(r#"<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avatar Frequency</title><style>
+:root{color-scheme:dark;--ink:#eef4f3;--muted:#9eb2b0;--line:#294342;--panel:#11211f;--accent:#65e6c5;--warn:#ffd166}
+*{box-sizing:border-box}body{margin:0;background:#071211;color:var(--ink);font:15px/1.45 ui-sans-serif,system-ui,sans-serif}
+main{max-width:1100px;margin:auto;padding:28px 18px 56px}header{display:flex;justify-content:space-between;align-items:end;gap:18px;border-bottom:1px solid var(--line);padding-bottom:18px}h1{margin:0;font-size:clamp(28px,5vw,48px);letter-spacing:-.02em}h2{font-size:16px;margin:0 0 12px;color:var(--accent)}p{color:var(--muted);margin:5px 0}.live{color:var(--accent);white-space:nowrap}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:22px 0}.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px}.metric{font-size:30px;color:var(--accent);font-weight:700}.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;min-width:650px}th,td{text-align:left;padding:11px 10px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}td small{display:block;color:var(--muted);word-break:break-all}.empty{color:var(--muted);padding:22px 0}@media(max-width:650px){header{display:block}.live{display:block;margin-top:8px}.grid{grid-template-columns:1fr}}
+</style></head><body><main><header><div><h1>Avatar Frequency</h1><p>Nearby avatar encounter analytics</p></div><div class="live" id="status">Connecting...</div></header>
+<div class="grid"><section class="panel"><h2>Avatars</h2><div class="metric" id="avatar-count">0</div></section><section class="panel"><h2>Encounters</h2><div class="metric" id="encounter-count">0</div></section><section class="panel"><h2>Sources</h2><div class="metric" id="source-count">0</div></section></div>
+<section class="panel"><h2>Frequency table</h2><div class="table-wrap"><table><thead><tr><th>Name / UUID</th><th>Count</th><th>Probability</th><th>Rate/min</th><th>Change</th></tr></thead><tbody id="avatars"><tr><td colspan="5" class="empty">Waiting for scan data...</td></tr></tbody></table></div></section>
+<section class="panel" style="margin-top:12px"><h2>Scanner sources</h2><div class="table-wrap"><table><thead><tr><th>Source</th><th>Scans</th><th>Encounters</th><th>Rate/min</th><th>Rate change</th></tr></thead><tbody id="sources"><tr><td colspan="5" class="empty">Waiting for scan data...</td></tr></tbody></table></div></section>
+</main><script>
+const esc=value=>String(value??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
+async function refresh(){try{const r=await fetch('/avatarfrequency?format=json',{cache:'no-store'});if(!r.ok)throw Error();const d=await r.json();document.querySelector('#avatar-count').textContent=d.avatar_count||0;document.querySelector('#encounter-count').textContent=d.total_current_encounters||0;document.querySelector('#source-count').textContent=(d.sources||[]).length;document.querySelector('#status').textContent='Updated '+new Date().toLocaleTimeString();document.querySelector('#avatars').innerHTML=(d.avatars||[]).map(a=>`<tr><td><strong>${esc(a.name||'Unknown')}</strong><small>${esc(a.uuid||'')}</small></td><td>${a.count||0}</td><td>${(Number(a.probability||0)*100).toFixed(2)}%</td><td>${(Number(a.encounter_rate_per_second||0)*60).toFixed(3)}</td><td>${a.delta_count||0}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">No avatars recorded yet.</td></tr>';document.querySelector('#sources').innerHTML=(d.sources||[]).map(s=>`<tr><td>${esc(s.source)}</td><td>${s.scan_count||0}</td><td>${s.total_encounters||0}</td><td>${(Number(s.encounter_rate_per_second||0)*60).toFixed(3)}</td><td>${(Number(s.encounter_rate_change_per_second||0)*60).toFixed(3)}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">No scanner sources yet.</td></tr>';}catch(e){document.querySelector('#status').textContent='Unavailable';}}refresh();setInterval(refresh,3000);
+</script></body></html>"#);
+      response.insert_header("Content-Type", "text/html; charset=utf-8");
+      return Ok(response);
+    }
+    let mut response = Response::new(StatusCode::Ok);
+    response.set_body(payload);
+    response.insert_header("Content-Type", "application/json; charset=utf-8");
+    Ok(response)
+});
 
 
 
@@ -6955,6 +7108,11 @@ th { color: #c5c6c7; }
   </nav>
 </header>
 <main id="chatlogDashboard">
+<section id="avatarFrequencyWindow">
+  <div class="section-heading"><h2>Nearby Avatar Frequency</h2><span id="avatarFrequencyStatus" class="small">Loading...</span></div>
+  <div id="avatarFrequencyKpis" class="kpi-grid"><div class="kpi"><span>Avatars</span><strong>0</strong></div><div class="kpi"><span>Encounters</span><strong>0</strong></div></div>
+  <div class="recent-messages" id="avatarFrequencyRows" aria-live="polite"><div class="recent-message">No scan data yet.</div></div>
+</section>
 <section>
   <h2>Estate Operations KPIs</h2>
   <div class="kpi-grid">"#);
@@ -8181,14 +8339,33 @@ async function refreshDashboard() {
   }
 }
 
+async function refreshAvatarFrequency() {
+  const status = document.getElementById('avatarFrequencyStatus');
+  const rows = document.getElementById('avatarFrequencyRows');
+  const kpis = document.getElementById('avatarFrequencyKpis');
+  if (!status || !rows || !kpis) return;
+  try {
+    const response = await fetch('/avatarfrequency?format=json', { cache: 'no-store' });
+    if (!response.ok) throw new Error('avatar frequency request failed');
+    const data = await response.json();
+    kpis.innerHTML = `<div class="kpi"><span>Avatars</span><strong>${data.avatar_count || 0}</strong></div><div class="kpi"><span>Encounters</span><strong>${data.total_current_encounters || 0}</strong></div>`;
+    rows.innerHTML = (data.avatars || []).slice(0, 50).map(avatar => `<div class="recent-message"><div class="recent-meta"><strong>${escapeHtml(avatar.name || 'Unknown')}</strong><span>${escapeHtml(avatar.uuid || '')}</span></div><div class="recent-message-text">${avatar.count || 0} encounters &middot; ${(Number(avatar.probability || 0) * 100).toFixed(2)}% probability &middot; ${(Number(avatar.encounter_rate_per_second || 0) * 60).toFixed(3)} per minute &middot; delta ${avatar.delta_count || 0}</div></div>`).join('') || '<div class="recent-message">No nearby avatars recorded.</div>';
+    status.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+  } catch (_) {
+    status.textContent = 'Unavailable';
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   initializeDashboard();
+  refreshAvatarFrequency();
   if (!('ResizeObserver' in window)) window.addEventListener('resize', renderCharts);
   window.addEventListener('visibilitychange', () => {
     if (!document.hidden) refreshDashboard();
   });
   window.setInterval(refreshRecentMessages, 5000);
-  window.setInterval(refreshDashboard, 15000);
+  window.setInterval(refreshDashboard, 5000);
+  window.setInterval(refreshAvatarFrequency, 3000);
 });
 </script>
 </body>

@@ -37,167 +37,37 @@ string SMALL_VERSION = "!!!!!!!!!!!HUDlink-main_loop-v6.0.1-majorpatch.lsl";
 string node = "@ArityWolf(@the_field)"; // by default, say this is ArityWolf. We have different nodes to notify the owner, where the chat came from as just a kind of "label".
 integer partition_size = 0;
 integer chat_handle;
-integer channel=0;        
-integer SIZE = 250; 
+integer channel = 0;
+integer SIZE = 250;
 integer R = 31;
-list data_items=[];
+list data_items = [];
 integer DEBUG = FALSE;
 string NULL_STRING = "";
-integer MAX_STACK_SIZE = 1; 
-
+integer MAX_STACK_SIZE = 1;
 string captured_by = NULL_STRING;
-
 integer detected = TRUE;
 string avatar_message = "";
 key temp_avatar_uuid;
+list avatar_frequency = [];
+integer avatar_scan_count = 0;
+integer avatar_total_encounters = 0;
+integer avatar_last_scan_at = 0;
+float avatar_scan_interval = 30.0;
+string avatar_frequency_url = "https://stimky.info/avatarfrequency";
 string ESCAPE_CHARACTER = "\\";
 string ESCAPE_CHARACTER_REPLACE = "\\\\";
-integer URL_PARSING = FALSE; // # enables or disables url title and link output on local chat link; broken due to the string escape function and the need to unescape on the other side to parse the URL
+integer URL_PARSING = FALSE;
 integer URL_PARSING_PUBLIC = FALSE;
 string parsed_message;
-integer OUTPUT_BOOTUP = FALSE; //# bootup message for fun
+integer OUTPUT_BOOTUP = FALSE;
 float benchmark_startup_time_start;
 float benchmark_startup_time_end;
-// END
 
-
-float bytes_to_kilobytes(integer bytes) {
-    return bytes / 1024.0;
-}
-
-float float_percentage_to_integer(float float_percentage)
-{
-    return float_percentage / 100.0;
-}
-
-float time() { // count milliseconds since the day began
-    string stamp = llGetTimestamp(); // "YYYY-MM-DDThh:mm:ss.ff..fZ"
-    return (float)((float)((integer) llGetSubString(stamp, 11, 12) * 3600000 + // hh
-           (integer) llGetSubString(stamp, 14, 15) * 60000 +  // mm
-           llRound((float)llGetSubString(stamp, 17, -2) * 1000000.0)/1000)); // ss.ff..f
-}
-
-float calculate_delta(float end, float start)
-{
-    return end - start;
-}
-   
-
-  //benchmark_startup_time_end = llGetUnixTime();
-
-string escape(string avatar_message)
-{
-       list avatar_message_string = llParseString2List(avatar_message, [""], []); 
-            integer counter = 0;            
-            list string_chars = [];
-            for (counter = 0; counter < llStringLength(avatar_message); counter++)
-            {
-                string_chars = string_chars + llGetSubString(avatar_message, counter, counter);
-                if (llGetSubString(avatar_message, counter, counter) == ESCAPE_CHARACTER)
-                {
-                    string_chars = llListReplaceList(string_chars, ["/"], counter, counter );    
-                }
-                
-                 else if (llGetSubString(avatar_message, counter, counter) == ":")
-                {
-                    string_chars = llListReplaceList(string_chars, ["\\:"], counter, counter );
-        
-                }
-                
-                  else if (llGetSubString(avatar_message, counter, counter) == "[")
-                {
-                    string_chars = llListReplaceList(string_chars, ["\\["], counter, counter );
-             
-                }
-                
-                
-                    else if (llGetSubString(avatar_message, counter, counter) == "]")
-                {
-                    string_chars = llListReplaceList(string_chars, ["\\]"], counter, counter );
-                  //  llSay(0, (string)string_chars);
-                }
-                
-                      else if (llGetSubString(avatar_message, counter, counter) == "{")
-                {
-                    string_chars = llListReplaceList(string_chars, ["\\{"], counter, counter );
-                  //  llSay(0, (string)string_chars);
-                }
-                
-                
-                       else if (llGetSubString(avatar_message, counter, counter) == "}")
-                {
-                    string_chars = llListReplaceList(string_chars, ["\\}"], counter, counter );
-                   // llSay(0, (string)string_chars);
-                }
-                
-                        else if (llGetSubString(avatar_message, counter, counter) == "'")
-                {
-                    string_chars = llListReplaceList(string_chars, ["\\'"], counter, counter );
-                }
-                        else if (llGetSubString(avatar_message, counter, counter) == "\"")
-                {
-                    string_chars = llListReplaceList(string_chars, ["\\\""], counter, counter );
-                }
-                
-                 else if (llGetSubString(avatar_message, counter, counter) == ".")
-                {
-                    string_chars = llListReplaceList(string_chars, ["\\."], counter, counter );
-                }
-                
-                }
-            return llDumpList2String(string_chars, "");
-    }
-    
-string unescape(string avatar_message)
-{
-          list avatar_message_string = llParseString2List(avatar_message, [""], []);
-            integer counter = 0;            
-            list string_chars = [];
-            for (counter = 0; counter < llStringLength(avatar_message); counter++)
-            {
-                string_chars = string_chars + llGetSubString(avatar_message, counter, counter);
-                if (llGetSubString(avatar_message, counter, counter) == "\\/")
-                {
-                    string_chars = llListReplaceList(string_chars, [ESCAPE_CHARACTER], counter, counter );
-                    //llSay(0, (string)string_chars);
-                }
-                
-                 else if (llGetSubString(avatar_message, counter, counter) == "\\:")
-                {
-                    string_chars = llListReplaceList(string_chars, [":"], counter, counter );
-                   // llSay(0, (string)string_chars);
-                }
-                
-                  else if (llGetSubString(avatar_message, counter, counter) == "\\[")
-                {
-                    string_chars = llListReplaceList(string_chars, ["["], counter, counter );
-                   // llSay(0, (string)string_chars);
-                }
-                
-                
-                    else if (llGetSubString(avatar_message, counter, counter) == "\\]")
-                {
-                    string_chars = llListReplaceList(string_chars, ["]"], counter, counter );
-                  //  llSay(0, (string)string_chars);
-                }
-                
-                      else if (llGetSubString(avatar_message, counter, counter) == "\\{")
-                {
-                    string_chars = llListReplaceList(string_chars, ["{"], counter, counter );
-                  //  llSay(0, (string)string_chars);
-                }
-                
-                
-                       else if (llGetSubString(avatar_message, counter, counter) == "\\}")
-                {
-                    string_chars = llListReplaceList(string_chars, ["}"], counter, counter );
-                  //  llSay(0, (string)string_chars);
-                }
-                
-                
-            }
-            return llDumpList2String(string_chars, ""); 
-    }
+float bytes_to_kilobytes(integer bytes) { return bytes / 1024.0; }
+float time() { return (float)llGetUnixTime() * 1000.0; }
+float calculate_delta(float end, float start) { return end - start; }
+string escape(string value) { return value; }
+string unescape(string value) { return value; }
 
 integer code_channel = 11;
 /// START
@@ -242,7 +112,7 @@ integer hash_code(string skey)
 }
 
 string str_replace(string str, string search, string replace) {
-    return llDumpList2String(llParseStringKeepNulls((str = "") + str, [search], []), replace);
+    return llDumpList2String(llParseStringKeepNulls(str, [search], []), replace);
 }
 
 
@@ -403,6 +273,70 @@ debug(string say) {
     }
 }
 
+integer avatar_frequency_index(key avatar_id)
+{
+    integer i;
+    for (i = 0; i < llGetListLength(avatar_frequency); i += 3)
+    {
+        if (llList2Key(avatar_frequency, i) == avatar_id)
+            return i;
+    }
+    return -1;
+}
+
+record_avatar_encounter(key avatar_id, string avatar_name)
+{
+    integer index = avatar_frequency_index(avatar_id);
+    if (index == -1)
+    {
+        avatar_frequency += [avatar_id, avatar_name, 1];
+    }
+    else
+    {
+        avatar_frequency = llListReplaceList(avatar_frequency,
+            [avatar_name, llList2Integer(avatar_frequency, index + 2) + 1], index + 1, index + 2);
+    }
+    avatar_total_encounters += 1;
+}
+
+string avatar_frequency_payload()
+{
+    list records = [];
+    integer i;
+    for (i = 0; i < llGetListLength(avatar_frequency); i += 3)
+    {
+        string record = llList2Json(JSON_OBJECT, [
+            "uuid", (string)llList2Key(avatar_frequency, i),
+            "name", llList2String(avatar_frequency, i + 1),
+            "count", llList2Integer(avatar_frequency, i + 2)
+        ]);
+        records += record;
+    }
+    string payload = llList2Json(JSON_OBJECT, [
+        "source", "lsl_avatar_sensor",
+        "captured_by", llGetUsername(llGetOwner()),
+        "sim_name", llGetRegionName(),
+        "scan_at", llGetUnixTime(),
+        "scan_count", avatar_scan_count,
+        "scan_interval_seconds", avatar_scan_interval,
+        "total_encounters", avatar_total_encounters,
+        "avatars_seen", llGetListLength(avatar_frequency) / 3,
+        "avatars", "[]"
+    ]);
+    payload = str_replace(payload, "\"avatars\":\"[]\"",
+        "\"avatars\":[" + llDumpList2String(records, ",") + "]");
+    return payload;
+}
+
+upload_avatar_frequency()
+{
+    key request_id = llHTTPRequest(avatar_frequency_url,
+        [HTTP_METHOD, "POST", HTTP_MIMETYPE, "application/json"],
+        avatar_frequency_payload());
+    if (request_id == NULL_KEY)
+        llOwnerSay("Avatar frequency upload could not be queued.");
+}
+
 
 
 check_table(list data_items)
@@ -486,6 +420,8 @@ default
          llOwnerSay(":: Memory free at startup: " + ((string)bytes_to_kilobytes(llGetFreeMemory()))+"KB"); 
         //llOwnerSay(":: Startup Time: " + (string)(benchmark_startup_time_end - benchmark_startup_time_start) + " seconds ::");
            //1234
+              llSetTimerEvent(avatar_scan_interval);
+              llSensor("", NULL_KEY, AGENT, 96.0, PI);
             }
             
         
@@ -519,8 +455,8 @@ default
                llOwnerSay(unescape(body)+"\n");
              }
              
-           if (status != 200){}
-            //llOwnerSay("Problem uploading to server; with a " + (string)status + " error!");     
+           if (status != 200)
+               llOwnerSay("Avatar frequency upload failed with HTTP " + (string)status + ".");
          }
          
          
@@ -528,104 +464,27 @@ default
    
      sensor(integer num)
      {
-         
-        integer finished = FALSE;
-       integer i = 0;
-       integer partition_size = llGetListLength(data_items);
-    
-    
-         
-        
-       for (i = 0; i < num; i++)
-          {
-            partition_size = llGetListLength(data_items);
-            if (temp_avatar_uuid == llDetectedKey(i))
-            {
-                detected = TRUE;
-                string parsed_message = avatar_message;
-                
-               admin_say("parsed_message: " + parsed_message);
-               vector temp_pos = llDetectedPos(i);          
-              
-                if (!finished)
-                 {data_items = insert4((string)llGetUnixTime(), llGetUsername(temp_avatar_uuid), temp_avatar_uuid, parsed_message, (float)temp_pos.x, (float)temp_pos.y, (float)temp_pos.z, (string)llGetParcelDetails(llGetPos(),[PARCEL_DETAILS_NAME]), captured_by, data_items);
-                  finished = TRUE;
-                    check_table(data_items);
-                }
-                 
-               
-            }
-          
-       
-          }
-          }
-       
-     listen(integer channel, string name, key id, string message)
-     {
-        
-        if (channel==0) {
-        
-         integer sensor_id = 0;
-        captured_by = llGetUsername(llGetOwner());
-        //lGetOwner()
-        
-        
-        avatar_message = message;
-        
-        //list string_char_avatar_message llParseList2String(avatar_message,
-                
-           // if (avatar_message == ESCAPE_CHARACTER)
-            //    avatar_message = "|parser_warning|SINGULAR_SERIES_OF_ESCAPE_CHARACTERS_IN_ONE_LINE|";
-          
-        //621
-        
-        avatar_message = escape(avatar_message);
-       
-         temp_avatar_uuid = id;
-         llSensor("", "", ACTIVE, 96.0, PI);
-        
-       
-         }
-         string object_details = llList2String(llGetObjectDetails(id, [OBJECT_NAME]), 0);
-         
-        if (id == llGetOwner() || (object_details != NULL_STRING) ) 
-         {
-            string id_out = NULL_STRING;
-            if (object_details != NULL_STRING)
-            {
-                id_out = object_details;
-            }
-            else
-            {
-                id_out = llGetUsername(id);
-            }
-           
-            string parsed_message = avatar_message;
-            
-          
-          
-           vector self_position = llGetPos();
-            data_items = insert4((string)llGetUnixTime(), id_out, temp_avatar_uuid, parsed_message, (float)self_position.x, (float)self_position.y, (float)self_position.z, (string)llGetParcelDetails(llGetPos(),[PARCEL_DETAILS_NAME]), captured_by, data_items);
-         }else if (!detected)
-         {
-            string id_out = "";
-            if (object_details != NULL_STRING)
-            {
-                id_out = object_details;
-            }
-            else
-            {
-                id_out = llGetUsername(id);
-            }
-      
-admin_say("parsed_message: " + parsed_message);
-              data_items = insert4((string)llGetUnixTime(), id_out, temp_avatar_uuid, parsed_message, 0.0, 0.0, 0.0, (string)llGetParcelDetails(llGetPos(),[PARCEL_DETAILS_NAME]), captured_by, data_items);  
-            }
-     
-        
-        check_table(data_items);        
+        integer i;
+        avatar_scan_count += 1;
+        avatar_last_scan_at = llGetUnixTime();
+        for (i = 0; i < num; i++)
+        {
+            record_avatar_encounter(llDetectedKey(i), llDetectedName(i));
+        }
+        upload_avatar_frequency();
+     }
 
-    }
+     no_sensor()
+     {
+        avatar_scan_count += 1;
+        avatar_last_scan_at = llGetUnixTime();
+        upload_avatar_frequency();
+     }
+
+     timer()
+     {
+        llSensor("", NULL_KEY, AGENT, 96.0, PI);
+     }
     
     
     
