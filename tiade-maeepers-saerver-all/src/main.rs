@@ -4394,7 +4394,7 @@ app.at("/avatarfrequency").post(|mut req: Request<AppState>| async move {
     Ok(response)
 });
 
-app.at("/avatarfrequency").get(|req: Request<AppState>| async move {
+app.at("/avatarencounter").get(|req: Request<AppState>| async move {
     use std::collections::HashMap;
     let store = req.state().avatar_frequency.lock().map_err(|_| {
       tide::Error::from_str(StatusCode::InternalServerError, "avatar frequency store lock poisoned")
@@ -4403,6 +4403,8 @@ app.at("/avatarfrequency").get(|req: Request<AppState>| async move {
     let mut previous: HashMap<String, (i64, i64)> = HashMap::new();
     let mut sources: HashMap<String, Value> = HashMap::new();
     let mut source_previous: HashMap<String, Value> = HashMap::new();
+    let mut source_encounters: HashMap<String, i64> = HashMap::new();
+    let mut source_encounters_previous: HashMap<String, i64> = HashMap::new();
     for id in store.non_empty_ids() {
       let Some(row) = store.get(id) else { continue };
       let Some(body) = row.get("body") else { continue };
@@ -4411,12 +4413,16 @@ app.at("/avatarfrequency").get(|req: Request<AppState>| async move {
         source_previous.insert(source.clone(), old_snapshot.clone());
       }
       sources.insert(source.clone(), body.clone());
+      // Snapshot the running total before this row's counts are folded in, so it reflects the total prior to the latest scan.
+      source_encounters_previous.insert(source.clone(), source_encounters.get(&source).copied().unwrap_or(0));
       let scan_at = body.get("scan_at").and_then(Value::as_i64).unwrap_or(0);
       let Some(avatars) = body.get("avatars").and_then(Value::as_array) else { continue };
       for avatar in avatars {
         let Some(uuid) = avatar.get("uuid").and_then(Value::as_str) else { continue };
         let key = format!("{}:{}", source, uuid);
         let count = avatar.get("count").and_then(Value::as_i64).unwrap_or(0);
+        // Newer scanner payloads don't send a running "total_encounters" total, so accumulate it here instead.
+        *source_encounters.entry(source.clone()).or_insert(0) += count;
         if let Some(current_avatar) = current.get(&key) {
           let old_count = current_avatar.get("count").and_then(Value::as_i64).unwrap_or(0);
           let old_at = current_avatar.get("scan_at").and_then(Value::as_i64).unwrap_or(scan_at);
@@ -4445,14 +4451,11 @@ app.at("/avatarfrequency").get(|req: Request<AppState>| async move {
     avatars.sort_by(|left, right| right.get("count").and_then(Value::as_i64).unwrap_or(0).cmp(&left.get("count").and_then(Value::as_i64).unwrap_or(0)));
     let mut source_stats = Vec::new();
     for (source, snapshot) in sources {
-      let encounters = snapshot.get("total_encounters").and_then(Value::as_i64).unwrap_or(0);
+      let encounters = source_encounters.get(&source).copied().unwrap_or(0);
       let scans = snapshot.get("scan_count").and_then(Value::as_i64).unwrap_or(0);
       let interval = snapshot.get("scan_interval_seconds").and_then(Value::as_f64).unwrap_or(30.0);
       let duration = (scans as f64 * interval).max(1.0);
-      let previous_encounters = source_previous.get(&source)
-        .and_then(|old| old.get("total_encounters"))
-        .and_then(Value::as_i64)
-        .unwrap_or(encounters);
+      let previous_encounters = source_encounters_previous.get(&source).copied().unwrap_or(encounters);
       let previous_scans = source_previous.get(&source)
         .and_then(|old| old.get("scan_count"))
         .and_then(Value::as_i64)
@@ -4497,7 +4500,7 @@ main{max-width:1100px;margin:auto;padding:28px 18px 56px}header{display:flex;jus
 <section class="panel" style="margin-top:12px"><h2>Scanner sources</h2><div class="table-wrap"><table><thead><tr><th>Source</th><th>Scans</th><th>Encounters</th><th>Rate/min</th><th>Rate change</th></tr></thead><tbody id="sources"><tr><td colspan="5" class="empty">Waiting for scan data...</td></tr></tbody></table></div></section>
 </main><script>
 const esc=value=>String(value??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
-async function refresh(){try{const r=await fetch('/avatarfrequency?format=json',{cache:'no-store'});if(!r.ok)throw Error();const d=await r.json();document.querySelector('#avatar-count').textContent=d.avatar_count||0;document.querySelector('#encounter-count').textContent=d.total_current_encounters||0;document.querySelector('#source-count').textContent=(d.sources||[]).length;document.querySelector('#status').textContent='Updated '+new Date().toLocaleTimeString();document.querySelector('#avatars').innerHTML=(d.avatars||[]).map(a=>`<tr><td><strong>${esc(a.name||'Unknown')}</strong><small>${esc(a.uuid||'')}</small></td><td>${a.count||0}</td><td>${(Number(a.probability||0)*100).toFixed(2)}%</td><td>${(Number(a.encounter_rate_per_second||0)*60).toFixed(3)}</td><td>${a.delta_count||0}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">No avatars recorded yet.</td></tr>';document.querySelector('#sources').innerHTML=(d.sources||[]).map(s=>`<tr><td>${esc(s.source)}</td><td>${s.scan_count||0}</td><td>${s.total_encounters||0}</td><td>${(Number(s.encounter_rate_per_second||0)*60).toFixed(3)}</td><td>${(Number(s.encounter_rate_change_per_second||0)*60).toFixed(3)}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">No scanner sources yet.</td></tr>';}catch(e){document.querySelector('#status').textContent='Unavailable';}}refresh();setInterval(refresh,3000);
+async function refresh(){try{const r=await fetch('/avatarencounter?format=json',{cache:'no-store'});if(!r.ok)throw Error();const d=await r.json();document.querySelector('#avatar-count').textContent=d.avatar_count||0;document.querySelector('#encounter-count').textContent=d.total_current_encounters||0;document.querySelector('#source-count').textContent=(d.sources||[]).length;document.querySelector('#status').textContent='Updated '+new Date().toLocaleTimeString();document.querySelector('#avatars').innerHTML=(d.avatars||[]).map(a=>`<tr><td><strong>${esc(a.name||'Unknown')}</strong><small>${esc(a.uuid||'')}</small></td><td>${a.count||0}</td><td>${(Number(a.probability||0)*100).toFixed(2)}%</td><td>${(Number(a.encounter_rate_per_second||0)*60).toFixed(3)}</td><td>${a.delta_count||0}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">No avatars recorded yet.</td></tr>';document.querySelector('#sources').innerHTML=(d.sources||[]).map(s=>`<tr><td>${esc(s.source)}</td><td>${s.scan_count||0}</td><td>${s.total_encounters||0}</td><td>${(Number(s.encounter_rate_per_second||0)*60).toFixed(3)}</td><td>${(Number(s.encounter_rate_change_per_second||0)*60).toFixed(3)}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">No scanner sources yet.</td></tr>';}catch(e){document.querySelector('#status').textContent='Unavailable';}}refresh();setInterval(refresh,3000);
 </script></body></html>"#);
       response.insert_header("Content-Type", "text/html; charset=utf-8");
       return Ok(response);
@@ -7104,15 +7107,11 @@ th { color: #c5c6c7; }
     <a href="/rneutrialg">RNeutri</a>
     <a href="/random">Random</a>
     <a href="/random2">Random Ratio</a>
+    <a href="/avatarencounter">Avatar Encounter</a>
     <a href="/">Home</a>
   </nav>
 </header>
 <main id="chatlogDashboard">
-<section id="avatarFrequencyWindow">
-  <div class="section-heading"><h2>Nearby Avatar Frequency</h2><span id="avatarFrequencyStatus" class="small">Loading...</span></div>
-  <div id="avatarFrequencyKpis" class="kpi-grid"><div class="kpi"><span>Avatars</span><strong>0</strong></div><div class="kpi"><span>Encounters</span><strong>0</strong></div></div>
-  <div class="recent-messages" id="avatarFrequencyRows" aria-live="polite"><div class="recent-message">No scan data yet.</div></div>
-</section>
 <section>
   <h2>Estate Operations KPIs</h2>
   <div class="kpi-grid">"#);
@@ -8339,33 +8338,14 @@ async function refreshDashboard() {
   }
 }
 
-async function refreshAvatarFrequency() {
-  const status = document.getElementById('avatarFrequencyStatus');
-  const rows = document.getElementById('avatarFrequencyRows');
-  const kpis = document.getElementById('avatarFrequencyKpis');
-  if (!status || !rows || !kpis) return;
-  try {
-    const response = await fetch('/avatarfrequency?format=json', { cache: 'no-store' });
-    if (!response.ok) throw new Error('avatar frequency request failed');
-    const data = await response.json();
-    kpis.innerHTML = `<div class="kpi"><span>Avatars</span><strong>${data.avatar_count || 0}</strong></div><div class="kpi"><span>Encounters</span><strong>${data.total_current_encounters || 0}</strong></div>`;
-    rows.innerHTML = (data.avatars || []).slice(0, 50).map(avatar => `<div class="recent-message"><div class="recent-meta"><strong>${escapeHtml(avatar.name || 'Unknown')}</strong><span>${escapeHtml(avatar.uuid || '')}</span></div><div class="recent-message-text">${avatar.count || 0} encounters &middot; ${(Number(avatar.probability || 0) * 100).toFixed(2)}% probability &middot; ${(Number(avatar.encounter_rate_per_second || 0) * 60).toFixed(3)} per minute &middot; delta ${avatar.delta_count || 0}</div></div>`).join('') || '<div class="recent-message">No nearby avatars recorded.</div>';
-    status.textContent = `Updated ${new Date().toLocaleTimeString()}`;
-  } catch (_) {
-    status.textContent = 'Unavailable';
-  }
-}
-
 document.addEventListener('DOMContentLoaded', () => {
   initializeDashboard();
-  refreshAvatarFrequency();
   if (!('ResizeObserver' in window)) window.addEventListener('resize', renderCharts);
   window.addEventListener('visibilitychange', () => {
     if (!document.hidden) refreshDashboard();
   });
   window.setInterval(refreshRecentMessages, 5000);
   window.setInterval(refreshDashboard, 5000);
-  window.setInterval(refreshAvatarFrequency, 3000);
 });
 </script>
 </body>

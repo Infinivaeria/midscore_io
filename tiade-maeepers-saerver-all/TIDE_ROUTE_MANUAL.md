@@ -110,7 +110,7 @@ language state and are not automatically executable.
 | POST | `/forth/bridge/poll` | Authenticated LSL poll; returns one matching queued job. |
 | POST | `/sl_logger` | Store incoming Second Life log data in the Rust `partitioned_array_rust` chatlog array and immediately persist the full memory snapshot to disk. |
 | POST | `/avatarfrequency` | Store a cumulative nearby-avatar scan snapshot containing UUIDs, names, encounter counts, scan totals, and timing metadata. |
-| GET | `/avatarfrequency` | Render the live avatar-frequency HTML dashboard. Add `?format=json` for probabilities, encounter rates, count deltas, and per-source scan statistics. |
+| GET | `/avatarencounter` | Render the live avatar-encounter HTML dashboard. Add `?format=json` for probabilities, encounter rates, count deltas, and per-source scan statistics. |
 
 Set `MSSL_FORTH_BRIDGE_TOKEN` on the server and the same `BRIDGE_TOKEN` in the
 LSL object. Use `/1111 bridge-on` to start polling. The LSL client polls
