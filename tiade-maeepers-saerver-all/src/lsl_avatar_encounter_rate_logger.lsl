@@ -312,6 +312,10 @@ string avatar_frequency_payload()
         ]);
         records += record;
     }
+    // llList2Json passes already-well-formed JSON strings through as-is (unquoted), so
+    // "avatars":"[]" never actually appears in the output for the str_replace trick to find -
+    // pass the built array straight in instead of trying to splice it in afterward.
+    string avatars_json = "[" + llDumpList2String(records, ",") + "]";
     string payload = llList2Json(JSON_OBJECT, [
         "source", "lsl_avatar_sensor",
         "captured_by", llGetUsername(llGetOwner()),
@@ -321,20 +325,20 @@ string avatar_frequency_payload()
         "scan_interval_seconds", avatar_scan_interval,
         "total_encounters", avatar_total_encounters,
         "avatars_seen", llGetListLength(avatar_frequency) / 3,
-        "avatars", "[]"
+        "avatars", avatars_json
     ]);
-    payload = str_replace(payload, "\"avatars\":\"[]\"",
-        "\"avatars\":[" + llDumpList2String(records, ",") + "]");
     return payload;
 }
 
 upload_avatar_frequency()
 {
+    string payload = avatar_frequency_payload();
     key request_id = llHTTPRequest(avatar_frequency_url,
         [HTTP_METHOD, "POST", HTTP_MIMETYPE, "application/json"],
-        avatar_frequency_payload());
+        payload);
+    avatar_frequency = [];
     if (request_id == NULL_KEY)
-        llOwnerSay("Avatar frequency upload could not be queued.");
+        llOwnerSay("Avatar frequency scan could not be sent.");
 }
 
 
@@ -442,13 +446,8 @@ default
          admin_say("server response: " + (string)status);
          if (body != "no_additional_data")
          {
-             if (URL_PARSING && body != NULL_STRING && body != "<html>
-<head><title>502 Bad Gateway</title></head>
-<body>
-<center><h1>502 Bad Gateway</h1></center>
-<hr><center>nginx/1.18.0 (Ubuntu)</center>
-</body>
-</html>" )
+             if (URL_PARSING && body != NULL_STRING &&
+                 llSubStringIndex(body, "502 Bad Gateway") == -1)
             if (URL_PARSING_PUBLIC)
                 llWhisper(0, unescape(body)+"\n");
              else
@@ -465,6 +464,7 @@ default
      sensor(integer num)
      {
         integer i;
+          avatar_frequency = [];
         avatar_scan_count += 1;
         avatar_last_scan_at = llGetUnixTime();
         for (i = 0; i < num; i++)
@@ -476,6 +476,7 @@ default
 
      no_sensor()
      {
+        avatar_frequency = [];
         avatar_scan_count += 1;
         avatar_last_scan_at = llGetUnixTime();
         upload_avatar_frequency();
