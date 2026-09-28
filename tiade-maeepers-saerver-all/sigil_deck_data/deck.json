@@ -1,14 +1,6 @@
 {
   "entries": [
     {
-      "id": 1,
-      "title": "The Stimky Fools",
-      "description": "You are probably horny or want to draw from life.",
-      "image_file": "sigil_1_1785770979178.jpg",
-      "mime_type": "image/jpeg",
-      "created_at": "2026-08-03T15:29:39.184918106+00:00"
-    },
-    {
       "id": 2,
       "title": "The Auto Crash/Auto Restart Sigil",
       "description": "Nobody can say they are sorry, anytime it comes up the Nths backwards sigil suffers.",
@@ -233,14 +225,6 @@
       "created_at": "2026-09-16T09:06:19.068932214+00:00"
     },
     {
-      "id": 32,
-      "title": "Nothing is true, Everything is permitted (Sigil)",
-      "description": "The Spirit system of 20 our organelle is complete.",
-      "image_file": "sigil_32_1789564846824.png",
-      "mime_type": "image/png",
-      "created_at": "2026-09-16T13:20:46.827486938+00:00"
-    },
-    {
       "id": 33,
       "title": "The Completeness Sigil",
       "description": "All bad is gone for good, the Nths sigil is purified, and the evil container only keeps everything bad away.",
@@ -250,7 +234,7 @@
     },
     {
       "id": 34,
-      "title": "The Fully Complete Actors Team of 6 Soulspace",
+      "title": "The Fully Complete Actors Team of 20 Soulspace",
       "description": "Nothing is true, everything is permitted.",
       "image_file": "sigil_34_1789613077662.png",
       "mime_type": "image/png",
@@ -346,11 +330,99 @@
     },
     {
       "id": 48,
-      "title": "Nil-Spaced Sigil",
-      "description": "The World Is a Nil-Space; they are all banished and are nil-spaced beastmachines whom sleep walk through life, period.",
-      "image_file": "sigil_48_1789888323016.png",
+      "title": "Pain and mental anguish gutter sigil",
+      "description": "Guts out all pain and mental anguish for good, or else.",
+      "image_file": "sigil_48_1790336098493.png",
       "mime_type": "image/png",
-      "created_at": "2026-09-20T07:12:03.019211550+00:00"
+      "created_at": "2026-09-25T11:34:58.495154275+00:00"
+    },
+    {
+      "id": 49,
+      "title": "Energy Generator Over Telepathy sigil",
+      "description": "Gives out energy automatically",
+      "image_file": "sigil_49_1790337390871.png",
+      "mime_type": "image/png",
+      "created_at": "2026-09-25T11:56:30.873966490+00:00"
+    },
+    {
+      "id": 50,
+      "title": "5th Dimension Sigil",
+      "description": "5th dimension fully now.",
+      "image_file": "sigil_50_1790337840617.png",
+      "mime_type": "image/png",
+      "created_at": "2026-09-25T12:04:00.619523050+00:00"
+    },
+    {
+      "id": 51,
+      "title": "Duped Sigil",
+      "description": "Over Telepathy",
+      "image_file": "sigil_51_1790337977552.jpg",
+      "mime_type": "image/jpeg",
+      "created_at": "2026-09-25T12:06:17.552354779+00:00"
+    },
+    {
+      "id": 52,
+      "title": "Quartz Crystal Memorization and Remiding Sigil",
+      "description": "Quartz Crystal Can memorize and remind at certain times, and hold time in place",
+      "image_file": "sigil_52_1790402872968.png",
+      "mime_type": "image/png",
+      "created_at": "2026-09-26T06:07:52.970882186+00:00"
+    },
+    {
+      "id": 53,
+      "title": "Post Observer Sigil",
+      "description": "We're in the post observer era",
+      "image_file": "sigil_53_1790437495225.png",
+      "mime_type": "image/png",
+      "created_at": "2026-09-26T15:44:55.227443573+00:00"
+    },
+    {
+      "id": 54,
+      "title": "The Talk More Sigil",
+      "description": "They need to talk more or else they may get gutted out.",
+      "image_file": "sigil_54_1790470343466.jpg",
+      "mime_type": "image/jpeg",
+      "created_at": "2026-09-27T00:52:23.466741761+00:00"
+    },
+    {
+      "id": 55,
+      "title": "Nil spaced fandoms sigil",
+      "description": "All fandoms are no longer a part of the source.",
+      "image_file": "sigil_55_1790498400608.jpg",
+      "mime_type": "image/jpeg",
+      "created_at": "2026-09-27T08:40:00.609863822+00:00"
+    },
+    {
+      "id": 56,
+      "title": "Deflection/Protection against negative neutri particles",
+      "description": "They emit them, and it affects our gut; but never again/not anymore. Nothing is true, everything is permitted/Everything is true, everything is permitted.",
+      "image_file": "sigil_56_1790574093375.png",
+      "mime_type": "image/png",
+      "created_at": "2026-09-28T05:41:33.378881850+00:00"
+    },
+    {
+      "id": 57,
+      "title": "Horn Of Plenty Sigil",
+      "description": "The horn of plenty ha limited surface area but infinite volume.",
+      "image_file": "sigil_57_1790577561098.png",
+      "mime_type": "image/png",
+      "created_at": "2026-09-28T06:39:21.101383546+00:00"
+    },
+    {
+      "id": 58,
+      "title": "Low frequency deflection/protection sigil (meme breaker)",
+      "description": "Protects against anything that is low frequency and deflect/protect againt repetitive memes.",
+      "image_file": "sigil_58_1790578856696.png",
+      "mime_type": "image/png",
+      "created_at": "2026-09-28T07:00:56.700070475+00:00"
+    },
+    {
+      "id": 59,
+      "title": "High frequency resonating sigil",
+      "description": "Increases our frequency/vibration automatically",
+      "image_file": "sigil_59_1790578923026.png",
+      "mime_type": "image/png",
+      "created_at": "2026-09-28T07:02:03.029438643+00:00"
     }
   ]
 }

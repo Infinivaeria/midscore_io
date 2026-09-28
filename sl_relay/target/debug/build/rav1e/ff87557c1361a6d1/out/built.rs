@@ -48,10 +48,10 @@ pub static HOST: &str = "x86_64-unknown-linux-gnu";
 pub static PROFILE: &str = "debug";
 #[doc=r#"The compiler that cargo resolved to use."#]
 #[allow(dead_code)]
-pub static RUSTC: &str = "rustc";
+pub static RUSTC: &str = "/root/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/rustc";
 #[doc=r#"The documentation generator that cargo resolved to use."#]
 #[allow(dead_code)]
-pub static RUSTDOC: &str = "rustdoc";
+pub static RUSTDOC: &str = "/root/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/rustdoc";
 #[doc=r#"Value of OPT_LEVEL for the profile used during compilation."#]
 #[allow(dead_code)]
 pub static OPT_LEVEL: &str = "3";
@@ -73,12 +73,12 @@ pub static FEATURES_LOWERCASE: [&str; 1] = ["threading"];
 #[doc=r#"The feature-string as above, from lowercase strings."#]
 #[allow(dead_code)]
 pub static FEATURES_LOWERCASE_STR: &str = "threading";
-#[doc=r#"The output of `rustc -V`"#]
+#[doc=r#"The output of `/root/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/rustc -V`"#]
 #[allow(dead_code)]
-pub static RUSTC_VERSION: &str = "rustc 1.100.0-nightly (6eeff9a52 2026-09-23)";
-#[doc=r#"The output of `rustdoc -V`; empty string if `rustdoc -V` failed to execute"#]
+pub static RUSTC_VERSION: &str = "rustc 1.101.0-nightly (d080e7dff 2026-09-27)";
+#[doc=r#"The output of `/root/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/rustdoc -V`; empty string if `/root/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/rustdoc -V` failed to execute"#]
 #[allow(dead_code)]
-pub static RUSTDOC_VERSION: &str = "rustdoc 1.100.0-nightly (6eeff9a52 2026-09-23)";
+pub static RUSTDOC_VERSION: &str = "rustdoc 1.101.0-nightly (d080e7dff 2026-09-27)";
 #[doc=r#"The target architecture, given by `CARGO_CFG_TARGET_ARCH`."#]
 #[allow(dead_code)]
 pub static CFG_TARGET_ARCH: &str = "x86_64";
