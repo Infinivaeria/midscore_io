@@ -277,6 +277,8 @@ Integration note:
 | GET | `/rneutri` | `src/main.rs` | Text file write |
 | GET | `/tiade/moon` | `src/main.rs` | Embedded Ruby VM moon phase |
 | GET | `/tiade/sun` | `src/main.rs` | Embedded Ruby VM sun phase |
+| POST | `/sl/ruby/eval` | `src/sl_ruby.rs` | Token-protected Ruby evaluation for Second Life |
+| POST | `/sl/ruby/reset` | `src/sl_ruby.rs` | Clears a Ruby evaluation session |
 | GET | `/tiade-maepers/*rest` | `src/main.rs` | iframe bridge page |
 | GET | `/parse_plink` | `src/main.rs` | URL parser redirect |
 | POST | `/tiade/img/resize` | `src/main.rs` | Namespaced legacy placeholder resize |
@@ -315,6 +317,8 @@ These are mounted by `mount_ollama_routes(&mut app, OllamaRelayConfig::default()
 - `POST /game/:team/:player/reset`
 - `GET /history/:team`
 - `GET /ollama/health`
+- `POST /sl/ask/:team` with `{"message":"...","speaker":"..."}` (or plain text) → `202 {"job":"<id>"}`
+- `GET /sl/job/:id` → `{"status":"pending"}`, `{"status":"done","reply":"..."}` or `{"status":"error","error":"..."}`
 - `GET /teams/:team/prompt`
 - `POST /teams/:team/prompt` with `{"prompt":"..."}`
 
@@ -381,6 +385,15 @@ Ruby runs in-process: [src/ruby_vm.rs](src/ruby_vm.rs) initialises a Magnus-embe
 - **Ruby version:** the binary links the rbenv Ruby selected by `.ruby-version` (4.0.7). Rebuild after changing Ruby versions.
 
 Evaluation is serial: a slow script delays later Ruby requests. A timed-out script keeps running in the VM until it finishes.
+
+### Second Life: Ollama and Ruby
+
+[Tiade.Ollama.Ruby.lsl](Tiade.Ollama.Ruby.lsl) is an owner-only LSL client for both features (`/7 ask ...`, `/7 ruby ...`, `/7 help`).
+
+- **Ollama:** Second Life drops HTTP requests after about 60 s, so `POST /sl/ask/:team` returns a job id at once and the script polls `GET /sl/job/:id`. Replies share the team history used by `/chat/:team`, are plain text, and are capped at `OLLAMA_SL_REPLY_CHARS` (1000) characters and `OLLAMA_SL_NUM_PREDICT` (200) tokens with a 2048-token context (`OLLAMA_SL_NUM_CTX`). The relay keeps the model loaded (`OLLAMA_KEEP_ALIVE`, default `60m`), preloads it at startup (`OLLAMA_PRELOAD=false` disables this) and caches the installed-model lookup for 60 s.
+- **Ruby:** `POST /sl/ruby/eval` ([src/sl_ruby.rs](src/sl_ruby.rs)) evaluates code in the embedded VM. Send `{"code":"...","session":"..."}` JSON or plain-text code, with the token in `X-Ruby-Token` or `Authorization: Bearer`. The session defaults to the calling object's key, and local variables persist per session until `POST /sl/ruby/reset`. Captured `$stdout` plus `=> value.inspect` come back as `text/plain` (200). Ruby exceptions, `exit` and the per-call timeout (`TIADE_RUBY_EVAL_SECONDS`, default 10) return `422`.
+- **Security:** this is arbitrary code execution with the server's privileges. The routes return `503` until `TIADE_RUBY_EVAL_TOKEN` is set. `TIADE_RUBY_EVAL_SL_OWNERS` (comma-separated avatar keys) also checks `X-SecondLife-Owner-Key`; that header can be forged outside Second Life, so the token stays mandatory.
+- **Configuration:** `start.sh` loads `server.env` (git-ignored, mode 600) when present; put the token and any of the variables above there.
 
 ### Ruby Raylib and Magnus Client
 

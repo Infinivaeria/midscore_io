@@ -1,10 +1,11 @@
 use partitioned_array_rust::{LineDb, LineDbConfig};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const RELAY_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -20,6 +21,31 @@ pub struct RelayConfig {
     pub max_team_prompt_chars: usize,
     pub max_game_state_chars: usize,
     pub team_prompt_token: Option<String>,
+    /// Ollama `keep_alive` added to chat/generate calls so the model stays loaded
+    /// between requests instead of being reloaded (~8 s on this host) every time.
+    pub keep_alive: String,
+    /// Load the model into memory when the routes are mounted.
+    pub preload_model: bool,
+    /// Context window for Second Life requests; smaller is faster on CPU.
+    pub sl_num_ctx: u32,
+    /// Maximum tokens generated for a Second Life reply.
+    pub sl_num_predict: u32,
+    /// Replies longer than this are cut before being handed to LSL.
+    pub sl_reply_char_limit: usize,
+    /// How long finished Second Life jobs stay available for polling.
+    pub sl_job_ttl: Duration,
+    /// Upper bound on queued + running Second Life jobs.
+    pub sl_max_pending_jobs: usize,
+    model_cache: Arc<Mutex<Option<(String, Vec<String>, Instant)>>>,
+}
+
+const MODEL_CACHE_TTL: Duration = Duration::from_secs(60);
+
+fn env_or<T: std::str::FromStr>(name: &str, default: T) -> T {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.trim().parse().ok())
+        .unwrap_or(default)
 }
 
 impl Default for RelayConfig {
@@ -42,6 +68,17 @@ impl Default for RelayConfig {
             team_prompt_token: std::env::var("OLLAMA_TEAM_PROMPT_TOKEN")
                 .ok()
                 .filter(|token| !token.trim().is_empty()),
+            keep_alive: std::env::var("OLLAMA_KEEP_ALIVE")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "60m".to_string()),
+            preload_model: env_or("OLLAMA_PRELOAD", true),
+            sl_num_ctx: env_or("OLLAMA_SL_NUM_CTX", 2048),
+            sl_num_predict: env_or("OLLAMA_SL_NUM_PREDICT", 200),
+            sl_reply_char_limit: env_or("OLLAMA_SL_REPLY_CHARS", 1_000),
+            sl_job_ttl: Duration::from_secs(600),
+            sl_max_pending_jobs: 32,
+            model_cache: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -592,7 +629,245 @@ pub fn mount_routes<State: Clone + Send + Sync + 'static>(
             });
     }
 
+    if cfg.preload_model {
+        let cfg = cfg.clone();
+        async_std::task::spawn(async move {
+            match resolve_model_name(&cfg).await {
+                Ok((Some(model), _)) => {
+                    // An empty generate request loads the model and applies keep_alive.
+                    match post_json(&cfg, "/api/generate", json!({ "model": model })).await {
+                        Ok(_) => println!("Ollama model {model} preloaded (keep_alive {})", cfg.keep_alive),
+                        Err(error) => eprintln!("Ollama preload of {model} failed: {error}"),
+                    }
+                }
+                Ok((None, _)) => eprintln!("Ollama preload skipped: no models installed"),
+                Err(error) => eprintln!("Ollama preload skipped: {error}"),
+            }
+        });
+    }
+
+    mount_sl_routes(app, cfg.clone(), team_store.clone());
+
     Ok(())
+}
+
+#[derive(Clone)]
+enum SlJobState {
+    Pending,
+    Done { reply: String, model: String, seconds: f64 },
+    Failed(String),
+}
+
+struct SlJob {
+    state: SlJobState,
+    created: Instant,
+}
+
+type SlJobs = Arc<Mutex<HashMap<String, SlJob>>>;
+
+/// Second Life cuts off `llHTTPRequest` after ~60 s, while a CPU-only model can
+/// take longer. LSL therefore submits a job, gets an id back immediately, and
+/// polls for the reply, so slow generations never time out or get re-run.
+fn mount_sl_routes<State: Clone + Send + Sync + 'static>(
+    app: &mut tide::Server<State>,
+    cfg: Arc<RelayConfig>,
+    team_store: Arc<Mutex<LineDb>>,
+) {
+    let jobs: SlJobs = Arc::new(Mutex::new(HashMap::new()));
+
+    {
+        let cfg = cfg.clone();
+        let jobs = jobs.clone();
+        app.at("/sl/ask/:team")
+            .options(|_| async { Ok(cors_preflight_response()) })
+            .post(move |mut req: tide::Request<State>| {
+                let cfg = cfg.clone();
+                let jobs = jobs.clone();
+                let team_store = team_store.clone();
+                async move {
+                    let team = req.param("team")?.to_string();
+                    validate_team(&team)?;
+                    let body = req.body_string().await?;
+                    let message = match sl_message_from_body(&body) {
+                        Ok(message) => message,
+                        Err(error) => return Ok(json_error(tide::StatusCode::BadRequest, &error)),
+                    };
+                    if message.chars().count() > cfg.max_chat_message_chars {
+                        return Ok(json_error(
+                            tide::StatusCode::PayloadTooLarge,
+                            "message exceeds the configured size limit",
+                        ));
+                    }
+
+                    let id = new_job_id();
+                    {
+                        let mut jobs_guard = sl_jobs_lock(&jobs)?;
+                        prune_sl_jobs(&mut jobs_guard, cfg.sl_job_ttl);
+                        let pending = jobs_guard
+                            .values()
+                            .filter(|job| matches!(job.state, SlJobState::Pending))
+                            .count();
+                        if pending >= cfg.sl_max_pending_jobs {
+                            return Ok(json_error(
+                                tide::StatusCode::TooManyRequests,
+                                "too many Second Life requests are queued; retry shortly",
+                            ));
+                        }
+                        jobs_guard.insert(
+                            id.clone(),
+                            SlJob { state: SlJobState::Pending, created: Instant::now() },
+                        );
+                    }
+
+                    {
+                        let id = id.clone();
+                        let jobs = jobs.clone();
+                        async_std::task::spawn(async move {
+                            let started = Instant::now();
+                            let state = match run_sl_ask(&cfg, &team_store, &team, &message).await {
+                                Ok((reply, model)) => SlJobState::Done {
+                                    reply,
+                                    model,
+                                    seconds: (started.elapsed().as_secs_f64() * 10.0).round() / 10.0,
+                                },
+                                Err(error) => SlJobState::Failed(error),
+                            };
+                            if let Ok(mut jobs) = jobs.lock() {
+                                if let Some(job) = jobs.get_mut(&id) {
+                                    job.state = state;
+                                }
+                            }
+                        });
+                    }
+
+                    Ok(json_response(
+                        tide::StatusCode::Accepted,
+                        json!({ "job": id, "status": "pending", "poll": format!("/sl/job/{id}") }),
+                    ))
+                }
+            });
+    }
+
+    app.at("/sl/job/:id")
+        .options(|_| async { Ok(cors_preflight_response()) })
+        .get(move |req: tide::Request<State>| {
+            let jobs = jobs.clone();
+            async move {
+                let id = req.param("id")?.to_string();
+                let state = sl_jobs_lock(&jobs)?.get(&id).map(|job| job.state.clone());
+                Ok(match state {
+                    None => json_error(tide::StatusCode::NotFound, "unknown or expired job"),
+                    Some(SlJobState::Pending) => {
+                        json_response(tide::StatusCode::Ok, json!({ "job": id, "status": "pending" }))
+                    }
+                    Some(SlJobState::Done { reply, model, seconds }) => json_response(
+                        tide::StatusCode::Ok,
+                        json!({ "job": id, "status": "done", "reply": reply, "model": model, "seconds": seconds }),
+                    ),
+                    Some(SlJobState::Failed(error)) => json_response(
+                        tide::StatusCode::Ok,
+                        json!({ "job": id, "status": "error", "error": error }),
+                    ),
+                })
+            }
+        });
+}
+
+fn sl_jobs_lock(jobs: &SlJobs) -> tide::Result<std::sync::MutexGuard<'_, HashMap<String, SlJob>>> {
+    jobs.lock().map_err(|_| {
+        tide::Error::from_str(tide::StatusCode::InternalServerError, "Second Life job store is unavailable")
+    })
+}
+
+fn prune_sl_jobs(jobs: &mut HashMap<String, SlJob>, ttl: Duration) {
+    // Pending jobs are kept: they are bounded by sl_max_pending_jobs and by Ollama's timeout.
+    jobs.retain(|_, job| matches!(job.state, SlJobState::Pending) || job.created.elapsed() < ttl);
+}
+
+fn new_job_id() -> String {
+    use std::hash::{BuildHasher, Hasher};
+    // RandomState is seeded from OS randomness, so these ids are not guessable.
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    (0..2)
+        .map(|round| {
+            let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+            hasher.write_u128(nanos);
+            hasher.write_u8(round);
+            format!("{:016x}", hasher.finish())
+        })
+        .collect()
+}
+
+/// Accepts `{"message": "...", "speaker": "..."}` JSON or a plain-text body.
+fn sl_message_from_body(body: &str) -> Result<String, String> {
+    let body = body.trim();
+    let (message, speaker) = match serde_json::from_str::<Value>(body) {
+        Ok(Value::Object(object)) => (
+            object.get("message").and_then(Value::as_str).unwrap_or("").trim().to_string(),
+            object.get("speaker").and_then(Value::as_str).unwrap_or("").trim().to_string(),
+        ),
+        _ => (body.to_string(), String::new()),
+    };
+    if message.is_empty() {
+        return Err("message is required".to_string());
+    }
+    Ok(if speaker.is_empty() { message } else { format!("{speaker} says: {message}") })
+}
+
+fn truncate_chars(text: &str, limit: usize) -> String {
+    if text.chars().count() <= limit {
+        return text.to_string();
+    }
+    let mut out: String = text.chars().take(limit.saturating_sub(1)).collect();
+    out.push('…');
+    out
+}
+
+async fn run_sl_ask(
+    cfg: &RelayConfig,
+    team_store: &Mutex<LineDb>,
+    team: &str,
+    message: &str,
+) -> Result<(String, String), String> {
+    let (model, available) = resolve_model_name(cfg).await.map_err(|e| e.to_string())?;
+    let Some(model) = model else {
+        return Err(format!(
+            "no Ollama models are installed (available: {available:?}); run 'ollama pull {}'",
+            cfg.ollama_model_name
+        ));
+    };
+
+    let mut messages = build_messages(team_store, cfg, team, message).map_err(|e| e.to_string())?;
+    messages.insert(1, json!({
+        "role": "system",
+        "content": format!(
+            "You are replying inside Second Life chat. Use plain text with no markdown, and keep the reply under {} characters.",
+            cfg.sl_reply_char_limit
+        ),
+    }));
+    let payload = json!({
+        "model": model,
+        "stream": false,
+        "messages": messages,
+        "options": { "num_ctx": cfg.sl_num_ctx, "num_predict": cfg.sl_num_predict },
+    });
+
+    let result = post_json(cfg, "/api/chat", payload).await.map_err(|e| e.to_string())?;
+    let mut reply = extract_reply(&result);
+    if no_text_reply(&reply) {
+        if let Ok(fallback) = generate_fallback(cfg, &model, message).await {
+            let fallback_reply = extract_reply(&fallback);
+            if !no_text_reply(&fallback_reply) {
+                reply = fallback_reply;
+            }
+        }
+    }
+    let reply = truncate_chars(reply.trim(), cfg.sl_reply_char_limit);
+    append_team_log(team_store, cfg, team, message, &reply).map_err(|e| e.to_string())?;
+    Ok((reply, model))
 }
 
 fn json_response<T: Serialize>(status: tide::StatusCode, data: T) -> tide::Response {
@@ -673,6 +948,18 @@ fn route_catalog() -> RouteCatalogOutput {
                 method: "GET",
                 path: "/history/:team",
                 description: "Returns recent persisted conversation history for a team.",
+                authorization: None,
+            },
+            RouteInfo {
+                method: "POST",
+                path: "/sl/ask/:team",
+                description: "Second Life: queues a short, plain-text team reply and returns a job id immediately (HTTP 202).",
+                authorization: None,
+            },
+            RouteInfo {
+                method: "GET",
+                path: "/sl/job/:id",
+                description: "Second Life: polls a queued reply; status is pending, done (with reply) or error.",
                 authorization: None,
             },
             RouteInfo {
@@ -1080,7 +1367,14 @@ async fn get_json(cfg: &RelayConfig, path: &str) -> tide::Result<Value> {
     Ok(parsed)
 }
 
-async fn post_json(cfg: &RelayConfig, path: &str, payload: Value) -> tide::Result<Value> {
+async fn post_json(cfg: &RelayConfig, path: &str, mut payload: Value) -> tide::Result<Value> {
+    if path == "/api/chat" || path == "/api/generate" {
+        if let Some(request) = payload.as_object_mut() {
+            request
+                .entry("keep_alive")
+                .or_insert_with(|| Value::String(cfg.keep_alive.clone()));
+        }
+    }
     let url = format!("{}{}", cfg.ollama_http_address, path);
     let request = surf::post(url)
         .body_json(&payload)
@@ -1139,6 +1433,22 @@ async fn available_models(cfg: &RelayConfig) -> tide::Result<Vec<String>> {
 }
 
 async fn resolve_model_name(cfg: &RelayConfig) -> tide::Result<(Option<String>, Vec<String>)> {
+    // /api/tags was fetched before every chat; cache the answer briefly.
+    if let Ok(cache) = cfg.model_cache.lock() {
+        if let Some((model, models, at)) = cache.as_ref() {
+            if at.elapsed() < MODEL_CACHE_TTL {
+                return Ok((Some(model.clone()), models.clone()));
+            }
+        }
+    }
+    let resolved = resolve_model_name_uncached(cfg).await?;
+    if let (Some(model), Ok(mut cache)) = (&resolved.0, cfg.model_cache.lock()) {
+        *cache = Some((model.clone(), resolved.1.clone(), Instant::now()));
+    }
+    Ok(resolved)
+}
+
+async fn resolve_model_name_uncached(cfg: &RelayConfig) -> tide::Result<(Option<String>, Vec<String>)> {
     let models = available_models(cfg).await?;
     if models.is_empty() {
         return Ok((None, models));
@@ -1431,6 +1741,7 @@ mod tests {
             let store_path = std::env::temp_dir().join(format!("tiade-ollama-route-{unique}"));
             let mut config = RelayConfig::default();
             config.team_log_dir = store_path.clone();
+            config.preload_model = false;
 
             let mut app: tide::Server<()> = tide::new();
             mount_routes(&mut app, config).expect("mount relay routes");
@@ -1457,4 +1768,70 @@ mod tests {
         });
     }
 
+    #[test]
+    fn sl_message_body_accepts_json_or_plain_text() {
+        assert_eq!(sl_message_from_body(r#"{"message":" hi "}"#).unwrap(), "hi");
+        assert_eq!(
+            sl_message_from_body(r#"{"message":"hi","speaker":"Ava"}"#).unwrap(),
+            "Ava says: hi"
+        );
+        assert_eq!(sl_message_from_body("plain hello\n").unwrap(), "plain hello");
+        assert!(sl_message_from_body("   ").is_err());
+        assert!(sl_message_from_body(r#"{"message":""}"#).is_err());
+        assert_eq!(truncate_chars("héllo", 10), "héllo");
+        assert_eq!(truncate_chars("héllo world", 4), "hél…");
+        let a = new_job_id();
+        assert_eq!(a.len(), 32);
+        assert_ne!(a, new_job_id());
+    }
+
+    #[test]
+    fn sl_job_routes_queue_and_report_unknown_jobs() {
+        async_std::task::block_on(async {
+            let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+            let store_path = std::env::temp_dir().join(format!("tiade-ollama-sl-{unique}"));
+            let mut config = RelayConfig::default();
+            config.team_log_dir = store_path.clone();
+            config.preload_model = false;
+            // Unroutable upstream: the job must finish as an error, not hang.
+            config.ollama_http_address = "http://127.0.0.1:9".to_string();
+
+            let mut app: tide::Server<()> = tide::new();
+            mount_routes(&mut app, config).expect("mount relay routes");
+
+            let mut post = tide::http::Request::new(
+                tide::http::Method::Post,
+                tide::http::Url::parse("http://localhost/sl/ask/alpha").unwrap(),
+            );
+            post.set_body(r#"{"message":"hello"}"#);
+            let mut response: tide::Response = app.respond(post).await.unwrap();
+            assert_eq!(response.status(), tide::StatusCode::Accepted);
+            let body: Value = serde_json::from_str(&response.take_body().into_string().await.unwrap()).unwrap();
+            let job = body["job"].as_str().unwrap().to_string();
+
+            let mut status = Value::Null;
+            for _ in 0..100 {
+                let get = tide::http::Request::new(
+                    tide::http::Method::Get,
+                    tide::http::Url::parse(&format!("http://localhost/sl/job/{job}")).unwrap(),
+                );
+                let mut response: tide::Response = app.respond(get).await.unwrap();
+                status = serde_json::from_str(&response.take_body().into_string().await.unwrap()).unwrap();
+                if status["status"] != "pending" {
+                    break;
+                }
+                async_std::task::sleep(Duration::from_millis(50)).await;
+            }
+            assert_eq!(status["status"], "error", "{status}");
+
+            let get = tide::http::Request::new(
+                tide::http::Method::Get,
+                tide::http::Url::parse("http://localhost/sl/job/nope").unwrap(),
+            );
+            let response: tide::Response = app.respond(get).await.unwrap();
+            assert_eq!(response.status(), tide::StatusCode::NotFound);
+
+            std::fs::remove_dir_all(store_path).ok();
+        });
+    }
 }

@@ -2,6 +2,7 @@
 #![recursion_limit = "256"]
 
 mod ruby_vm;
+mod sl_ruby;
 
 use std::io::{self, BufRead};
 use tide::utils::After;
@@ -3814,6 +3815,7 @@ impl Clone for AppState {
 
     app.with(LogRoute);
     mount_ollama_routes(&mut app, OllamaRelayConfig::default())?;
+    sl_ruby::mount(&mut app);
 
    
 

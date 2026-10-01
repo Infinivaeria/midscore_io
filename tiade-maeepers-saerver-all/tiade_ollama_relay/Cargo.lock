@@ -1327,6 +1327,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f38d5652c16fde515bb1ecef450ab0f6a219d619a7274976324d5e377f7dceba"
 
 [[package]]
+name = "partitioned_array_rust"
+version = "1.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2034,10 +2042,11 @@ dependencies = [
 
 [[package]]
 name = "tiade_ollama_relay"
-version = "0.1.0"
+version = "3.0.0"
 dependencies = [
  "async-std",
  "chrono",
+ "partitioned_array_rust",
  "serde",
  "serde_json",
  "surf",

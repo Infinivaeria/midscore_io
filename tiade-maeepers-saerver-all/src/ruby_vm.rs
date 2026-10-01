@@ -127,6 +127,13 @@ fn eval_utf8(ruby: &Ruby, code: &str) -> Result<Value, magnus::Error> {
 }
 
 fn submit(code: String) -> Result<async_std::channel::Receiver<Result<String, RubyError>>, RubyError> {
+    submit_with(move |ruby| eval_utf8(ruby, &code))
+}
+
+fn submit_with<F>(work: F) -> Result<async_std::channel::Receiver<Result<String, RubyError>>, RubyError>
+where
+    F: FnOnce(&Ruby) -> Result<Value, magnus::Error> + Send + 'static,
+{
     let jobs = match JOBS.get() {
         Some(Ok(jobs)) => jobs,
         Some(Err(error)) => return Err(RubyError::Unavailable(error.clone())),
@@ -134,7 +141,7 @@ fn submit(code: String) -> Result<async_std::channel::Receiver<Result<String, Ru
     };
     let (result_tx, result_rx) = async_std::channel::bounded(1);
     let job: Job = Box::new(move |ruby: &Ruby| {
-        let result = eval_utf8(ruby, &code)
+        let result = work(ruby)
             .and_then(value_to_string)
             .map_err(|error| RubyError::Raised(error.to_string()));
         let _ = result_tx.try_send(result);
@@ -142,6 +149,37 @@ fn submit(code: String) -> Result<async_std::channel::Receiver<Result<String, Ru
     jobs.send(job)
         .map_err(|_| RubyError::Unavailable("embedded Ruby VM has stopped".into()))?;
     Ok(result_rx)
+}
+
+async fn wait(
+    result_rx: async_std::channel::Receiver<Result<String, RubyError>>,
+    timeout: Duration,
+) -> Result<String, RubyError> {
+    match async_std::future::timeout(timeout, result_rx.recv()).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(_)) => Err(RubyError::Unavailable("embedded Ruby VM dropped the job".into())),
+        Err(_) => Err(RubyError::Timeout(timeout)),
+    }
+}
+
+/// Evaluates `callable` (Ruby source returning something that responds to
+/// `call`) and calls it with one Array of UTF-8 strings. Untrusted input goes
+/// in `args`, never into the source, so it cannot change the code being run.
+pub async fn call_with_strings(
+    callable: impl Into<String>,
+    args: Vec<String>,
+    timeout: Duration,
+) -> Result<String, RubyError> {
+    let callable = callable.into();
+    let result_rx = submit_with(move |ruby| {
+        let target = eval_utf8(ruby, &callable)?;
+        let array = ruby.ary_new_capa(args.len());
+        for arg in &args {
+            array.push(ruby.str_new(arg))?;
+        }
+        target.funcall("call", (array,))
+    })?;
+    wait(result_rx, timeout).await
 }
 
 /// Evaluates Ruby source on the VM thread and returns the result's `to_s`.
@@ -154,11 +192,7 @@ pub async fn eval_with_timeout(
     timeout: Duration,
 ) -> Result<String, RubyError> {
     let result_rx = submit(code.into())?;
-    match async_std::future::timeout(timeout, result_rx.recv()).await {
-        Ok(Ok(result)) => result,
-        Ok(Err(_)) => Err(RubyError::Unavailable("embedded Ruby VM dropped the job".into())),
-        Err(_) => Err(RubyError::Timeout(timeout)),
-    }
+    wait(result_rx, timeout).await
 }
 
 /// Blocking variant for non-async callers such as startup code and the CLI thread.

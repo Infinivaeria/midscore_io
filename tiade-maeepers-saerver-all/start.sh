@@ -18,6 +18,14 @@ fi
 
 rm -f "$pid_file"
 cd "$project_dir"
+
+# Optional secrets/config (e.g. TIADE_RUBY_EVAL_TOKEN, OLLAMA_KEEP_ALIVE); not committed.
+if [[ -f "$project_dir/server.env" ]]; then
+	set -a
+	# shellcheck disable=SC1091
+	source "$project_dir/server.env"
+	set +a
+fi
 nohup "$binary" >>"$log_file" 2>&1 &
 printf '%s\n' "$!" >"$pid_file"
 printf 'Started server with PID %s\n' "$!"

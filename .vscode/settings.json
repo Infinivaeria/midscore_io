@@ -1,0 +1,11 @@
+{
+  // rust-analyzer indexed every crate in this repo and used ~18 GB, starving Ollama.
+  // Only index the Tide server (its tiade_ollama_relay path dependency is included).
+  "rust-analyzer.linkedProjects": [
+    "tiade-maeepers-saerver-all/Cargo.toml"
+  ],
+  "rust-analyzer.cachePriming.enable": false,
+  "rust-analyzer.check.allTargets": false,
+  "rust-analyzer.procMacro.attributes.enable": true,
+  "rust-analyzer.lru.capacity": 64
+}
