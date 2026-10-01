@@ -389,10 +389,13 @@ Evaluation is serial: a slow script delays later Ruby requests. A timed-out scri
 ### Second Life: Ollama and Ruby
 
 [Tiade.Ollama.Ruby.lsl](Tiade.Ollama.Ruby.lsl) is an owner-only LSL client for both features (`/7 ask ...`, `/7 ruby ...`, `/7 help`). The in-world help command prints extended command, setup, Ruby safety, and notecard-runner guidance.
-It can also run an object's inventory notecard with `/7 notecard <name>`; each
-nonblank line that does not start with `#` is processed as one normal `/7`
-command, such as `ask ...`, `ruby ...`, `team ...`, or `ruby-reset`. Remote
-requests are run sequentially, and `/7 notecard-stop` stops further lines.
+It can also run notecards from the object's inventory:
+
+- `/7 notecard <name>` runs one `/7` command per line, in order (`ask ...`, `ruby ...`, `team ...`, `ruby-reset`, ...). `#` and `//` lines are comments, a leading `/7 ` is optional, `ask` lines wait for their Ollama reply, `wait <seconds>` pauses, and lines between `ruby-begin` and `ruby-end` are sent as one multi-line Ruby program. Requests throttled by the region are retried instead of skipped.
+- `/7 ruby-notecard <name>` sends the whole notecard as one Ruby program (up to 12,000 characters).
+- `/7 notecard-stop` stops; editing or removing the notecard also stops it, and a line that cannot be read within 30 s (for example an empty, never-saved notecard) ends the run with a message.
+
+Example notecards: [sl_notecards/Demo.txt](sl_notecards/Demo.txt) (commands) and [sl_notecards/RubyScript.txt](sl_notecards/RubyScript.txt) (one Ruby program). `/7 health` checks `GET /ollama/health`.
 
 - **Ollama:** Second Life drops HTTP requests after about 60 s, so `POST /sl/ask/:team` returns a job id at once and the script polls `GET /sl/job/:id`. Replies share the team history used by `/chat/:team`, are plain text, and are capped at `OLLAMA_SL_REPLY_CHARS` (1000) characters and `OLLAMA_SL_NUM_PREDICT` (200) tokens with a 2048-token context (`OLLAMA_SL_NUM_CTX`). The relay keeps the model loaded (`OLLAMA_KEEP_ALIVE`, default `60m`), preloads it at startup (`OLLAMA_PRELOAD=false` disables this) and caches the installed-model lookup for 60 s.
 - **Ruby:** `POST /sl/ruby/eval` ([src/sl_ruby.rs](src/sl_ruby.rs)) evaluates code in the embedded VM. Send `{"code":"...","session":"..."}` JSON or plain-text code, with the token in `X-Ruby-Token` or `Authorization: Bearer`. The session defaults to the calling object's key, and local variables persist per session until `POST /sl/ruby/reset`. Captured `$stdout` plus `=> value.inspect` come back as `text/plain` (200). Ruby exceptions, `exit` and the per-call timeout (`TIADE_RUBY_EVAL_SECONDS`, default 10) return `422`.

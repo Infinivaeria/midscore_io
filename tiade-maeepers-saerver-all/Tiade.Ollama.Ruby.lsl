@@ -1,17 +1,27 @@
 // Tiade.Ollama.Ruby.lsl
-// Owner-controlled Second Life client for the Tide server:
-//   * Ollama chat through the job-based routes (no 60 s HTTP timeouts):
-//       POST /sl/ask/<team>  {"message","speaker"}  -> 202 {"job":"<id>"}
-//       GET  /sl/job/<id>                          -> {"status":"pending|done|error", ...}
-//   * Ruby evaluation in the server's embedded Magnus VM:
-//       POST /sl/ruby/eval   {"code"}   header X-Ruby-Token
-//       POST /sl/ruby/reset             header X-Ruby-Token
-//     Each object gets its own Ruby session (its object key), so local
-//     variables persist between `ruby` commands until `ruby-reset`.
+// Owner-controlled Second Life client for the Tide server.
+//
+// Server routes used:
+//   POST /sl/ask/<team>  {"message","speaker"}  -> 202 {"job":"<id>"}
+//   GET  /sl/job/<id>    -> {"status":"pending"} | {"status":"done","reply","seconds"}
+//                           | {"status":"error","error"}; 404 when expired
+//   POST /sl/ruby/eval   {"code"}  header X-Ruby-Token -> 200 output | 422 Ruby error
+//   POST /sl/ruby/reset  {}        header X-Ruby-Token -> 200
+//   GET  /ollama/health  -> 200 {"status":"ok",...} | 503
+// The Ruby session is this object's key, so locals persist between `ruby`
+// commands until `ruby-reset`.
 //
 // Setup: put this script in an object you own, set BASE_URL and, for Ruby,
 // RUBY_TOKEN to the server's TIADE_RUBY_EVAL_TOKEN. Then chat on /7:
-//   /7 ask what is a prim?     /7 ruby [1,2,3].sum     /7 notecard Demo
+//   /7 ask what is a prim?      /7 ruby [1, 2, 3].sum
+//   /7 notecard Demo            /7 ruby-notecard Script
+//
+// Command notecard (`/7 notecard <name>`): one command per line, run in order.
+//   # or // starts a comment; a leading "/7 " is optional.
+//   ask lines wait for the Ollama reply before the next line runs.
+//   wait <seconds>             pause the notecard
+//   ruby-begin ... ruby-end    send the enclosed lines as ONE Ruby program
+// Ruby notecard (`/7 ruby-notecard <name>`): the whole notecard is one program.
 
 string  BASE_URL        = "https://stimky.info";
 string  TEAM_NAME       = "secondlife";
@@ -19,28 +29,45 @@ string  RUBY_TOKEN      = "";      // must match TIADE_RUBY_EVAL_TOKEN on the se
 integer CONTROL_CHANNEL = 7;       // avatars can only chat on positive channels
 integer PUBLIC_REPLIES  = FALSE;   // FALSE: llOwnerSay, TRUE: llSay on channel 0
 integer AUTO_ASK        = FALSE;   // relay the owner's channel-0 chat to Ollama
-float   POLL_SECONDS    = 1.5;
+float   TICK_SECONDS    = 2.0;     // one job poll per tick keeps under the HTTP throttle
 integer ASK_DEADLINE    = 240;     // seconds before a queued ask is abandoned
 integer MAX_JOBS        = 4;
 integer CHUNK_CHARS     = 800;     // chat lines are limited to 1024 bytes
+integer MAX_RUBY_CHARS  = 12000;   // server limit is 16000; keeps script memory safe
+integer READ_TIMEOUT    = 30;      // seconds to wait for one notecard line
+integer RETRY_SECONDS   = 5;       // pause before retrying a throttled request
 
-integer KIND_ASK   = 1;
-integer KIND_POLL  = 2;
-integer KIND_RUBY  = 3;
-integer KIND_RESET = 4;
+integer KIND_ASK    = 1;
+integer KIND_POLL   = 2;
+integer KIND_RUBY   = 3;
+integer KIND_RESET  = 4;
+integer KIND_HEALTH = 5;
+
+integer NC_OFF      = 0;
+integer NC_COMMANDS = 1;
+integer NC_RUBY     = 2;
 
 key     gOwner;
-integer gControlListen;
 integer gPublicListen;
-list    gRequests;   // [request_key, kind, job_id] for in-flight HTTP requests
-list    gJobs;       // [job_id, deadline_unix] for queued Ollama replies
-string  gNotecardName;
-integer gNotecardLine;
-integer gNotecardActive;
-integer gNotecardReadPending;
-integer gNotecardExecuting;
-key     gNotecardQuery;
-key     gNotecardWaitRequest;
+list    gRequests;      // [request_key, kind, job_id] for in-flight HTTP requests
+list    gJobs;          // [job_id, deadline_unix] for queued Ollama replies
+integer gPollIndex;     // round-robin position in gJobs
+
+integer gNcMode;        // NC_OFF, NC_COMMANDS or NC_RUBY
+string  gNcName;
+key     gNcAsset;       // inventory key, to notice edits while running
+integer gNcLine;
+key     gNcQuery;       // pending llGetNotecardLine, or NULL_KEY
+integer gNcQueryTime;
+key     gNcWaitRequest; // HTTP request the notecard is waiting on
+string  gNcWaitJob;     // Ollama job the notecard is waiting on
+integer gNcResumeAt;    // unix time the notecard may continue (wait/retry)
+integer gNcExecuting;   // TRUE while a notecard line is being run
+integer gNcThrottled;   // set by send() when a notecard request was throttled
+integer gNcInBlock;     // inside ruby-begin ... ruby-end
+string  gNcBuffer;      // Ruby source being collected
+
+// ---------------------------------------------------------------- output
 
 say(string prefix, string text)
 {
@@ -74,6 +101,31 @@ integer is_on(string word)
     return word == "on" || word == "1" || word == "true" || word == "yes";
 }
 
+string replace_all(string text, string find, string with)
+{
+    return llDumpList2String(llParseStringKeepNulls(text, [find], []), with);
+}
+
+// llList2Json embeds strings that look like JSON ("[1,2]", "{}") unquoted,
+// so request bodies are built with explicit string escaping instead.
+string json_string(string text)
+{
+    text = replace_all(text, "\\", "\\\\");
+    text = replace_all(text, "\"", "\\\"");
+    text = replace_all(text, "\n", "\\n");
+    text = replace_all(text, "\r", "\\r");
+    text = replace_all(text, "\t", "\\t");
+    return "\"" + text + "\"";
+}
+
+// ---------------------------------------------------------------- HTTP
+
+update_timer()
+{
+    if (gJobs != [] || gNcMode != NC_OFF) llSetTimerEvent(TICK_SECONDS);
+    else llSetTimerEvent(0.0);
+}
+
 integer send(integer kind, string job_id, string url, string method, string body, integer ruby_auth)
 {
     list params = [HTTP_METHOD, method, HTTP_VERIFY_CERT, TRUE, HTTP_BODY_MAXLENGTH, 16384];
@@ -82,11 +134,12 @@ integer send(integer kind, string job_id, string url, string method, string body
     key request = llHTTPRequest(url, params, body);
     if (request == NULL_KEY)
     {
-        notify("HTTP request was throttled by the region; try again in a few seconds.");
+        if (gNcExecuting) gNcThrottled = TRUE;
+        else if (kind != KIND_POLL) notify("HTTP request was throttled by the region; try again in a few seconds.");
         return FALSE;
     }
     gRequests += [request, kind, job_id];
-    if (gNotecardExecuting) gNotecardWaitRequest = request;
+    if (gNcExecuting) gNcWaitRequest = request;
     return TRUE;
 }
 
@@ -105,7 +158,7 @@ integer poll_in_flight(string job_id)
 integer pending_asks()
 {
     integer i;
-    integer count;
+    integer count = 0;
     integer length = llGetListLength(gRequests);
     for (i = 0; i < length; i += 3)
     {
@@ -118,8 +171,10 @@ drop_job(string job_id)
 {
     integer index = llListFindList(gJobs, [job_id]);
     if (index != -1) gJobs = llDeleteSubList(gJobs, index, index + 1);
-    if (gJobs == [] && !gNotecardActive) llSetTimerEvent(0.0);
+    if (job_id == gNcWaitJob) gNcWaitJob = "";
 }
+
+// ---------------------------------------------------------------- commands
 
 ask(string message, string speaker)
 {
@@ -127,105 +182,218 @@ ask(string message, string speaker)
     if (message == "") { notify("Usage: ask <message>"); return; }
     if (llGetListLength(gJobs) / 2 + pending_asks() >= MAX_JOBS)
     {
+        if (gNcExecuting) { gNcThrottled = TRUE; return; }
         notify("Still waiting on " + (string)MAX_JOBS + " replies; try again shortly.");
         return;
     }
-    string body = llList2Json(JSON_OBJECT, ["message", message, "speaker", speaker]);
+    string body = "{\"message\":" + json_string(message) + ",\"speaker\":" + json_string(speaker) + "}";
     send(KIND_ASK, "", BASE_URL + "/sl/ask/" + llEscapeURL(TEAM_NAME), "POST", body, FALSE);
+}
+
+integer ruby_ready()
+{
+    if (RUBY_TOKEN == "") { notify("Set RUBY_TOKEN in the script to use Ruby."); return FALSE; }
+    return TRUE;
 }
 
 ruby(string code)
 {
-    if (RUBY_TOKEN == "") { notify("Set RUBY_TOKEN in the script to use Ruby."); return; }
+    if (!ruby_ready()) return;
     if (llStringTrim(code, STRING_TRIM) == "") { notify("Usage: ruby <code>"); return; }
-    send(KIND_RUBY, "", BASE_URL + "/sl/ruby/eval", "POST",
-        llList2Json(JSON_OBJECT, ["code", code]), TRUE);
+    send(KIND_RUBY, "", BASE_URL + "/sl/ruby/eval", "POST", "{\"code\":" + json_string(code) + "}", TRUE);
 }
 
-request_notecard_line()
+ruby_reset()
 {
-    key query = llGetNotecardLine(gNotecardName, gNotecardLine);
-    if (query == NULL_KEY)
-    {
-        gNotecardActive = FALSE;
-        gNotecardReadPending = FALSE;
-        notify("Could not read notecard '" + gNotecardName + "'.");
-    }
-    else
-    {
-        gNotecardQuery = query;
-        gNotecardReadPending = TRUE;
-    }
+    if (ruby_ready()) send(KIND_RESET, "", BASE_URL + "/sl/ruby/reset", "POST", "{}", TRUE);
 }
 
-start_notecard(string name)
+// ---------------------------------------------------------------- notecards
+
+start_notecard(string name, integer mode)
 {
     name = llStringTrim(name, STRING_TRIM);
-    if (name == "") { notify("Usage: notecard <inventory name>"); return; }
-    if (gNotecardActive) { notify("Already reading notecard '" + gNotecardName + "'."); return; }
+    if (name == "") { notify("Usage: notecard <name>  or  ruby-notecard <name>"); return; }
+    if (gNcMode != NC_OFF) { notify("Already running notecard '" + gNcName + "'. Use notecard-stop first."); return; }
     if (llGetInventoryType(name) != INVENTORY_NOTECARD)
     {
-        notify("Notecard '" + name + "' was not found in this object's inventory.");
+        notify("Notecard '" + name + "' was not found in this object's inventory (names are case-sensitive).");
         return;
     }
-    gNotecardName = name;
-    gNotecardLine = 0;
-    gNotecardActive = TRUE;
-    gNotecardReadPending = FALSE;
-    gNotecardWaitRequest = NULL_KEY;
-    notify("Running notecard '" + gNotecardName + "' (one command per line).");
-    llSetTimerEvent(POLL_SECONDS);
-    request_notecard_line();
+    if (mode == NC_RUBY && !ruby_ready()) return;
+    gNcMode = mode;
+    gNcName = name;
+    gNcAsset = llGetInventoryKey(name);
+    gNcLine = 0;
+    gNcQuery = NULL_KEY;
+    gNcWaitRequest = NULL_KEY;
+    gNcWaitJob = "";
+    gNcResumeAt = 0;
+    gNcThrottled = FALSE;
+    gNcInBlock = FALSE;
+    gNcBuffer = "";
+    if (mode == NC_RUBY) notify("Sending notecard '" + name + "' to Ruby as one program.");
+    else notify("Running notecard '" + name + "'.");
+    update_timer();
+    notecard_next();
 }
 
-stop_notecard()
+end_notecard(string message)
 {
-    if (!gNotecardActive) { notify("No notecard is running."); return; }
-    gNotecardActive = FALSE;
-    gNotecardReadPending = FALSE;
-    gNotecardQuery = NULL_KEY;
-    notify("Stopped notecard '" + gNotecardName + "'.");
-    if (gJobs == []) llSetTimerEvent(0.0);
+    gNcMode = NC_OFF;
+    gNcQuery = NULL_KEY;
+    gNcWaitRequest = NULL_KEY;
+    gNcWaitJob = "";
+    gNcInBlock = FALSE;
+    gNcBuffer = "";
+    notify(message);
+    update_timer();
 }
+
+// Reads the next line unless the notecard is waiting for something.
+notecard_next()
+{
+    if (gNcMode == NC_OFF || gNcQuery != NULL_KEY) return;
+    if (gNcWaitRequest != NULL_KEY || gNcWaitJob != "") return;
+    if (llGetUnixTime() < gNcResumeAt) return;
+    if (llGetInventoryType(gNcName) != INVENTORY_NOTECARD)
+    {
+        end_notecard("Notecard '" + gNcName + "' was removed; stopped.");
+        return;
+    }
+    gNcQuery = llGetNotecardLine(gNcName, gNcLine);
+    gNcQueryTime = llGetUnixTime();
+}
+
+// Appends a Ruby source line; returns FALSE (and stops) when it is too long.
+integer buffer_ruby(string line)
+{
+    if (llStringLength(gNcBuffer) + llStringLength(line) + 1 > MAX_RUBY_CHARS)
+    {
+        end_notecard("Ruby in notecard '" + gNcName + "' exceeds " + (string)MAX_RUBY_CHARS + " characters; stopped.");
+        return FALSE;
+    }
+    gNcBuffer += line + "\n";
+    return TRUE;
+}
+
+// Sends the collected Ruby; on throttle the same line is read again later.
+integer flush_ruby()
+{
+    if (llStringTrim(gNcBuffer, STRING_TRIM) == "") return TRUE;
+    gNcExecuting = TRUE;
+    gNcThrottled = FALSE;
+    ruby(gNcBuffer);
+    gNcExecuting = FALSE;
+    if (gNcThrottled) return FALSE;
+    gNcBuffer = "";
+    return TRUE;
+}
+
+notecard_line(string data)
+{
+    if (gNcMode == NC_RUBY)
+    {
+        if (buffer_ruby(data)) gNcLine++;
+        return;
+    }
+
+    string line = llStringTrim(data, STRING_TRIM);
+    string lower = llToLower(line);
+    if (gNcInBlock)
+    {
+        if (lower == "ruby-end")
+        {
+            if (!flush_ruby()) { gNcResumeAt = llGetUnixTime() + RETRY_SECONDS; return; }
+            gNcInBlock = FALSE;
+        }
+        else if (!buffer_ruby(data)) return;   // keep indentation inside Ruby
+        gNcLine++;
+        return;
+    }
+
+    // Accept lines written exactly as typed in chat: "/7 ask ...".
+    string prefix = "/" + (string)CONTROL_CHANNEL + " ";
+    if (llSubStringIndex(line, prefix) == 0)
+    {
+        line = llStringTrim(llDeleteSubString(line, 0, llStringLength(prefix) - 1), STRING_TRIM);
+        lower = llToLower(line);
+    }
+
+    if (line == "" || llGetSubString(line, 0, 0) == "#" || llGetSubString(line, 0, 1) == "//")
+    {
+        gNcLine++;
+        return;
+    }
+    if (lower == "ruby-begin")
+    {
+        if (!ruby_ready()) { end_notecard("Notecard '" + gNcName + "' stopped at ruby-begin."); return; }
+        gNcInBlock = TRUE;
+        gNcBuffer = "";
+        gNcLine++;
+        return;
+    }
+    if (llSubStringIndex(lower, "wait ") == 0)
+    {
+        gNcResumeAt = llGetUnixTime() + (integer)llGetSubString(line, 5, -1);
+        gNcLine++;
+        return;
+    }
+    if (lower == "notecard-stop") { end_notecard("Notecard '" + gNcName + "' stopped itself."); return; }
+
+    gNcExecuting = TRUE;
+    gNcThrottled = FALSE;
+    command(line, llKey2Name(gOwner));
+    gNcExecuting = FALSE;
+    if (gNcThrottled) gNcResumeAt = llGetUnixTime() + RETRY_SECONDS;   // same line again
+    else gNcLine++;
+}
+
+notecard_eof()
+{
+    if (gNcMode == NC_RUBY)
+    {
+        if (!flush_ruby()) { gNcResumeAt = llGetUnixTime() + RETRY_SECONDS; return; }
+        end_notecard("Sent notecard '" + gNcName + "' (" + (string)gNcLine + " lines) to Ruby.");
+        return;
+    }
+    if (gNcInBlock) { end_notecard("Notecard '" + gNcName + "' ended inside ruby-begin without ruby-end."); return; }
+    if (gNcWaitRequest != NULL_KEY || gNcWaitJob != "") return;   // finish after the last reply
+    end_notecard("Finished notecard '" + gNcName + "'.");
+}
+
+// ---------------------------------------------------------------- UI
 
 help()
 {
-    notify("HELP 1/4 - CHAT AND SETTINGS");
-    notify("Commands use /" + (string)CONTROL_CHANNEL + " and are owner-only.");
-    notify("/" + (string)CONTROL_CHANNEL + " ask <message> - ask Ollama using team '" + TEAM_NAME + "'.");
-    notify("Plain text on the control channel is also sent as an Ollama question.");
-    notify("/" + (string)CONTROL_CHANNEL + " team <name> - change the team and its shared chat history.");
-    notify("/" + (string)CONTROL_CHANNEL + " url <https://host> - change the HTTPS server URL (no trailing slash).");
-    notify("/" + (string)CONTROL_CHANNEL + " status - show server, team, options, and pending replies.");
-    notify("/" + (string)CONTROL_CHANNEL + " help - show this extended help.");
+    string c = "/" + (string)CONTROL_CHANNEL + " ";
+    notify("HELP 1/4 - CHAT AND SETTINGS (owner only, channel " + (string)CONTROL_CHANNEL + ")");
+    notify(c + "ask <message> - ask Ollama as team '" + TEAM_NAME + "'. Plain text is also a question.");
+    notify(c + "team <name> - switch team and its shared chat history.");
+    notify(c + "url <https://host> - change the server (no trailing slash).");
+    notify(c + "health - check the server and Ollama.   " + c + "status - show settings.");
 
-    notify("HELP 2/4 - RUBY");
-    notify("/" + (string)CONTROL_CHANNEL + " ruby <code> - run Ruby on the server; session locals persist for this object.");
-    notify("/" + (string)CONTROL_CHANNEL + " ruby-reset - clear this object's Ruby session.");
-    notify("Set RUBY_TOKEN in the script to the server's TIADE_RUBY_EVAL_TOKEN. Empty token disables Ruby.");
-    notify("Ruby is remote code execution with server privileges. Only use a server and token you trust; never share the token.");
-    notify("Ruby output/errors are returned to the owner. Server timeouts and code-length limits also apply.");
+    notify("HELP 2/4 - RUBY (needs RUBY_TOKEN = server TIADE_RUBY_EVAL_TOKEN)");
+    notify(c + "ruby <code> - run Ruby on the server; locals persist for this object.");
+    notify(c + "ruby-reset - clear this object's Ruby session.");
+    notify("Ruby runs with server privileges. Never share the token.");
 
-    notify("HELP 3/4 - NOTECARD RUNNER");
-    notify("Put a notecard in this object's inventory, then use /" + (string)CONTROL_CHANNEL + " notecard <exact name>.");
-    notify("Each nonblank line is one command. Lines starting with # are comments. Example lines:");
-    notify("team secondlife");
-    notify("ask What is a prim?");
-    notify("ruby [1, 2, 3].sum");
-    notify("/" + (string)CONTROL_CHANNEL + " notecard-stop - stop reading more lines. Only one notecard runs at a time.");
-    notify("HTTP commands are submitted in sequence. Ollama replies finish asynchronously; up to " + (string)MAX_JOBS + " can be pending.");
+    notify("HELP 3/4 - NOTECARDS (put the notecard in this object's inventory)");
+    notify(c + "notecard <name> - run one command per line, in order. Example notecard:");
+    notify("  # comment\n  team secondlife\n  ask What is a prim?\n  wait 2\n  ruby x = 21\n  ruby-begin\n  def double(n) = n * 2\n  puts double(x)\n  ruby-end");
+    notify(c + "ruby-notecard <name> - send the whole notecard as one Ruby program.");
+    notify(c + "notecard-stop - stop. ask lines wait for their reply; throttled lines are retried.");
 
-    notify("HELP 4/4 - REPLIES AND TROUBLESHOOTING");
-    notify("/" + (string)CONTROL_CHANNEL + " public on|off - show replies in local chat or only to the owner (default off).");
-    notify("/" + (string)CONTROL_CHANNEL + " auto on|off - forward your own channel-0 chat to Ollama (default off).");
-    notify("If requests fail, check status, the HTTPS URL, server availability, and Ruby token configuration.");
-    notify("Ollama asks can take time; jobs are polled automatically and abandoned after " + (string)ASK_DEADLINE + " seconds.");
+    notify("HELP 4/4 - REPLIES");
+    notify(c + "public on|off - replies in local chat or owner only (default off).");
+    notify(c + "auto on|off - forward your channel-0 chat to Ollama (default off).");
+    notify("Replies are polled every " + (string)((integer)TICK_SECONDS) + "s and abandoned after " + (string)ASK_DEADLINE + "s.");
 }
 
 show_status()
 {
-    string notecard_status = "none";
-    if (gNotecardActive) notecard_status = gNotecardName;
+    string nc = "none";
+    if (gNcMode != NC_OFF) nc = gNcName + " (line " + (string)(gNcLine + 1) + ")";
     notify(llDumpList2String([
         "Server: " + BASE_URL,
         "Team: " + TEAM_NAME,
@@ -233,7 +401,7 @@ show_status()
         "Public replies: " + on_off(PUBLIC_REPLIES),
         "Auto ask: " + on_off(AUTO_ASK),
         "Waiting replies: " + (string)(llGetListLength(gJobs) / 2),
-        "Notecard: " + notecard_status,
+        "Notecard: " + nc,
         "Free memory: " + (string)llGetFreeMemory()], "\n"));
 }
 
@@ -259,17 +427,28 @@ command(string message, string speaker)
 
     if (verb == "ask") ask(rest, speaker);
     else if (verb == "ruby") ruby(rest);
-    else if (verb == "ruby-reset")
+    else if (verb == "ruby-reset") ruby_reset();
+    else if (verb == "notecard") start_notecard(rest, NC_COMMANDS);
+    else if (verb == "ruby-notecard") start_notecard(rest, NC_RUBY);
+    else if (verb == "notecard-stop")
     {
-        if (RUBY_TOKEN == "") notify("Set RUBY_TOKEN in the script to use Ruby.");
-        else send(KIND_RESET, "", BASE_URL + "/sl/ruby/reset", "POST", "{}", TRUE);
+        if (gNcMode == NC_OFF) notify("No notecard is running.");
+        else end_notecard("Stopped notecard '" + gNcName + "'.");
     }
-    else if (verb == "notecard") start_notecard(rest);
-    else if (verb == "notecard-stop") stop_notecard();
     else if (verb == "team" && rest != "") { TEAM_NAME = rest; notify("Team: " + TEAM_NAME); }
     else if (verb == "public") { PUBLIC_REPLIES = is_on(rest); notify("Public replies " + on_off(PUBLIC_REPLIES)); }
     else if (verb == "auto") { set_auto(is_on(rest)); notify("Auto ask " + on_off(AUTO_ASK)); }
-    else if (verb == "url" && llSubStringIndex(rest, "https://") == 0) { BASE_URL = rest; notify("Server: " + BASE_URL); }
+    else if (verb == "url")
+    {
+        if (llSubStringIndex(rest, "https://") == 0)
+        {
+            if (llGetSubString(rest, -1, -1) == "/") rest = llDeleteSubString(rest, -1, -1);
+            BASE_URL = rest;
+            notify("Server: " + BASE_URL);
+        }
+        else notify("Usage: url https://host");
+    }
+    else if (verb == "health") send(KIND_HEALTH, "", BASE_URL + "/ollama/health", "GET", "", FALSE);
     else if (verb == "status") show_status();
     else if (verb == "help") help();
     else ask(message, speaker);   // plain text is treated as a question
@@ -281,18 +460,14 @@ handle_job_status(string job_id, string body)
     if (job_state == "pending") return;
     drop_job(job_id);
     if (job_state == "done")
-    {
         say("[ollama " + llJsonGetValue(body, ["seconds"]) + "s] ", llJsonGetValue(body, ["reply"]));
-    }
     else if (job_state == "error")
-    {
         notify("Ollama error: " + llJsonGetValue(body, ["error"]));
-    }
     else
-    {
         notify("Invalid Ollama job response: " + body);
-    }
 }
+
+// ---------------------------------------------------------------- events
 
 default
 {
@@ -301,13 +476,12 @@ default
         gOwner = llGetOwner();
         gRequests = [];
         gJobs = [];
-        gNotecardActive = FALSE;
-        gNotecardReadPending = FALSE;
-        gNotecardExecuting = FALSE;
-        gNotecardQuery = NULL_KEY;
-        gNotecardWaitRequest = NULL_KEY;
-        gControlListen = llListen(CONTROL_CHANNEL, "", gOwner, "");
+        gNcMode = NC_OFF;
+        gNcQuery = NULL_KEY;
+        gNcWaitRequest = NULL_KEY;
+        llListen(CONTROL_CHANNEL, "", gOwner, "");
         set_auto(AUTO_ASK);
+        update_timer();
         notify("Ready on /" + (string)CONTROL_CHANNEL + ". Say /" + (string)CONTROL_CHANNEL + " help");
     }
 
@@ -316,6 +490,9 @@ default
     changed(integer change)
     {
         if (change & CHANGED_OWNER) llResetScript();
+        if ((change & CHANGED_INVENTORY) && gNcMode != NC_OFF
+            && llGetInventoryKey(gNcName) != gNcAsset)
+            end_notecard("Notecard '" + gNcName + "' was edited or removed; stopped. Run it again.");
     }
 
     touch_start(integer count)
@@ -332,26 +509,11 @@ default
 
     dataserver(key query_id, string data)
     {
-        if (!gNotecardActive || query_id != gNotecardQuery) return;
-        gNotecardReadPending = FALSE;
-        gNotecardQuery = NULL_KEY;
-        if (data == EOF)
-        {
-            gNotecardActive = FALSE;
-            notify("Finished notecard '" + gNotecardName + "'.");
-            if (gJobs == []) llSetTimerEvent(0.0);
-            return;
-        }
-
-        data = llStringTrim(data, STRING_TRIM);
-        if (data != "" && llGetSubString(data, 0, 0) != "#")
-        {
-            gNotecardLine++;
-            gNotecardExecuting = TRUE;
-            command(data, "notecard");
-            gNotecardExecuting = FALSE;
-        }
-        else gNotecardLine++;
+        if (gNcMode == NC_OFF || query_id != gNcQuery) return;
+        gNcQuery = NULL_KEY;
+        if (data == EOF) notecard_eof();
+        else notecard_line(data);
+        notecard_next();
     }
 
     http_response(key request, integer status, list metadata, string body)
@@ -361,7 +523,8 @@ default
         integer kind = llList2Integer(gRequests, index + 1);
         string job_id = llList2String(gRequests, index + 2);
         gRequests = llDeleteSubList(gRequests, index, index + 2);
-        if (request == gNotecardWaitRequest) gNotecardWaitRequest = NULL_KEY;
+        integer for_notecard = (request == gNcWaitRequest);
+        if (for_notecard) gNcWaitRequest = NULL_KEY;
 
         if (kind == KIND_ASK)
         {
@@ -369,7 +532,7 @@ default
             if (status == 202 && id != JSON_INVALID && id != JSON_NULL && id != "")
             {
                 gJobs += [id, llGetUnixTime() + ASK_DEADLINE];
-                llSetTimerEvent(POLL_SECONDS);
+                if (for_notecard && gNcMode != NC_OFF) gNcWaitJob = id;
             }
             else notify("Ask failed (HTTP " + (string)status + "): " + body);
         }
@@ -377,12 +540,13 @@ default
         {
             if (status == 200) handle_job_status(job_id, body);
             else if (status == 404) { drop_job(job_id); notify("Reply expired on the server."); }
-            // other statuses (e.g. 499 region timeout) are retried on the next tick
+            // other statuses (e.g. 499 region timeout) are retried on a later tick
         }
         else if (kind == KIND_RUBY)
         {
             if (status == 200) say("[ruby] ", body);
             else if (status == 422) say("[ruby error] ", body);
+            else if (status == 401) notify("Ruby token rejected (HTTP 401): RUBY_TOKEN must equal TIADE_RUBY_EVAL_TOKEN.");
             else notify("Ruby request failed (HTTP " + (string)status + "): " + body);
         }
         else if (kind == KIND_RESET)
@@ -390,29 +554,50 @@ default
             if (status == 200) notify("Ruby: " + body);
             else notify("Ruby reset failed (HTTP " + (string)status + "): " + body);
         }
+        else if (kind == KIND_HEALTH)
+        {
+            if (status == 200)
+                notify("Server OK. Model: " + llJsonGetValue(body, ["configured_model"])
+                    + ". Installed: " + llList2CSV(llJson2List(llJsonGetValue(body, ["available_models"]))));
+            else notify("Health check failed (HTTP " + (string)status + "): " + body);
+        }
+
+        update_timer();
+        notecard_next();
     }
 
     timer()
     {
         integer now = llGetUnixTime();
         integer i = 0;
-        if (gNotecardActive && !gNotecardReadPending && gNotecardWaitRequest == NULL_KEY)
-            request_notecard_line();
         while (i < llGetListLength(gJobs))
         {
-            string job_id = llList2String(gJobs, i);
             if (now > llList2Integer(gJobs, i + 1))
             {
-                gJobs = llDeleteSubList(gJobs, i, i + 1);
+                drop_job(llList2String(gJobs, i));
                 notify("Gave up waiting for an Ollama reply.");
             }
-            else
-            {
-                if (!poll_in_flight(job_id))
-                    send(KIND_POLL, job_id, BASE_URL + "/sl/job/" + job_id, "GET", "", FALSE);
-                i += 2;
-            }
+            else i += 2;
         }
-        if (gJobs == [] && !gNotecardActive) llSetTimerEvent(0.0);
+
+        // One poll per tick, round-robin, to stay under the region HTTP throttle.
+        integer count = llGetListLength(gJobs) / 2;
+        if (count > 0)
+        {
+            if (gPollIndex >= count) gPollIndex = 0;
+            string job_id = llList2String(gJobs, gPollIndex * 2);
+            if (!poll_in_flight(job_id))
+                send(KIND_POLL, job_id, BASE_URL + "/sl/job/" + job_id, "GET", "", FALSE);
+            gPollIndex++;
+        }
+
+        if (gNcMode != NC_OFF)
+        {
+            if (gNcQuery != NULL_KEY && now - gNcQueryTime > READ_TIMEOUT)
+                end_notecard("Timed out reading notecard '" + gNcName + "' line " + (string)(gNcLine + 1)
+                    + ". An empty, never-saved notecard cannot be read.");
+            else notecard_next();
+        }
+        update_timer();
     }
 }

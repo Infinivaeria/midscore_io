@@ -1,0 +1,17 @@
+# Demo - command notecard for Tiade.Ollama.Ruby.lsl
+# In Second Life: create a notecard named "Demo" in the object, paste this,
+# save it, then say:  /7 notecard Demo
+team secondlife
+ask In one sentence, what is a prim in Second Life?
+wait 2
+ruby-reset
+ruby x = 21
+/7 ruby [1, 2, 3]
+ruby-begin
+def double(n) = n * 2
+squares = (1..5).map { |i| i * i }
+puts "double(x) = #{double(x)}"
+puts "squares   = #{squares.inspect}"
+{ total: squares.sum, time: Time.now.utc.strftime("%H:%M UTC") }
+ruby-end
+ask Give me a two word greeting.

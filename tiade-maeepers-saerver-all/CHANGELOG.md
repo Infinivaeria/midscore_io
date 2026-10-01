@@ -9,6 +9,17 @@
   `POST /sl/ruby/reset`) with per-session bindings, stdout capture and a
   Ruby-level timeout (`src/sl_ruby.rs`).
 - `Tiade.Ollama.Ruby.lsl`, an LSL client for both.
+- LSL notecards: `ruby-begin`/`ruby-end` blocks, `ruby-notecard <name>` (whole
+  notecard as one Ruby program), `wait <seconds>`, optional `/7 ` prefixes,
+  and `health`. Examples in `sl_notecards/`.
+
+### Fixed
+- LSL notecard runner: multi-line Ruby no longer fails line by line; `ask`
+  lines wait for their reply; throttled lines are retried instead of dropped;
+  unreadable notecards time out instead of hanging; edits stop the run.
+- LSL request bodies escape strings explicitly, so `ruby [1, 2, 3]` and other
+  JSON-looking input are no longer sent as raw JSON (which returned 400).
+- LSL polls one job per tick to stay under the region HTTP throttle.
 - `start.sh` loads an optional git-ignored `server.env`.
 
 ### Changed

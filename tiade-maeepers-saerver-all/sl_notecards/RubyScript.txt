@@ -1,0 +1,14 @@
+# RubyScript - the whole notecard is ONE Ruby program.
+# In Second Life: create a notecard named "RubyScript", paste this, save it,
+# then say:  /7 ruby-notecard RubyScript
+class Dice
+  def initialize(sides) = @sides = sides
+  def roll(times)
+    Array.new(times) { rand(1..@sides) }
+  end
+end
+
+rolls = Dice.new(6).roll(5)
+puts "rolled: #{rolls.join(', ')}"
+puts "quote test: \"ok\" and backslash \\ and tab\tdone"
+@last_total = rolls.sum

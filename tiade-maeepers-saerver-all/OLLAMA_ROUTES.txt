@@ -65,6 +65,15 @@ GET  /sl/job/:id
   {"status":"pending"}, {"status":"done","reply","model","seconds"} or
   {"status":"error","error"}. 404 once the job is unknown or older than 10 minutes.
 
+POST /sl/ruby/eval   (mounted by src/sl_ruby.rs, not listed in GET /ollama)
+  Requires X-Ruby-Token: <TIADE_RUBY_EVAL_TOKEN> (or Authorization: Bearer).
+  Body: {"code":"...","session":"optional"} or plain-text code. The session
+  defaults to X-SecondLife-Object-Key. 200 text/plain "<stdout>=> value";
+  422 Ruby exception/timeout; 401 bad token; 503 when the token is unset.
+
+POST /sl/ruby/reset
+  Same authorization. Clears the session's Ruby locals. 200 text/plain.
+
 GET  /ollama/health
   Ollama upstream status and installed model list. Returns 200 when upstream is
   available; 503 otherwise.
