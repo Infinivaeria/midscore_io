@@ -8,7 +8,7 @@ description = "Standalone Rust, Magnus, and Ruby partitioned-array client for th
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-magnus = { git = "https://github.com/matsadler/magnus" }
+magnus = { git = "https://github.com/matsadler/magnus", rev = "5056dd0dba225b10b8303a9d8097e2d8a6349521" }
 serde_json = "1.0"
 ureq = { version = "3.0", features = ["json"] }
 urlencoding = "2.1"

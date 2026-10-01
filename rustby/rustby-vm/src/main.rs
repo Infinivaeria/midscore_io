@@ -77,10 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Ok(output) => Ok(output),
                             Err(e) => {
                                 eprintln!("Error reading Ruby output: {}", e);
-                                Err(magnus::Error::new(
-                                    magnus::exception::runtime_error(),
-                                    format!("Error reading Ruby output: {}", e),
-                                ))
+                                Err(format!("Error reading Ruby output: {}", e))
                             }
                         };
 

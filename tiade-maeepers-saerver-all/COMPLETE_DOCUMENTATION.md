@@ -64,8 +64,9 @@ flowchart LR
 - Rust toolchain compatible with edition 2024.
 - The sibling local crate `../lib/partitioned_array_rust`.
 - A working TLS certificate and private key for the default HTTPS listener.
-- Optional: Ruby/Magnus support and the external Ruby helper paths used by the
-  legacy `/time`, `/weather`, `/ae`, and moon/sun routes.
+- Ruby (the rbenv version in `.ruby-version`, built with shared-library
+  support). Magnus embeds it in-process for the `/time`, `/weather`, `/ae`, and
+  moon/sun routes; see `src/ruby_vm.rs`. No external Ruby helper is required.
 
 Install dependencies and compile from this directory:
 

@@ -270,13 +270,13 @@ Integration note:
 |---|---|---|---|
 | POST | `/praexy-saerver` | `src/main.rs` | Form relay utility |
 | GET | `/bridge/*rest` | `src/main.rs` | iframe bridge page |
-| GET | `/time` | `src/main.rs` | Ruby script output |
-| GET | `/ae` | `src/main.rs` | Ruby script output |
-| GET | `/weather` | `src/main.rs` | Ruby script output |
+| GET | `/time` | `src/main.rs` | Embedded Ruby VM output |
+| GET | `/ae` | `src/main.rs` | Embedded Ruby VM output |
+| GET | `/weather` | `src/main.rs` | Embedded Ruby VM output |
 | GET | `/rneutrialg` | `src/main.rs` | Text file read |
 | GET | `/rneutri` | `src/main.rs` | Text file write |
-| GET | `/tiade/moon` | `src/main.rs` | Namespaced legacy moon endpoint |
-| GET | `/tiade/sun` | `src/main.rs` | Namespaced legacy sun endpoint |
+| GET | `/tiade/moon` | `src/main.rs` | Embedded Ruby VM moon phase |
+| GET | `/tiade/sun` | `src/main.rs` | Embedded Ruby VM sun phase |
 | GET | `/tiade-maepers/*rest` | `src/main.rs` | iframe bridge page |
 | GET | `/parse_plink` | `src/main.rs` | URL parser redirect |
 | POST | `/tiade/img/resize` | `src/main.rs` | Namespaced legacy placeholder resize |
@@ -368,6 +368,19 @@ console.log(reply);
 ```
 
 The generated module exports `routes`, `health`, `chat`, `game_turn`, and `history`. The relay route list is also available in [OLLAMA_ROUTES.txt](OLLAMA_ROUTES.txt).
+
+### Embedded Ruby VM (Magnus)
+
+Ruby runs in-process: [src/ruby_vm.rs](src/ruby_vm.rs) initialises a Magnus-embedded VM on a dedicated `ruby-vm` thread at startup, and every Ruby evaluation is queued to that thread. The external `rustby-vm` file watcher is no longer needed.
+
+- **Startup:** loads [ruby_client/ollama_game_client.rb](ruby_client/ollama_game_client.rb), then the route prelude in `src/main.rs` (`Calendar`, `AECalendar`, `MoonPhaseDetails2`, `SolarDance2`, `ForecastByLongitude`, `formatted_pst_time`). Definitions persist across evaluations.
+- **Routes:** `/time`, `/ae`, `/weather`, `/tiade/moon` and `/tiade/sun` call `ruby_vm::text_response`, which returns the result's `to_s` as `text/plain`. A Ruby exception returns `500` with `Error: <message>`; a run longer than 120 s returns `504`.
+- **CLI:** type `rustby <ruby code>` on the server's stdin to evaluate code and print the result (`rustby` alone runs a demo snippet).
+- **Encoding:** evaluated source is treated as UTF-8, matching a normal `.rb` file.
+- **Signals:** Ruby's `INT`/`TERM`/`HUP`/`QUIT`/`USR1`/`USR2`/`ALRM` handlers are reset to the system defaults, so `ctrlc`, `stop-server.sh` and the `killall -HUP` restart behave as before.
+- **Ruby version:** the binary links the rbenv Ruby selected by `.ruby-version` (4.0.7). Rebuild after changing Ruby versions.
+
+Evaluation is serial: a slow script delays later Ruby requests. A timed-out script keeps running in the VM until it finishes.
 
 ### Ruby Raylib and Magnus Client
 

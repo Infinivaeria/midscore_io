@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // calculate md5 hash
     let digest = {
         let mut file = File::open(&main_file_path)?;
-        let mut hasher = Md5::new();
+        let mut hasher = md5::Context::new();
         std::io::copy(&mut file, &mut hasher)?;
         hasher.finalize()
     };

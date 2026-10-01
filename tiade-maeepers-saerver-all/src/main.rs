@@ -1,6 +1,8 @@
 
 #![recursion_limit = "256"]
 
+mod ruby_vm;
+
 use std::io::{self, BufRead};
 use tide::utils::After;
 use tide_rustls::TlsListener;
@@ -890,6 +892,16 @@ use std::collections::HashMap;
 use futures_util::TryFutureExt;
 #[async_std::main]
 async fn main() -> tide::Result<()> {
+    // Must run before `ctrlc::set_handler`: Ruby installs signal handlers during init.
+    match ruby_vm::start() {
+        Ok(()) => {
+            if let Err(error) = ruby_vm::eval_blocking(include_str!("../ruby_client/ollama_game_client.rb")) {
+                eprintln!("Failed to load ruby_client/ollama_game_client.rb into Ruby VM: {}", error);
+            }
+        }
+        Err(error) => eprintln!("Embedded Ruby VM unavailable; Ruby-backed routes will return errors: {}", error),
+    }
+
     // Data directory and filenames (place near top of main.rs, after imports)
 
   fn new_chatlog_memory_cache() -> partitioned_array_rust::PartitionedArray {
@@ -3649,61 +3661,12 @@ let mut app = tide::with_state(state.clone());
                         std::process::exit(0);
                     }
 
-                    // When the "rustby" command is input, write the Ruby code to a .rb file
-                    // in a shared directory ("./rustby_scripts"). Then, immediately load (evaluate)
-                    // the file using Magnus. The file is deleted after evaluation. The Ruby code in
-                    // the file is expected to return a string.
-                    "rustby" => {
-                        println!("Running Ruby code via named pipe sharing system...");
-                        let script_dir = "./rustby_scripts";
-                        if let Err(e) = std::fs::create_dir_all(script_dir) {
-                            println!("Failed to create script directory: {}", e);
-                            continue;
-                        }
-                        let filename = format!(
-                            "{}/script_{}.rb",
-                            script_dir,
-                            Utc::now().timestamp_nanos_opt().unwrap_or(0)
-                        );
-                        // Replace the Ruby code below as needed. It must return a string value.
-                        let ruby_code = r#"nil
-       'RustbySpace'
-      "#;
-                        if let Err(e) = std::fs::write(&filename, ruby_code) {
-                            println!("Error writing script file: {}", e);
-                            continue;
-                        }
-                        println!("Script file written: {}", filename);
-
-                        // Instead of calling the Ruby evaluator directly (which cannot be done in a thread),
-                        // write the Ruby load command to a named pipe for external processing.
-                        let pipe_path = "/tmp/ruby_pipe";
-                        if let Err(e) = std::fs::write(pipe_path, format!("load '{}'\n", filename))
-                        {
-                            println!("Error writing to named pipe: {}", e);
-                        } else {
-                            println!("Command sent to Ruby evaluator via pipe: {}", pipe_path);
-                        }
-
-                        // Wait briefly for the external process to evaluate the script and write the result.
-                        std::thread::sleep(std::time::Duration::from_millis(100));
-
-                        // Read the evaluation result from an output file.
-                        let result_path = "/tmp/ruby_output.txt";
-                        let script_result = match std::fs::read_to_string(result_path) {
-                            Ok(output) => Ok(output),
-                            Err(e) => {
-                                eprintln!("Error reading Ruby output: {}", e);
-                            Err(format!("Error reading Ruby output: {}", e))
-                            }
-                        };
-
-                        // Remove the script file after evaluation.
-                        if let Err(e) = std::fs::remove_file(&filename) {
-                            eprintln!("Failed to remove script file: {}", e);
-                        }
-
-                        match script_result {
+                    // `rustby` evaluates a demo snippet; `rustby <code>` evaluates <code>
+                    // in the embedded Ruby VM and prints the result's `to_s`.
+                    command if command == "rustby" || command.starts_with("rustby ") => {
+                        let code = command.strip_prefix("rustby").unwrap_or_default().trim();
+                        let code = if code.is_empty() { "'RustbySpace'" } else { code };
+                        match ruby_vm::eval_blocking(code) {
                             Ok(output) => println!("Ruby output: {}", output),
                             Err(e) => eprintln!("Error running Ruby code: {}", e),
                         }
@@ -8564,10 +8527,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
     {
-        std::fs::create_dir_all("/root/midscore_io/rustby/rustby-vm/target/release/scripts").ok();
-        let ts = Utc::now().timestamp_nanos_opt().unwrap_or(0);
-        let filename =
-            format!("/root/midscore_io/rustby/rustby-vm/target/release/scripts/script_{ts}.rb");
+        // Prelude for the Ruby-backed routes (/time, /ae, /weather, /tiade/moon, /tiade/sun).
         let contents = r######"
        require 'date'
        require 'fileutils'
@@ -8895,65 +8855,20 @@ WERE_FORMS = [
 
 
     "######;
-        std::fs::write(&filename, contents)?;
-        println!("Created script file: {}", filename);
+        match ruby_vm::eval_blocking(contents) {
+            Ok(_) => println!("Loaded Ruby route prelude into embedded VM"),
+            Err(error) => eprintln!("Failed to load Ruby route prelude: {}", error),
+        }
     }
 
-    app.at("/time").get(|mut req: tide::Request<AppState>| async move {
-
-    let script_dir = "/root/midscore_io/rustby/rustby-vm/target/release/scripts";
-    //td::fs::create_dir_all(script_dir).ok();
-    let mut res = tide::Response::new(tide::StatusCode::Ok);
-    //res.set_body("HTML content for /moon route");
-    //res.set_content_type("text/html; charset=utf-8");
-    //return Ok(res);
-    // Grab Ruby code from request body.
-    let ruby_source = r######"
+    app.at("/time")
+        .get(|_req: tide::Request<AppState>| async move {
+            ruby_vm::text_response(r######"
 
     "Gregorian: #{Calendar.new.gregorian}\nJulian: #{Calendar.new.julian_primitive} -> #{Calendar.new.julian}\nPST+DST+SLT: #{formatted_pst_time}"
 
-    "######;
-    if ruby_source.trim().is_empty() {
-        let mut resp = tide::Response::new(tide::StatusCode::Ok);
-        resp.set_body("No Ruby code supplied");
-        return Ok(resp);
-    }
-
-    // Create unique .rb filename.
-    let ts = Utc::now().timestamp_nanos_opt().unwrap_or(0);
-    let filename = format!("{}/moon_{}.rb", script_dir,ts);
-    std::fs::write(&filename, &ruby_source).map_err(|e| tide::Error::new(tide::StatusCode::InternalServerError, e))?;
-
-
-
-
-    let result_path = format!("/root/midscore_io/rustby/rustby-vm/target/release/scripts/moon_{}.txt", ts);
-
-    // Block until the result file is available or until timeout
-    let start = std::time::Instant::now();
-    let timeout = std::time::Duration::from_secs(120);
-    while !std::path::Path::new(&result_path).exists() {
-      if start.elapsed() > timeout {
-        return Ok("Timed out waiting for result file".into());
-      }
-      std::thread::sleep(std::time::Duration::from_millis(1));
-    }
-    let output = std::fs::read_to_string(&result_path).unwrap_or_else(|_| "No output".to_string());
-
-
-    // Remove script file after evaluation.
-
-    let _ = std::fs::remove_file(&result_path);
-    let _ = std::fs::remove_file(&filename);
-
-
-     // Return the HTML response.
-    let mut res = tide::Response::new(tide::StatusCode::Ok);
-    res.set_body(output);
-    res.insert_header("Content-Type", "text/plain; charset=utf-8");
-    Ok(res)
-    //Ok(output.into())
-  });
+    "######).await
+        });
 
 
 
@@ -9199,180 +9114,37 @@ WERE_FORMS = [
     // Migrated endpoints are mounted by tiade_ollama_relay::mount_routes.
 
     app.at("/ae")
-        .get(|mut req: tide::Request<AppState>| async move {
-            let script_dir = "/root/midscore_io/rustby/rustby-vm/target/release/scripts";
-            //td::fs::create_dir_all(script_dir).ok();
-            let mut res = tide::Response::new(tide::StatusCode::Ok);
-            //res.set_body("HTML content for /moon route");
-            //res.set_content_type("text/html; charset=utf-8");
-            //return Ok(res);
-            // Grab Ruby code from request body.
-            let ruby_source = r######"
+        .get(|_req: tide::Request<AppState>| async move {
+            ruby_vm::text_response(r######"
 
      # Example usage
   ae_calendar = AECalendar.new
   "AE Calendar: #{ae_calendar.ae_date(DateTime.now)}"
 
-    "######;
-            if ruby_source.trim().is_empty() {
-                let mut resp = tide::Response::new(tide::StatusCode::Ok);
-                resp.set_body("No Ruby code supplied");
-                return Ok(resp);
-            }
-
-            // Create unique .rb filename.
-            let ts = Utc::now().timestamp_nanos_opt().unwrap_or(0);
-            let filename = format!("{}/ae_{}.rb", script_dir, ts);
-            std::fs::write(&filename, &ruby_source)
-                .map_err(|e| tide::Error::new(tide::StatusCode::InternalServerError, e))?;
-
-            let result_path = format!(
-                "/root/midscore_io/rustby/rustby-vm/target/release/scripts/ae_{}.txt",
-                ts
-            );
-
-            // Block until the result file is available or until timeout
-            let start = std::time::Instant::now();
-            let timeout = std::time::Duration::from_secs(120);
-            while !std::path::Path::new(&result_path).exists() {
-                if start.elapsed() > timeout {
-                    return Ok("Timed out waiting for result file".into());
-                }
-                std::thread::sleep(std::time::Duration::from_millis(1));
-            }
-            let output =
-                std::fs::read_to_string(&result_path).unwrap_or_else(|_| "No output".to_string());
-
-            // Remove script file after evaluation.
-
-            let _ = std::fs::remove_file(&result_path);
-            let _ = std::fs::remove_file(&filename);
-
-            // Return the HTML response.
-            let mut res = tide::Response::new(tide::StatusCode::Ok);
-            res.set_body(output);
-            res.insert_header("Content-Type", "text/plain; charset=utf-8");
-            Ok(res)
-            //Ok(output.into())
+    "######).await
         });
 
     app.at("/tiade/moon")
-        .get(|mut req: tide::Request<AppState>| async move {
-            let script_dir = "/root/midscore_io/rustby/rustby-vm/target/release/scripts";
-            //td::fs::create_dir_all(script_dir).ok();
-            let mut res = tide::Response::new(tide::StatusCode::Ok);
-            //res.set_body("HTML content for /moon route");
-            //res.set_content_type("text/html; charset=utf-8");
-            //return Ok(res);
-            // Grab Ruby code from request body.
-            let ruby_source = r######"
+        .get(|_req: tide::Request<AppState>| async move {
+            ruby_vm::text_response(r######"
 
     "#{MoonPhaseDetails2.print_text_details_for_date(Date.today)}"
 
-    "######;
-            if ruby_source.trim().is_empty() {
-                let mut resp = tide::Response::new(tide::StatusCode::Ok);
-                resp.set_body("No Ruby code supplied");
-                return Ok(resp);
-            }
-
-            // Create unique .rb filename.
-            let ts = Utc::now().timestamp_nanos_opt().unwrap_or(0);
-            let filename = format!("{}/moon_{}.rb", script_dir, ts);
-            std::fs::write(&filename, &ruby_source)
-                .map_err(|e| tide::Error::new(tide::StatusCode::InternalServerError, e))?;
-
-            let result_path = format!(
-                "/root/midscore_io/rustby/rustby-vm/target/release/scripts/moon_{}.txt",
-                ts
-            );
-
-            // Block until the result file is available or until timeout
-            let start = std::time::Instant::now();
-            let timeout = std::time::Duration::from_secs(120);
-            while !std::path::Path::new(&result_path).exists() {
-                if start.elapsed() > timeout {
-                    return Ok("Timed out waiting for result file".into());
-                }
-                std::thread::sleep(std::time::Duration::from_millis(1));
-            }
-            let output =
-                std::fs::read_to_string(&result_path).unwrap_or_else(|_| "No output".to_string());
-
-            // Remove script file after evaluation.
-
-            let _ = std::fs::remove_file(&result_path);
-            let _ = std::fs::remove_file(&filename);
-
-            // Return the HTML response.
-            let mut res = tide::Response::new(tide::StatusCode::Ok);
-            res.set_body(output);
-            res.insert_header("Content-Type", "text/plain; charset=utf-8");
-            Ok(res)
-            //Ok(output.into())
+    "######).await
         });
 
     app.at("/weather")
-        .get(|mut req: tide::Request<AppState>| async move {
-            let script_dir = "/root/midscore_io/rustby/rustby-vm/target/release/scripts";
-            //td::fs::create_dir_all(script_dir).ok();
-            let mut res = tide::Response::new(tide::StatusCode::Ok);
-            //res.set_body("HTML content for /moon route");
-            //res.set_content_type("text/html; charset=utf-8");
-            //return Ok(res);
-            // Grab Ruby code from request body.
-            let ruby_source = r######"
+        .get(|_req: tide::Request<AppState>| async move {
+            ruby_vm::text_response(r######"
 
     "#{ForecastByLongitude.new.fetch_forecast(39.068684, -122.781375)}"
 
-    "######;
-            if ruby_source.trim().is_empty() {
-                let mut resp = tide::Response::new(tide::StatusCode::Ok);
-                resp.set_body("No Ruby code supplied");
-                return Ok(resp);
-            }
-
-            // Create unique .rb filename.
-            let ts = Utc::now().timestamp_nanos_opt().unwrap_or(0);
-            let filename = format!("{}/weather_{}.rb", script_dir, ts);
-            std::fs::write(&filename, &ruby_source)
-                .map_err(|e| tide::Error::new(tide::StatusCode::InternalServerError, e))?;
-
-            let result_path = format!(
-                "/root/midscore_io/rustby/rustby-vm/target/release/scripts/weather_{}.txt",
-                ts
-            );
-
-            // Block until the result file is available or until timeout
-            let start = std::time::Instant::now();
-            let timeout = std::time::Duration::from_secs(120);
-            while !std::path::Path::new(&result_path).exists() {
-                if start.elapsed() > timeout {
-                    return Ok("Timed out waiting for result file".into());
-                }
-                std::thread::sleep(std::time::Duration::from_millis(1));
-            }
-            let output =
-                std::fs::read_to_string(&result_path).unwrap_or_else(|_| "No output".to_string());
-
-            // Remove script file after evaluation.
-
-            let _ = std::fs::remove_file(&result_path);
-            let _ = std::fs::remove_file(&filename);
-
-            // Return the HTML response.
-            let mut res = tide::Response::new(tide::StatusCode::Ok);
-            res.set_body(output);
-            res.insert_header("Content-Type", "text/plain; charset=utf-8");
-            Ok(res)
-            //Ok(output.into())
+    "######).await
         });
 
     //get neutri alg
     app.at("/rneutrialg")
         .get(|mut req: tide::Request<AppState>| async move {
-            let script_dir = "/root/midscore_io/rustby/rustby-vm/target/release/scripts";
-            //td::fs::create_dir_all(script_dir).ok();
             let mut res = tide::Response::new(tide::StatusCode::Ok);
             //res.set_body("HTML content for /moon route");
             //res.set_content_type("text/html; charset=utf-8");
@@ -9393,8 +9165,6 @@ WERE_FORMS = [
     //neutri setter
     app.at("/rneutri")
         .get(|mut req: tide::Request<AppState>| async move {
-            let script_dir = "/root/midscore_io/rustby/rustby-vm/target/release/scripts";
-            //td::fs::create_dir_all(script_dir).ok();
             let mut res = tide::Response::new(tide::StatusCode::Ok);
             //res.set_body("HTML content for /moon route");
             //res.set_content_type("text/html; charset=utf-8");
@@ -9414,59 +9184,12 @@ WERE_FORMS = [
         });
 
     app.at("/tiade/sun")
-        .get(|mut req: tide::Request<AppState>| async move {
-            let script_dir = "/root/midscore_io/rustby/rustby-vm/target/release/scripts";
-            //td::fs::create_dir_all(script_dir).ok();
-            let mut res = tide::Response::new(tide::StatusCode::Ok);
-            //res.set_body("HTML content for /moon route");
-            res.set_content_type("text/html; charset=utf-8");
-            //return Ok(res);
-            // Grab Ruby code from request body.
-            let ruby_source = r######"
+        .get(|_req: tide::Request<AppState>| async move {
+            ruby_vm::text_response(r######"
 
     "#{SolarDance2.sun_dance_message}"
 
-    "######;
-            if ruby_source.trim().is_empty() {
-                let mut resp = tide::Response::new(tide::StatusCode::Ok);
-                resp.set_body("No Ruby code supplied");
-                return Ok(resp);
-            }
-
-            // Create unique .rb filename.
-            let ts = Utc::now().timestamp_nanos_opt().unwrap_or(0);
-            let filename = format!("{}/sun_{}.rb", script_dir, ts);
-            std::fs::write(&filename, &ruby_source)
-                .map_err(|e| tide::Error::new(tide::StatusCode::InternalServerError, e))?;
-
-            let result_path = format!(
-                "/root/midscore_io/rustby/rustby-vm/target/release/scripts/sun_{}.txt",
-                ts
-            );
-
-            // Block until the result file is available or until timeout
-            let start = std::time::Instant::now();
-            let timeout = std::time::Duration::from_secs(120);
-            while !std::path::Path::new(&result_path).exists() {
-                if start.elapsed() > timeout {
-                    return Ok("Timed out waiting for result file".into());
-                }
-                std::thread::sleep(std::time::Duration::from_millis(1));
-            }
-            let output =
-                std::fs::read_to_string(&result_path).unwrap_or_else(|_| "No output".to_string());
-
-            // Remove script file after evaluation.
-
-            let _ = std::fs::remove_file(&result_path);
-            let _ = std::fs::remove_file(&filename);
-
-            // Return the HTML response.
-            let mut res = tide::Response::new(tide::StatusCode::Ok);
-            res.set_body(output);
-            res.insert_header("Content-Type", "text/plain; charset=utf-8");
-            Ok(res)
-            //Ok(output.into())
+    "######).await
         });
 
     app.at("/tiade-maepers/*rest")

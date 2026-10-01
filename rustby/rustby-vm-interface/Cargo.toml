@@ -1,5 +1,5 @@
 [package]
-name = rustby-vm-interface"
+name = "rustby-vm-interface"
 version = "0.1.0"
 edition = "2024"
 
@@ -10,7 +10,7 @@ async-std = { version = "1.13.1", features = ["async-attributes", "async-process
 base64 = "0.22.1"
 chrono = { version = "0.4.40", features = ["pure-rust-locales", "rkyv-64", "rkyv-validation", "serde"] }
 image = { version = "0.25.6", features = ["serde", "color_quant"] }
-magnus = { version = "0.7.1", features = ["bytes", "embed"] }
+magnus = { git = "https://github.com/matsadler/magnus", rev = "5056dd0dba225b10b8303a9d8097e2d8a6349521", features = ["bytes", "embed"] }
 native-tls = "0.2.14"
 once_cell = "1.21.3"
 oneshot = { version = "0.1.11", features = ["loom"] }

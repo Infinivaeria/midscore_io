@@ -52,8 +52,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // open up crc file and add to include_bytes!
     let rustby_vm_crc_bytes: Vec<u8> =
-        include_bytes!("C:/BashAssetFinal-build/rustby-vm.md5").to_vec();
+        include_bytes!(concat!(env!("OUT_DIR"), "/rustby-vm.md5")).to_vec();
+    #[cfg(windows)]
     let rustby_vm_crc_path = Path::new(&current_dir).join("C:/BashAssetFinal-build/rustby-vm.md5");
+    #[cfg(not(windows))]
+    let rustby_vm_crc_path = Path::new(&current_dir).join("rustby-vm.md5");
     std::fs::write(&rustby_vm_crc_path, &rustby_vm_crc_bytes)?;
 
     // convert rustby_vm_crc_bytes to a string

@@ -2001,8 +2001,8 @@ dependencies = [
 
 [[package]]
 name = "magnus"
-version = "0.9.0"
-source = "git+https://github.com/matsadler/magnus#4cd3e9db39dbec5569e0f4aaf39a1460256571e8"
+version = "0.10.0"
+source = "git+https://github.com/matsadler/magnus?rev=5056dd0dba225b10b8303a9d8097e2d8a6349521#5056dd0dba225b10b8303a9d8097e2d8a6349521"
 dependencies = [
  "magnus-macros",
  "rb-sys",
@@ -2012,8 +2012,8 @@ dependencies = [
 
 [[package]]
 name = "magnus-macros"
-version = "0.9.0"
-source = "git+https://github.com/matsadler/magnus#4cd3e9db39dbec5569e0f4aaf39a1460256571e8"
+version = "0.9.1"
+source = "git+https://github.com/matsadler/magnus?rev=5056dd0dba225b10b8303a9d8097e2d8a6349521#5056dd0dba225b10b8303a9d8097e2d8a6349521"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4408,9 +4408,9 @@ dependencies = [
 
 [[package]]
 name = "yoke-derive"
-version = "0.8.3"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33811428bee40dbceb6d545e95754741d17a6aef9a4849f0fd62e2ba4f412a78"
+checksum = "ec8ebde2db3681e8c9980cc27822030e68752690ddfa9473e739aeb4dbde6d71"
 dependencies = [
  "proc-macro2",
  "quote",
