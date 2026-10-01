@@ -1,3 +1,40 @@
     Blocking waiting for file lock on package cache
     Blocking waiting for file lock on package cache
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.42s
+    Blocking waiting for file lock on package cache
+    Checking cfg-if v1.0.4
+    Checking libc v0.2.189
+    Checking zeroize v1.9.0
+    Checking untrusted v0.9.0
+    Checking itoa v1.0.18
+    Checking serde_core v1.0.229
+    Checking simd-adler32 v0.3.10
+    Checking log v0.4.34
+    Checking bytes v1.12.1
+    Checking adler2 v2.0.1
+    Checking zmij v1.0.23
+    Checking httparse v1.10.1
+    Checking crc32fast v1.5.1
+    Checking base64 v0.23.1
+    Checking subtle v2.6.1
+    Checking memchr v2.8.3
+    Checking once_cell v1.21.4
+    Checking rb-sys v0.9.130
+    Checking percent-encoding v2.3.2
+    Checking rustls-pki-types v1.15.1
+    Checking miniz_oxide v0.9.1
+    Checking utf8-zero v0.8.1
+    Checking http v1.5.0
+    Checking urlencoding v2.1.3
+    Checking webpki-roots v1.0.9
+    Checking magnus v0.10.0 (https://github.com/matsadler/magnus?rev=5056dd0dba225b10b8303a9d8097e2d8a6349521#5056dd0d)
+    Checking flate2 v1.1.10
+    Checking ureq-proto v0.6.2
+    Checking getrandom v0.2.17
+    Checking ring v0.17.14
+    Checking serde v1.0.229
+    Checking serde_json v1.0.151
+    Checking rustls-webpki v0.103.15
+    Checking rustls v0.23.44
+    Checking ureq v3.4.1
+    Checking ollama_game_client_magnus v3.0.0 (/root/midscore_io/ollama_game_client_magnus)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 38.16s
