@@ -111,8 +111,9 @@ For the normal project scripts:
 ./stop-server.sh
 ```
 
-`start-with-wasm.sh` additionally builds and serves the browser WebAssembly
-client. The exact certificate and process permissions still apply.
+`start.sh` also builds and serves the browser WebAssembly client.
+`start-with-wasm.sh` is retained as a compatibility alias for `start.sh`.
+The exact certificate and process permissions still apply.
 
 ### Release checklist
 

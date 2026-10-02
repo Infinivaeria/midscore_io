@@ -57,4 +57,4 @@ warning: unused dependency `tokio-native-tls`
    |
 help: consider removing the dependency on `tokio-native-tls`
 warning: `sl_relay` (manifest) generated 8 warnings
-    Finished `dev` profile [optimized + debuginfo] target(s) in 0.33s
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.32s

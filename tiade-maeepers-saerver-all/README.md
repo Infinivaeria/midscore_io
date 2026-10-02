@@ -358,7 +358,7 @@ const { response: reply } = await response.json();
 
 ### WebAssembly Client
 
-`wasm_client` compiles to a browser ES module and is served by the existing static-assets route. Run `./start-with-wasm.sh` to install the Rust WebAssembly target and `wasm-bindgen-cli` on first use, build both artifacts, and start the release server.
+`wasm_client` compiles to a browser ES module and is served by the existing static-assets route. `./start.sh` installs the Rust WebAssembly target and `wasm-bindgen-cli` on first use, builds both artifacts, and starts the release server. `./start-with-wasm.sh` remains as a compatibility alias for `./start.sh`.
 
 ```js
 import init, { chat, game_turn } from '/assets/wasm/ollama_game_client.js';
