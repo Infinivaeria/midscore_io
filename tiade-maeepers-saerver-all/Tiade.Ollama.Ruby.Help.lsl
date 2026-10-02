@@ -22,8 +22,8 @@ help(integer page)
     else if (page == 1)
     {
         notify("HELP 1/8 - SETUP (only the object owner can use /" + (string)CONTROL_CHANNEL + ")");
-        notify("Put the main, Chat and Help scripts in the same prim. Set BASE_URL in the main script to your HTTPS server. For Ruby, set RUBY_TOKEN in the main script to the server's TIADE_RUBY_EVAL_TOKEN, then save/reset it. Never put a token in chat or a notecard.");
-        notify(c + "health checks server/Ollama; " + c + "status shows server, team, session, Ruby enabled, replies and notecard progress. Touch the object for status and the help index.");
+        notify("Put the main, Chat, LocalInput and Help scripts in the same prim. LocalInput captures ordinary channel-0 chat from every nearby speaker and stores only the latest message in the main script's gLastLocalChat variable. It does not send chat to the server or run it as a command.");
+        notify(c + "health checks server/Ollama; " + c + "status shows server, team, session, Ruby enabled, replies, notecard progress and a preview of the latest local input. " + c + "local-input shows the complete stored local-input value to the owner. Touch the object for status and the help index.");
         notify("Ruby executes on your server with its privileges. Only use a trusted server and keep the token private; changing a script requires recompiling it in-world.");
     }
     else if (page == 2)
@@ -40,12 +40,14 @@ help(integer page)
         notify(c + "public on - say Ollama answers and Ruby output in nearby public chat (channel 0). Anyone nearby may see them; do not use for private data.");
         notify(c + "public off - send Ollama answers and Ruby output to the owner only. Errors from Ruby evaluation follow the same reply setting.");
         notify("Status, help, settings confirmations, HTTP diagnostics and Ruby reset messages remain owner-only. The public setting resets to off when the main script resets, recompiles or re-rezzes.");
-        notify("Use " + c + "status to check the current reply setting. Local channel-0 chat is never accepted as input.");
+        notify("Use " + c + "status to check the current reply setting. If LocalInput is installed, nearby channel-0 chat is stored only in gLastLocalChat. " + c + "local-input returns the full value to the owner. It is cleared when the main script resets and is never relayed automatically.");
+        notify("For a complete local-input setup and Ruby guide, upload LocalInputHelp.txt as a notecard in this object.");
     }
     else if (page == 4)
     {
         notify("HELP 4/8 - MAGNUS RUBY AND SESSIONS");
         notify(c + "ruby <code> - run one Ruby program. Example: " + c + "ruby x = 21; puts x * 2. Locals persist in the selected session.");
+        notify(c + "ruby-local-input <code> - run Ruby with the latest nearby channel-0 message in local_input. Example: " + c + "ruby-local-input puts local_input.upcase. Chat text is passed as escaped data, not executable source.");
         notify("Ruby runs one request at a time. Wait for its reply before sending another ruby command or ruby-reset; this avoids simulator HTTP timeouts.");
         notify(c + "session <id> - use a shared Ruby/storage session (1-64 ASCII letters, digits, _ or -). Default is this object's UUID; choose the same ID as a Forth client to share stored data.");
         notify(c + "session-reset - select this object's UUID again. " + c + "ruby-reset - clear Ruby locals in the selected session, NOT its shared variables, files or matrices.");
@@ -78,9 +80,10 @@ help(integer page)
     {
         notify("HELP 8/8 - RUBY NOTECARDS AND TROUBLESHOOTING");
         notify(c + "ruby-notecard RubyScript - send the ENTIRE notecard as Ruby. It must contain Ruby only: no team, ask, /7 ruby or ruby-begin lines. Script memory still limits large notecards.");
+        notify(c + "ruby-local-input-notecard LocalInputRuby - send a Ruby-only card with local_input set to the latest nearby channel-0 message. Use this for Ruby that processes captured chat; the card must not contain local-input or ruby-local-input commands.");
         notify("Use " + c + "notecard Demo for command cards, NOT ruby-notecard Demo. Use ruby-notecard only for Ruby-only cards. Example Ruby line: puts var_get('greeting').");
         notify("If Ruby says set RUBY_TOKEN, configure it in the main script; HTTP 401 means it does not match the server. HTTP 503 means the server Ruby route is disabled. Check " + c + "status and " + c + "health for setup.");
-        notify("If a notecard cannot be found, check its exact case-sensitive inventory name. If commands such as ruby-begin reach Ruby, the command card was run with ruby-notecard instead of notecard.");
+        notify("If a notecard cannot be found, check its exact case-sensitive inventory name. If local-input, ruby-local-input or ruby-begin reaches Ruby, the command card was run with ruby-notecard instead of notecard.");
     }
 }
 

@@ -1,0 +1,95 @@
+Tiade Local Input Help
+======================
+
+WHAT IT DOES
+------------
+Tiade.Ollama.Ruby.LocalInput.lsl listens on ordinary nearby chat (channel 0).
+Each message replaces the main controller's gLastLocalChat value. The value is
+kept only in script memory; it is not a history or permanent chat log.
+
+INSTALLATION
+------------
+Put all four scripts in the SAME prim, then save or reset them:
+
+  Tiade.Ollama.Ruby.lsl
+  Tiade.Ollama.Ruby.Chat.lsl
+  Tiade.Ollama.Ruby.LocalInput.lsl
+  Tiade.Ollama.Ruby.Help.lsl
+
+Anyone nearby can speak on channel 0. Only the object owner can run /7
+commands and view or explicitly process the captured value.
+
+OWNER COMMANDS
+--------------
+/7 status
+  Shows a short preview of gLastLocalChat with the controller status.
+
+/7 local-input
+  Shows the complete current gLastLocalChat value privately to the owner.
+  It reports that no input exists if nobody has spoken since the main script
+  was reset.
+
+/7 ruby-local-input <Ruby code>
+  Runs Ruby after assigning the captured text to local_input.
+  Example: /7 ruby-local-input puts local_input.upcase
+  Example: /7 ruby-local-input puts local_input.split.length
+
+RUBY-ONLY NOTECARD
+------------------
+To run a Ruby program against the captured value:
+
+1. Upload LocalInputRuby.txt as an object notecard named LocalInputRuby.
+2. Run: /7 ruby-local-input-notecard LocalInputRuby
+
+The entire card is Ruby source. The controller sets local_input before it
+runs. Do not put /7 commands, local-input, or ruby-local-input lines in this
+kind of card.
+
+LocalInputOutput.txt is a Ruby-only example that displays the captured input
+and a transformed output. Upload it as LocalInputOutput, then run:
+
+  /7 ruby-local-input-notecard LocalInputOutput
+
+COMMAND NOTECARD
+----------------
+LocalInputCommands.txt is different: it contains controller commands, not
+Ruby source. Upload it as LocalInputCommands and run:
+
+  /7 notecard LocalInputCommands
+
+Do NOT run it with /7 ruby-notecard. Ruby will try to parse commands such as
+local-input and report a syntax error.
+
+PRIVACY AND SAFETY
+------------------
+- Each newly heard message overwrites the previous one.
+- gLastLocalChat is cleared when the main script resets, recompiles, or is
+  re-rezzed.
+- Local chat is not sent to Ollama or Ruby automatically.
+- ruby-local-input and ruby-local-input-notecard are explicit owner actions.
+- Captured text is escaped as data before Ruby receives it; it is not inserted
+  as executable Ruby source.
+- Keep /7 public off when the captured text is private, because Ruby output
+  follows the public-replies setting.
+- Let nearby people know when their local chat is being captured.
+
+TROUBLESHOOTING
+---------------
+No input captured:
+  Confirm LocalInput is in the same prim as the main script, then save/reset
+  both scripts. Have someone nearby say ordinary text on channel 0.
+
+Ruby says no local input was captured:
+  Wait for a nearby channel-0 message, then rerun the Ruby command/card.
+
+Ruby syntax error mentioning local-input:
+  You ran a command card with ruby-notecard. Use /7 notecard
+  LocalInputCommands, or use ruby-local-input-notecard with LocalInputRuby.
+
+Ruby token error:
+  Configure RUBY_TOKEN in Tiade.Ollama.Ruby.lsl to match the server token.
+
+Not enough script memory to read a notecard:
+  Recompile or reset the updated main script, then check /7 status for free
+  memory. LocalInputRuby and LocalInputOutput are deliberately small cards;
+  use a smaller Ruby-only card if the object has little memory remaining.

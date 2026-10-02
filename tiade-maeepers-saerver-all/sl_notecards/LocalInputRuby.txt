@@ -1,0 +1,13 @@
+# LocalInputRuby - Ruby-only code notecard for Tiade.Ollama.Ruby.lsl
+#
+# In Second Life, create a notecard named "LocalInputRuby" in the object,
+# paste this Ruby-only source, save it, then say:
+#   /7 ruby-local-input-notecard LocalInputRuby
+#
+# The controller sets local_input from the latest nearby channel-0 message
+# before this program runs. Keep public replies off for private input.
+
+clean_input = local_input.strip
+puts "Captured input: #{clean_input}"
+puts "Characters: #{clean_input.length}"
+puts "Words: #{clean_input.split.length}"

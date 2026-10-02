@@ -1,0 +1,13 @@
+# LocalInputCommands - command notecard for Tiade.Ollama.Ruby.lsl
+#
+# In Second Life, create a notecard named "LocalInputCommands" in the object,
+# paste these contents, save it, then say:
+#   /7 notecard LocalInputCommands
+# Do NOT run this card with /7 ruby-notecard: its lines are controller commands,
+# not Ruby source.
+#
+# The first command returns gLastLocalChat (the most recently captured nearby
+# channel-0 message) privately to the object owner. The second supplies that
+# message to Ruby as local_input. Keep public replies off when it is private.
+local-input
+ruby-local-input puts "Local input: #{local_input}"

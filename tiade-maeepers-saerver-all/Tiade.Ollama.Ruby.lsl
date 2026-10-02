@@ -1,7 +1,8 @@
 // Tiade.Ollama.Ruby.lsl
 // Owner-controlled Second Life client for the Tide server.
-// Install Tiade.Ollama.Ruby.Chat.lsl and Tiade.Ollama.Ruby.Help.lsl in the
-// same prim. Chat owns the listeners; Help owns the /7 help text.
+// Install Tiade.Ollama.Ruby.Chat.lsl, Tiade.Ollama.Ruby.LocalInput.lsl and
+// Tiade.Ollama.Ruby.Help.lsl in the same prim. The input scripts own the
+// listeners; Help owns the /7 help text.
 //
 // Server routes used:
 //   POST /sl/ask/<team>  {"message","speaker"}  -> 202 {"job":"<id>"}
@@ -17,6 +18,8 @@
 // RUBY_TOKEN to the server's TIADE_RUBY_EVAL_TOKEN. Then chat on /7:
 //   /7 ask what is a prim?      /7 ruby [1, 2, 3].sum
 //   /7 notecard Demo            /7 ruby-notecard Script
+//   /7 local-input              /7 ruby-local-input puts local_input.upcase
+//   /7 ruby-local-input-notecard LocalInputRuby
 //   /7 var-set score 21          /7 var-get score
 //   /7 file-write notes.txt hi  /7 matrix-get A
 //
@@ -26,6 +29,8 @@
 //   wait <seconds>             pause the notecard
 //   ruby-begin ... ruby-end    send the enclosed lines as ONE Ruby program
 // Ruby notecard (`/7 ruby-notecard <name>`): the whole notecard is one program.
+// Local-input Ruby notecard (`/7 ruby-local-input-notecard <name>`): the
+// whole Ruby-only card runs with local_input set to the latest channel-0 text.
 
 string  BASE_URL        = "https://stimky.info";
 string  TEAM_NAME       = "secondlife";
@@ -50,8 +55,10 @@ integer KIND_HEALTH = 5;
 integer NC_OFF      = 0;
 integer NC_COMMANDS = 1;
 integer NC_RUBY     = 2;
+integer NC_RUBY_LOCAL_INPUT = 3;
 integer HELP_LINK_MESSAGE = -708641;
 integer CHAT_COMMAND_MESSAGE = -708642;
+integer LOCAL_CHAT_INPUT_MESSAGE = -708643;
 string  HELP_SCRIPT = "Tiade.Ollama.Ruby.Help.lsl";
 
 key     gOwner;
@@ -59,8 +66,9 @@ string  gSession;       // Ruby locals and shared stores use this session
 list    gRequests;      // [request_key, kind, job_id] for in-flight HTTP requests
 list    gJobs;          // [job_id, deadline_unix] for queued Ollama replies
 integer gPollIndex;     // round-robin position in gJobs
+string  gLastLocalChat; // most recent nearby-avatar message captured on channel 0
 
-integer gNcMode;        // NC_OFF, NC_COMMANDS or NC_RUBY
+integer gNcMode;        // NC_OFF, NC_COMMANDS, NC_RUBY or NC_RUBY_LOCAL_INPUT
 string  gNcName;
 key     gNcAsset;       // inventory key, to notice edits while running
 integer gNcLine;
@@ -94,6 +102,26 @@ say(string prefix, string text)
 notify(string text)
 {
     llOwnerSay("[tiade] " + text);
+}
+
+// Show captured local input to the owner regardless of PUBLIC_REPLIES.
+// Channel-0 messages may be nearly 1024 bytes, so split the owner-only reply.
+show_local_input()
+{
+    if (gLastLocalChat == "")
+    {
+        notify("No local channel-0 input has been captured since this script was reset.");
+        return;
+    }
+    integer length = llStringLength(gLastLocalChat);
+    integer start = 0;
+    while (start < length)
+    {
+        string chunk = llGetSubString(gLastLocalChat, start, start + CHUNK_CHARS - 1);
+        if (start == 0) chunk = "[tiade local input] " + chunk;
+        llOwnerSay(chunk);
+        start += CHUNK_CHARS;
+    }
 }
 
 string on_off(integer flag)
@@ -276,6 +304,24 @@ integer ruby(string code)
             + ",\"include_result\":" + include_result + "}", TRUE);
 }
 
+// Run Ruby with the latest channel-0 message available as local_input.
+// ruby_string_arg keeps chat text as data, never executable Ruby source.
+integer ruby_local_input(string code)
+{
+    if (gLastLocalChat == "")
+    {
+        notify("No local channel-0 input has been captured since this script was reset.");
+        return FALSE;
+    }
+    code = llStringTrim(code, STRING_TRIM);
+    if (code == "")
+    {
+        notify("Usage: ruby-local-input <Ruby code>  (for example: puts local_input.upcase)");
+        return FALSE;
+    }
+    return ruby("local_input = " + ruby_string_arg(gLastLocalChat) + "\n" + code);
+}
+
 ruby_reset()
 {
     if (ruby_in_flight())
@@ -342,14 +388,14 @@ store_command(string verb, string rest)
 start_notecard(string name, integer mode)
 {
     name = llStringTrim(name, STRING_TRIM);
-    if (name == "") { notify("Usage: notecard <name>  or  ruby-notecard <name>"); return; }
+    if (name == "") { notify("Usage: notecard <name>, ruby-notecard <name>, or ruby-local-input-notecard <name>"); return; }
     if (gNcMode != NC_OFF) { notify("Already running notecard '" + gNcName + "'. Use notecard-stop first."); return; }
     if (llGetInventoryType(name) != INVENTORY_NOTECARD)
     {
         notify("Notecard '" + name + "' was not found in this object's inventory (names are case-sensitive).");
         return;
     }
-    if (mode == NC_RUBY && !ruby_ready()) return;
+    if ((mode == NC_RUBY || mode == NC_RUBY_LOCAL_INPUT) && !ruby_ready()) return;
     gNcMode = mode;
     gNcName = name;
     gNcAsset = llGetInventoryKey(name);
@@ -362,6 +408,8 @@ start_notecard(string name, integer mode)
     gNcInBlock = FALSE;
     gNcBuffer = "";
     if (mode == NC_RUBY) notify("Sending notecard '" + name + "' to Ruby as one program.");
+    else if (mode == NC_RUBY_LOCAL_INPUT)
+        notify("Sending notecard '" + name + "' to Ruby with local_input set from the latest channel-0 message.");
     else notify("Running notecard '" + name + "'.");
     update_timer();
     notecard_next();
@@ -395,9 +443,12 @@ notecard_next()
 }
 
 // Appends a Ruby source line unless there is insufficient script memory.
+// ruby() applies the final code-size check before sending. Keep the same small
+// reserve here so short cards can run in a controller that already holds its
+// request and notecard state.
 integer buffer_ruby(string line)
 {
-    if (llGetFreeMemory() < llStringLength(gNcBuffer) + llStringLength(line) + 8192)
+    if (llGetFreeMemory() < llStringLength(gNcBuffer) + llStringLength(line) + 2048)
     {
         end_notecard("Not enough script memory to read notecard '" + gNcName + "'; stopped.");
         return FALSE;
@@ -412,7 +463,9 @@ integer flush_ruby()
     if (llStringTrim(gNcBuffer, STRING_TRIM) == "") return TRUE;
     gNcExecuting = TRUE;
     gNcThrottled = FALSE;
-    integer sent = ruby(gNcBuffer);
+    integer sent;
+    if (gNcMode == NC_RUBY_LOCAL_INPUT) sent = ruby_local_input(gNcBuffer);
+    else sent = ruby(gNcBuffer);
     gNcExecuting = FALSE;
     if (gNcThrottled) return FALSE;
     if (!sent)
@@ -426,7 +479,7 @@ integer flush_ruby()
 
 notecard_line(string data)
 {
-    if (gNcMode == NC_RUBY)
+    if (gNcMode == NC_RUBY || gNcMode == NC_RUBY_LOCAL_INPUT)
     {
         if (buffer_ruby(data)) gNcLine++;
         return;
@@ -485,7 +538,7 @@ notecard_line(string data)
 
 notecard_eof()
 {
-    if (gNcMode == NC_RUBY)
+    if (gNcMode == NC_RUBY || gNcMode == NC_RUBY_LOCAL_INPUT)
     {
         if (!flush_ruby()) { gNcResumeAt = llGetUnixTime() + RETRY_SECONDS; return; }
         end_notecard("Sent notecard '" + gNcName + "' (" + (string)gNcLine + " lines) to Ruby.");
@@ -520,6 +573,7 @@ show_status()
         "Debug output: " + on_off(DEBUG_OUTPUT),
         "Public replies: " + on_off(PUBLIC_REPLIES),
         "Waiting replies: " + (string)(llGetListLength(gJobs) / 2),
+        "Last local input: " + llGetSubString(gLastLocalChat, 0, 200),
         "Notecard: " + nc,
         "Free memory: " + (string)llGetFreeMemory()], "\n"));
 }
@@ -538,6 +592,7 @@ command(string message, string speaker)
 
     if (verb == "ask") ask(rest, speaker);
     else if (verb == "ruby") ruby(rest);
+    else if (verb == "ruby-local-input") ruby_local_input(rest);
     else if (verb == "ruby-reset") ruby_reset();
     else if (verb == "debug")
     {
@@ -560,6 +615,7 @@ command(string message, string speaker)
         || verb == "matrix-get") store_command(verb, rest);
     else if (verb == "notecard") start_notecard(rest, NC_COMMANDS);
     else if (verb == "ruby-notecard") start_notecard(rest, NC_RUBY);
+    else if (verb == "ruby-local-input-notecard") start_notecard(rest, NC_RUBY_LOCAL_INPUT);
     else if (verb == "notecard-stop")
     {
         if (gNcMode == NC_OFF) notify("No notecard is running.");
@@ -579,6 +635,7 @@ command(string message, string speaker)
     }
     else if (verb == "health") send(KIND_HEALTH, "", BASE_URL + "/ollama/health", "GET", "", FALSE);
     else if (verb == "status") show_status();
+    else if (verb == "local-input") show_local_input();
     else if (verb == "help")
     {
         if (rest == "") show_help(0);
@@ -612,6 +669,7 @@ default
         gSession = (string)llGetKey();
         gRequests = [];
         gJobs = [];
+        gLastLocalChat = "";
         gNcMode = NC_OFF;
         gNcQuery = NULL_KEY;
         gNcWaitRequest = NULL_KEY;
@@ -637,9 +695,16 @@ default
 
     link_message(integer sender_num, integer num, string message, key id)
     {
-        if (id != gOwner) return;
-        string speaker = llKey2Name(id);
-        if (num == CHAT_COMMAND_MESSAGE) command(message, speaker);
+        if (num == LOCAL_CHAT_INPUT_MESSAGE)
+        {
+            // Tiade.Ollama.Ruby.LocalInput.lsl accepts channel-0 messages
+            // from nearby avatars. Keep the text available for later
+            // controller features without treating it as a command or
+            // sending it to the server.
+            gLastLocalChat = message;
+        }
+        else if (id == gOwner && num == CHAT_COMMAND_MESSAGE)
+            command(message, llKey2Name(id));
     }
 
     dataserver(key query_id, string data)

@@ -1,0 +1,15 @@
+# LocalInputOutput - Ruby-only input/output example for Tiade.Ollama.Ruby.lsl
+#
+# In Second Life, create a notecard named "LocalInputOutput" in the object,
+# paste this Ruby-only source, save it, then say:
+#   /7 ruby-local-input-notecard LocalInputOutput
+#
+# The controller supplies the latest nearby channel-0 message in local_input.
+# Keep public replies off if that message is private.
+
+output = local_input.strip.upcase
+
+puts "INPUT:"
+puts local_input
+puts "OUTPUT (trimmed uppercase):"
+puts output

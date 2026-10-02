@@ -7,6 +7,9 @@ For the full maintainer and operator reference, see
 configuration, persistence, HTTP routes, chatlog moderation, Forth/RubyForth,
 the Second Life bridge, LSL operation, security, and troubleshooting.
 
+For Second Life channel-0 capture and Ruby/notecard workflows, see
+[LOCAL_INPUT_GUIDE.md](LOCAL_INPUT_GUIDE.md).
+
 ## Version
 
 - 1.0.0

@@ -1,0 +1,44 @@
+Local Input Setup
+
+Purpose
+-------
+The Tiade.Ollama.Ruby.LocalInput.lsl script listens on local chat channel 0
+and stores the latest nearby speaker's message in the main controller variable
+gLastLocalChat.
+
+Installation
+------------
+1. Put these scripts in the SAME prim:
+   - Tiade.Ollama.Ruby.lsl
+   - Tiade.Ollama.Ruby.Chat.lsl
+   - Tiade.Ollama.Ruby.LocalInput.lsl
+   - Tiade.Ollama.Ruby.Help.lsl
+2. Save or reset the scripts.
+3. Anyone nearby can now say ordinary text in local chat (channel 0).
+4. The object owner can say /7 status or touch the object to see a preview of
+   the most recently captured message.
+5. The object owner can say /7 local-input to receive the complete current
+   gLastLocalChat value privately in owner chat.
+6. To run that check from a command notecard, upload LocalInputCommands.txt as
+   a notecard named LocalInputCommands and say /7 notecard LocalInputCommands.
+7. To process the value in Ruby, say /7 ruby-local-input <Ruby code>. The
+   value is available to that code as local_input; for example:
+   /7 ruby-local-input puts local_input.upcase
+8. For a Ruby-only code notecard, upload LocalInputRuby.txt as a notecard
+   named LocalInputRuby and say /7 ruby-local-input-notecard LocalInputRuby.
+
+Behavior and privacy
+--------------------
+- The newest message replaces the previous value; there is no chat history.
+- The value exists only in script memory and is cleared when the main script
+  resets, recompiles, or is re-rezzed.
+- Captured chat is NOT sent to Ollama or Ruby and is NOT treated as a command.
+- It is sent to Ruby only when the owner runs ruby-local-input. The text is
+  escaped and assigned to the Ruby local_input variable as data.
+- Only the owner can issue /7 controller commands. Nearby chatters cannot use
+  their channel-0 messages to execute a command.
+- Because /7 status and /7 local-input show the latest message to the owner,
+  do not use this setup to collect sensitive information without the speakers'
+  consent.
+
+This is an installation note. Do not run it with /7 notecard LocalInput.

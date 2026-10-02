@@ -148,6 +148,30 @@
       {
         "reply": "The Thai word for \"wolf\" is แมว.",
         "user": "ArityWolf Resident says: how do you write wolf-fox in thai?"
+      },
+      {
+        "reply": "Second Life has become popular among users because it offers a virtual world where they can interact with others, create avatars that represent them in the digital space and explore various aspects of the platform. Second Life also provides opportunities for socializing, shopping, gaming, and exploration, which make it an addictive experience for many people.",
+        "user": "ArityWolf Resident says: why are users/avatars addicted to second life?"
+      },
+      {
+        "reply": "That's a great way to capitalize the first letter of each word in a sentence!",
+        "user": "ArityWolf Resident says: output = local_input.strip.upcase"
+      },
+      {
+        "reply": "\"INPUT:\" is inserted into your chat.",
+        "user": "ArityWolf Resident says: puts \"INPUT:\""
+      },
+      {
+        "reply": "The user has already put the input into their chat.",
+        "user": "ArityWolf Resident says: puts local_input"
+      },
+      {
+        "reply": "\"OUTPUT (trimmed uppercase):\" is inserted into your chat.",
+        "user": "ArityWolf Resident says: puts \"OUTPUT (trimmed uppercase):\""
+      },
+      {
+        "reply": "Local_input has been capitalized.",
+        "user": "ArityWolf Resident says: puts output"
       }
     ]
   },
