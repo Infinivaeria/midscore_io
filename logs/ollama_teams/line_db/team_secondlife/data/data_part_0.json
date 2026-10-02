@@ -100,6 +100,46 @@
       {
         "reply": "\"Good evening, how are you?\"",
         "user": "ArityWolf Resident says: Give me a two word greeting."
+      },
+      {
+        "reply": "A prim is an object or shape in Second Life that can be used to create 3D models. Prims are the fundamental building blocks of Second Life and can be found in various sizes, shapes, and colors. They can be used to build everything from simple houses to complex virtual worlds.",
+        "user": "ArityWolf Resident says: What is a prim in Second Life?"
+      },
+      {
+        "reply": "\"Good afternoon.\"",
+        "user": "ArityWolf Resident says: Give me a two-word greeting."
+      },
+      {
+        "reply": "\"Welcome to Second Life! Here's some information about the game, which you can find in your user interface menu. You will need to click on 'About Second Life' for more details.\"",
+        "user": "ArityWolf Resident says: notecard-ruby RubyScript"
+      },
+      {
+        "reply": "A prim is an object or shape in Second Life that can be used to create 3D models. Prims are the fundamental building blocks of Second Life and can be found in various sizes, shapes, and colors. They can be used to build everything from simple houses to complex virtual worlds.",
+        "user": "ArityWolf Resident says: What is a prim in Second Life?"
+      },
+      {
+        "reply": "A prim is an object or shape in Second Life that can be used to create 3D models. Prims are the fundamental building blocks of Second Life and can be found in various sizes, shapes, and colors. They can be used to build everything from simple houses to complex virtual worlds.",
+        "user": "ArityWolf Resident says: What is a prim in Second Life?"
+      },
+      {
+        "reply": "A prim is an object or shape in Second Life that can be used to create 3D models. Prims are the fundamental building blocks of Second Life and can be found in various sizes, shapes, and colors. They can be used to build everything from simple houses to complex virtual worlds.",
+        "user": "ArityWolf Resident says: What is a prim in Second Life?"
+      },
+      {
+        "reply": "\"How are you doing?\"",
+        "user": "ArityWolf Resident says: Give me a two-word greeting."
+      },
+      {
+        "reply": "A prim, or primitive, is an object or shape in Second Life that can be used to create 3D models. Prims are the fundamental building blocks of Second Life and can be found in various sizes, shapes, and colors. They can be used to build everything from simple houses to complex virtual worlds.",
+        "user": "ArityWolf Resident says: What is a prim in Second Life?"
+      },
+      {
+        "reply": "\"Good afternoon.\"",
+        "user": "ArityWolf Resident says: Give me a two-word greeting."
+      },
+      {
+        "reply": "Sure! What is the purpose of the Second Life user interface menu?",
+        "user": "ArityWolf Resident says: ask test"
       }
     ]
   },

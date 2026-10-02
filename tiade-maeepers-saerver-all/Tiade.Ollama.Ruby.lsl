@@ -1,5 +1,6 @@
 // Tiade.Ollama.Ruby.lsl
 // Owner-controlled Second Life client for the Tide server.
+// Install Tiade.Ollama.Ruby.Help.lsl in the same prim for /7 help.
 //
 // Server routes used:
 //   POST /sl/ask/<team>  {"message","speaker"}  -> 202 {"job":"<id>"}
@@ -31,11 +32,12 @@ string  RUBY_TOKEN      = "";      // must match TIADE_RUBY_EVAL_TOKEN on the se
 integer CONTROL_CHANNEL = 7;       // avatars can only chat on positive channels
 integer PUBLIC_REPLIES  = FALSE;   // FALSE: llOwnerSay, TRUE: llSay on channel 0
 integer AUTO_ASK        = FALSE;   // relay the owner's channel-0 chat to Ollama
+integer DEBUG_OUTPUT    = TRUE;    // FALSE: only explicit Ruby output, not => last value
 float   TICK_SECONDS    = 2.0;     // one job poll per tick keeps under the HTTP throttle
 integer ASK_DEADLINE    = 240;     // seconds before a queued ask is abandoned
 integer MAX_JOBS        = 4;
+integer MAX_REQUESTS    = 8;       // bound the in-flight ledger if HTTP replies never arrive
 integer CHUNK_CHARS     = 800;     // chat lines are limited to 1024 bytes
-integer MAX_RUBY_CHARS  = 12000;   // server limit is 16000; keeps script memory safe
 integer READ_TIMEOUT    = 30;      // seconds to wait for one notecard line
 integer RETRY_SECONDS   = 5;       // pause before retrying a throttled request
 
@@ -48,6 +50,8 @@ integer KIND_HEALTH = 5;
 integer NC_OFF      = 0;
 integer NC_COMMANDS = 1;
 integer NC_RUBY     = 2;
+integer HELP_LINK_MESSAGE = -708641;
+string  HELP_SCRIPT = "Tiade.Ollama.Ruby.Help.lsl";
 
 key     gOwner;
 string  gSession;       // Ruby locals and shared stores use this session
@@ -155,6 +159,12 @@ update_timer()
 
 integer send(integer kind, string job_id, string url, string method, string body, integer ruby_auth)
 {
+    if (llGetListLength(gRequests) / 3 >= MAX_REQUESTS)
+    {
+        if (gNcExecuting) gNcThrottled = TRUE;
+        else if (kind != KIND_POLL) notify("Too many outstanding HTTP requests; wait for replies or reset the script.");
+        return FALSE;
+    }
     list params = [HTTP_METHOD, method, HTTP_VERIFY_CERT, TRUE, HTTP_BODY_MAXLENGTH, 16384];
     if (method == "POST") params += [HTTP_MIMETYPE, "application/json"];
     if (ruby_auth) params += [HTTP_CUSTOM_HEADER, "X-Ruby-Token", RUBY_TOKEN];
@@ -223,12 +233,26 @@ integer ruby_ready()
     return TRUE;
 }
 
-ruby(string code)
+integer ruby(string code)
 {
-    if (!ruby_ready()) return;
-    if (llStringTrim(code, STRING_TRIM) == "") { notify("Usage: ruby <code>"); return; }
-    send(KIND_RUBY, "", BASE_URL + "/sl/ruby/eval", "POST",
-        "{\"code\":" + json_string(code) + ",\"session\":" + json_string(gSession) + "}", TRUE);
+    if (!ruby_ready()) return FALSE;
+    if (llStringTrim(code, STRING_TRIM) == "") { notify("Usage: ruby <code>"); return FALSE; }
+    if (llGetListLength(gRequests) / 3 >= MAX_REQUESTS)
+    {
+        if (gNcExecuting) gNcThrottled = TRUE;
+        else notify("Too many outstanding HTTP requests; wait for replies or reset the script.");
+        return FALSE;
+    }
+    if (llGetFreeMemory() < llStringLength(code) * 8 + 8192)
+    {
+        notify("Not enough script memory to send Ruby; use a smaller program or reset the script.");
+        return FALSE;
+    }
+    string include_result = "false";
+    if (DEBUG_OUTPUT) include_result = "true";
+    return send(KIND_RUBY, "", BASE_URL + "/sl/ruby/eval", "POST",
+        "{\"code\":" + json_string(code) + ",\"session\":" + json_string(gSession)
+            + ",\"include_result\":" + include_result + "}", TRUE);
 }
 
 ruby_reset()
@@ -344,12 +368,12 @@ notecard_next()
     gNcQueryTime = llGetUnixTime();
 }
 
-// Appends a Ruby source line; returns FALSE (and stops) when it is too long.
+// Appends a Ruby source line unless there is insufficient script memory.
 integer buffer_ruby(string line)
 {
-    if (llStringLength(gNcBuffer) + llStringLength(line) + 1 > MAX_RUBY_CHARS)
+    if (llGetFreeMemory() < llStringLength(gNcBuffer) + llStringLength(line) + 8192)
     {
-        end_notecard("Ruby in notecard '" + gNcName + "' exceeds " + (string)MAX_RUBY_CHARS + " characters; stopped.");
+        end_notecard("Not enough script memory to read notecard '" + gNcName + "'; stopped.");
         return FALSE;
     }
     gNcBuffer += line + "\n";
@@ -362,9 +386,14 @@ integer flush_ruby()
     if (llStringTrim(gNcBuffer, STRING_TRIM) == "") return TRUE;
     gNcExecuting = TRUE;
     gNcThrottled = FALSE;
-    ruby(gNcBuffer);
+    integer sent = ruby(gNcBuffer);
     gNcExecuting = FALSE;
     if (gNcThrottled) return FALSE;
+    if (!sent)
+    {
+        end_notecard("Could not send Ruby in notecard '" + gNcName + "'; stopped.");
+        return FALSE;
+    }
     gNcBuffer = "";
     return TRUE;
 }
@@ -443,48 +472,14 @@ notecard_eof()
 
 // ---------------------------------------------------------------- UI
 
-help()
+show_help(integer page)
 {
-    string c = "/" + (string)CONTROL_CHANNEL + " ";
-    notify("HELP 1/7 - SETUP (only the object owner can use /" + (string)CONTROL_CHANNEL + ")");
-    notify("Put this script in your object and set BASE_URL to your HTTPS server. For Ruby, set RUBY_TOKEN in the script to the server's TIADE_RUBY_EVAL_TOKEN, then save/reset the script. Never put a token in chat or a notecard.");
-    notify(c + "health checks server/Ollama; " + c + "status shows server, team, session, Ruby enabled, replies and notecard progress. Touch the object for status and help.");
-    notify("Ruby executes on your server with its privileges. Only use a trusted server and keep the token private; changing the script requires recompiling it in-world.");
-
-    notify("HELP 2/7 - OLLAMA QUESTIONS AND SETTINGS");
-    notify(c + "ask <message> - send a question; example: " + c + "ask What is a prim? Plain unrecognized text is also sent as a question.");
-    notify(c + "team <name> - choose a team and its shared Ollama history (default: secondlife). Team does not change the Ruby session.");
-    notify(c + "url <https://host> - switch server for this script, without a trailing slash; " + c + "health checks connectivity.");
-    notify(c + "auto on|off - relay your channel-0 chat to Ollama (default off). " + c + "public on|off - say replies in public local chat instead of owner-only (default off).");
-    notify("Ollama replies are queued, then polled every " + (string)((integer)TICK_SECONDS) + "s; at most " + (string)MAX_JOBS + " may be pending. A reply is abandoned after " + (string)ASK_DEADLINE + "s.");
-
-    notify("HELP 3/7 - MAGNUS RUBY AND SESSIONS");
-    notify(c + "ruby <code> - run one Ruby program. Example: " + c + "ruby x = 21; puts x * 2. Locals persist in the selected session.");
-    notify(c + "session <id> - use a shared Ruby/storage session (1-64 ASCII letters, digits, _ or -). Default is this object's UUID; choose the same ID as a Forth client to share stored data.");
-    notify(c + "session-reset - select this object's UUID again. " + c + "ruby-reset - clear Ruby locals in the selected session, NOT its shared variables, files or matrices.");
-    notify("Ruby replies show captured puts output and => last value. Errors appear as [ruby error]; code or server timeouts may fail. The Ruby route requires a matching token.");
-
-    notify("HELP 4/7 - SHARED VARIABLES (Ruby token required)");
-    notify(c + "var-set <name> <text> - save a STRING; example: " + c + "var-set greeting Hello world");
-    notify(c + "var-get <name> - read one value; " + c + "var-view - show stored values; " + c + "var-delete <name> - remove it (false if absent).");
-    notify("For numbers, arrays or other JSON-compatible values, use Ruby: " + c + "ruby var_set('score', 21); puts var_get('score'). Missing reads raise Ruby errors.");
-
-    notify("HELP 5/7 - SANDBOXED FILES AND FORTH MATRICES");
-    notify(c + "file-write <name> <text> - write a UTF-8 STRING; " + c + "file-read <name> - read it; " + c + "file-list - list names; " + c + "file-delete <name> - remove it.");
-    notify("File names must be safe basenames (letters, digits, _, -, .; no '..', leading dot or path). Files are limited to 65536 bytes on the server; use a Ruby notecard for multiline content.");
-    notify(c + "matrix-get <name> - read a matrix made by Forth in this session. Returns rows, cols and row-major values; Ruby can inspect it with " + c + "ruby matrix_get('A')['values'].inspect.");
-
-    notify("HELP 6/7 - COMMAND NOTECARDS");
-    notify("Create a notecard named Demo in this object's inventory and say " + c + "notecard Demo. Each line is one command, without /" + (string)CONTROL_CHANNEL + " (a leading /" + (string)CONTROL_CHANNEL + " is optional).");
-    notify("Example Demo lines: # comment | team secondlife | ask What is a prim? | wait 2 | var-set greeting Hello | var-get greeting. Write each command on its own line.");
-    notify("Lines starting # or // are comments. ask waits for its Ollama reply; wait <seconds> pauses; ruby-begin through ruby-end sends the enclosed lines as ONE multiline Ruby program.");
-    notify(c + "notecard-stop - stop the active notecard. A throttled request is retried; editing/removing a running card or timing out while reading it stops the run.");
-
-    notify("HELP 7/7 - RUBY NOTECARDS AND TROUBLESHOOTING");
-    notify(c + "ruby-notecard RubyScript - send the ENTIRE notecard as Ruby (up to " + (string)MAX_RUBY_CHARS + " characters). It must contain Ruby only: no team, ask, /7 ruby or ruby-begin lines.");
-    notify("Use " + c + "notecard Demo for command cards, NOT ruby-notecard Demo. Use ruby-notecard only for Ruby-only cards. Example Ruby line: puts var_get('greeting').");
-    notify("If Ruby says set RUBY_TOKEN, configure it in the script; HTTP 401 means it does not match the server. HTTP 503 means the server Ruby route is disabled. Check " + c + "status and " + c + "health for setup.");
-    notify("If a notecard cannot be found, check its exact case-sensitive inventory name. If commands such as ruby-begin reach Ruby, the command card was run with ruby-notecard instead of notecard.");
+    if (llGetInventoryType(HELP_SCRIPT) != INVENTORY_SCRIPT)
+    {
+        notify("Install " + HELP_SCRIPT + " in this prim to use /" + (string)CONTROL_CHANNEL + " help.");
+        return;
+    }
+    llMessageLinked(LINK_THIS, HELP_LINK_MESSAGE, (string)page, gOwner);
 }
 
 show_status()
@@ -496,6 +491,7 @@ show_status()
         "Team: " + TEAM_NAME,
         "Session: " + gSession,
         "Ruby: " + on_off(RUBY_TOKEN != ""),
+        "Debug output: " + on_off(DEBUG_OUTPUT),
         "Public replies: " + on_off(PUBLIC_REPLIES),
         "Auto ask: " + on_off(AUTO_ASK),
         "Waiting replies: " + (string)(llGetListLength(gJobs) / 2),
@@ -526,6 +522,16 @@ command(string message, string speaker)
     if (verb == "ask") ask(rest, speaker);
     else if (verb == "ruby") ruby(rest);
     else if (verb == "ruby-reset") ruby_reset();
+    else if (verb == "debug")
+    {
+        string setting = llToLower(rest);
+        if (setting == "on" || setting == "off")
+        {
+            DEBUG_OUTPUT = (setting == "on");
+            notify("Debug output " + on_off(DEBUG_OUTPUT));
+        }
+        else notify("Usage: debug on|off");
+    }
     else if (verb == "session")
     {
         if (valid_session(rest)) { gSession = rest; notify("Ruby session: " + gSession); }
@@ -557,7 +563,13 @@ command(string message, string speaker)
     }
     else if (verb == "health") send(KIND_HEALTH, "", BASE_URL + "/ollama/health", "GET", "", FALSE);
     else if (verb == "status") show_status();
-    else if (verb == "help") help();
+    else if (verb == "help")
+    {
+        if (rest == "") show_help(0);
+        else if (llStringLength(rest) == 1 && llSubStringIndex("12345678", rest) != -1)
+            show_help((integer)rest);
+        else notify("Usage: /" + (string)CONTROL_CHANNEL + " help <1-8>");
+    }
     else ask(message, speaker);   // plain text is treated as a question
 }
 
@@ -605,7 +617,7 @@ default
 
     touch_start(integer count)
     {
-        if (llDetectedKey(0) == gOwner) { show_status(); help(); }
+        if (llDetectedKey(0) == gOwner) { show_status(); show_help(0); }
     }
 
     listen(integer channel, string name, key id, string message)
@@ -652,7 +664,10 @@ default
         }
         else if (kind == KIND_RUBY)
         {
-            if (status == 200) say("[ruby] ", body);
+            if (status == 200)
+            {
+                if (body != "") say("[ruby] ", body);
+            }
             else if (status == 422) say("[ruby error] ", body);
             else if (status == 401) notify("Ruby token rejected (HTTP 401): RUBY_TOKEN must equal TIADE_RUBY_EVAL_TOKEN.");
             else notify("Ruby request failed (HTTP " + (string)status + "): " + body);

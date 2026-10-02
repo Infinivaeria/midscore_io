@@ -22,7 +22,6 @@ const TOKEN_ENV: &str = "TIADE_RUBY_EVAL_TOKEN";
 const OWNERS_ENV: &str = "TIADE_RUBY_EVAL_SL_OWNERS";
 const SECONDS_ENV: &str = "TIADE_RUBY_EVAL_SECONDS";
 const DEFAULT_SECONDS: u64 = 10;
-const MAX_CODE_CHARS: usize = 16_000;
 const MAX_SESSION_CHARS: usize = 128;
 
 pub type StoreCall = Arc<dyn Fn(&str, &str, Value) -> Result<Value, String> + Send + Sync>;
@@ -53,7 +52,6 @@ require 'json'
 module TiadeSL
   SESSIONS = {}
   MAX_SESSIONS = 256
-  MAX_OUTPUT = 4000
 
   module Storage
     def store_call(operation, args = {})
@@ -82,7 +80,7 @@ module TiadeSL
   end
 
   # Returns "OK\n<output>" or "ERR\n<output>".
-  EVAL = lambda do |(session, code, seconds)|
+  EVAL = lambda do |(session, code, seconds, include_result)|
     out = StringIO.new
     saved = $stdout
     status = 'OK'
@@ -91,7 +89,7 @@ module TiadeSL
       value = Timeout.timeout(seconds.to_f) do
         binding_for(session).eval(code, "(sl:#{session})", 1)
       end
-      text = "#{out.string}=> #{value.inspect}"
+      text = include_result == 'true' ? "#{out.string}=> #{value.inspect}" : out.string
     rescue Timeout::Error
       status = 'ERR'
       text = "#{out.string}Timeout: evaluation exceeded #{seconds}s"
@@ -101,7 +99,6 @@ module TiadeSL
     ensure
       $stdout = saved
     end
-    text = text[0, MAX_OUTPUT] + "…" if text.length > MAX_OUTPUT
     "#{status}\n#{text}"
   end
 
@@ -136,14 +133,10 @@ pub fn mount<State: Clone + Send + Sync + 'static>(
         if input.code.trim().is_empty() {
             return Ok(text(tide::StatusCode::BadRequest, "code is required"));
         }
-        if input.code.chars().count() > MAX_CODE_CHARS {
-            return Ok(text(tide::StatusCode::PayloadTooLarge, "code is too long"));
-        }
-
         let seconds = eval_seconds();
         let result = ruby_vm::call_with_strings(
             "TiadeSL::EVAL",
-            vec![input.session, input.code, seconds.to_string()],
+            vec![input.session, input.code, seconds.to_string(), input.include_result.to_string()],
             // The Ruby-side timeout fires first; this only covers a stuck VM.
             Duration::from_secs(seconds + 5),
         )
@@ -181,10 +174,11 @@ pub fn mount<State: Clone + Send + Sync + 'static>(
 struct SlRubyRequest {
     session: String,
     code: String,
+    include_result: bool,
 }
 
 impl SlRubyRequest {
-    /// Authorizes the request and reads `{"code","session","token"}` JSON or a
+    /// Authorizes the request and reads `{"code","session","token","include_result"}` JSON or a
     /// plain-text body (code), with the token in `X-Ruby-Token` or
     /// `Authorization: Bearer`.
     fn parse<State>(req: &tide::Request<State>, body: &str) -> Result<Self, tide::Response> {
@@ -227,11 +221,16 @@ impl SlRubyRequest {
             .or_else(|| header("X-SecondLife-Object-Key"))
             .unwrap_or_else(|| "default".to_string());
         let session: String = session.trim().chars().take(MAX_SESSION_CHARS).collect();
+        let include_result = match json.as_ref().and_then(|object| object.get("include_result")) {
+            None => true,
+            Some(Value::Bool(value)) => *value,
+            Some(_) => return Err(text(tide::StatusCode::BadRequest, "include_result must be a boolean")),
+        };
         let code = match json {
             Some(_) => field("code").unwrap_or_default(),
             None => body.to_string(),
         };
-        Ok(Self { session, code })
+        Ok(Self { session, code, include_result })
     }
 }
 
@@ -362,6 +361,29 @@ mod tests {
 
             let (_, body) = post(&app, "/sl/ruby/eval", &auth, "x * 2").await;
             assert_eq!(body, "=> 40", "locals persist per object session");
+
+            let (status, body) = post(&app, "/sl/ruby/eval", &auth,
+                r#"{"code":"puts 'hello'; 42","include_result":false}"#).await;
+            assert_eq!((status, body.as_str()), (200, "hello\n"));
+            let (status, body) = post(&app, "/sl/ruby/eval", &auth,
+                r#"{"code":"42","include_result":false}"#).await;
+            assert_eq!((status, body.as_str()), (200, ""));
+            let (status, body) = post(&app, "/sl/ruby/eval", &auth,
+                r#"{"code":"raise 'bad'","include_result":false}"#).await;
+            assert_eq!((status, body.as_str()), (422, "RuntimeError: bad"));
+            let (status, body) = post(&app, "/sl/ruby/eval", &auth,
+                r#"{"code":"42","include_result":"false"}"#).await;
+            assert_eq!((status, body.as_str()), (400, "include_result must be a boolean"));
+
+            let long_code = format!("{}puts 'ok'", "# filler\n".repeat(2_100));
+            assert!(long_code.len() > 16_000);
+            let (status, body) = post(&app, "/sl/ruby/eval", &auth, &long_code).await;
+            assert_eq!((status, body.as_str()), (200, "ok\n=> nil"));
+
+            let (status, body) = post(&app, "/sl/ruby/eval", &auth,
+                r#"{"code":"puts 'x' * 20000","include_result":false}"#).await;
+            assert_eq!(status, 200);
+            assert_eq!(body, format!("{}\n", "x".repeat(20_000)));
 
             let (_, body) = post(&app, "/sl/ruby/eval", &[("Authorization", "Bearer s3cret")],
                 r#"{"code":"defined?(x).inspect","session":"other"}"#).await;
