@@ -873,7 +873,9 @@ async fn run_sl_ask(
 
 fn json_response<T: Serialize>(status: tide::StatusCode, data: T) -> tide::Response {
     let mut res = tide::Response::new(status);
-    res.set_content_type(tide::http::mime::JSON);
+    // serde_json serializes Rust strings as UTF-8. Declare that encoding on
+    // every relay response so clients decode generated text consistently.
+    res.insert_header("Content-Type", "application/json; charset=utf-8");
     add_cors_headers(&mut res);
     let body = serde_json::to_string(&data).unwrap_or_else(|_| "{}".to_string());
     res.set_body(body);
@@ -1702,6 +1704,19 @@ mod tests {
                 .and_then(|values| values.get(0))
                 .map(|value| value.as_str()),
             Some("Authorization, Content-Type")
+        );
+    }
+
+    #[test]
+    fn json_responses_declare_utf8() {
+        let response = json_response(tide::StatusCode::Ok, json!({ "reply": "こんにちは" }));
+
+        assert_eq!(
+            response
+                .header("Content-Type")
+                .and_then(|values| values.get(0))
+                .map(|value| value.as_str()),
+            Some("application/json; charset=utf-8")
         );
     }
 

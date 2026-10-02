@@ -43,10 +43,10 @@ struct MsgEntry {
 
 // Helper: Create a JSON response.
 pub fn json_response<T: serde::Serialize>(data: T) -> tide::Response {
-    tide::Response::builder(tide::StatusCode::Ok)
-        .body(serde_json::to_string(&data).unwrap())
-        .content_type(tide::http::mime::JSON)
-        .build()
+    let mut response = tide::Response::new(tide::StatusCode::Ok);
+    response.set_body(serde_json::to_string(&data).unwrap());
+    response.insert_header("Content-Type", "application/json; charset=utf-8");
+    response
 }
 
 // Helper: Redirect to a given URL.

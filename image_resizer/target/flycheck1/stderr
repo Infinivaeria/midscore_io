@@ -56,4 +56,4 @@ warning: unused dependency `tokio-native-tls`
    |
 help: consider removing the dependency on `tokio-native-tls`
 warning: `image_resizer` (manifest) generated 8 warnings
-    Finished `dev` profile [optimized + debuginfo] target(s) in 0.35s
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.98s
