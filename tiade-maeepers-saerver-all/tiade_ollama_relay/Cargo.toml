@@ -11,3 +11,4 @@ tide = { version = "0.16.0", features = ["docs", "unstable"] }
 chrono = { version = "0.4.40", features = ["serde"] }
 async-std = "1.13.0"
 partitioned_array_rust = { path = "../../lib/partitioned_array_rust" }
+percent-encoding = "2.3.1"

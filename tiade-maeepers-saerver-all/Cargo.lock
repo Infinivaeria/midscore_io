@@ -3733,6 +3733,7 @@ dependencies = [
  "async-std",
  "chrono",
  "partitioned_array_rust",
+ "percent-encoding",
  "serde",
  "serde_json",
  "surf",

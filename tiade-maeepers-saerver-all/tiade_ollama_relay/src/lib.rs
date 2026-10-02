@@ -1,4 +1,5 @@
 use partitioned_array_rust::{LineDb, LineDbConfig};
+use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -227,7 +228,7 @@ pub fn mount_routes<State: Clone + Send + Sync + 'static>(
                 let cfg = cfg.clone();
                 let team_store = team_store.clone();
                 async move {
-                    let team = req.param("team")?.to_string();
+                    let team = decode_percent_param(req.param("team")?, "team")?;
                     validate_team(&team)?;
                     let body = req.body_string().await?;
                     let payload: ChatInput = serde_json::from_str(&body).map_err(|e| {
@@ -308,8 +309,8 @@ pub fn mount_routes<State: Clone + Send + Sync + 'static>(
                 let cfg = cfg.clone();
                 let team_store = team_store.clone();
                 async move {
-                    let team = req.param("team")?.to_string();
-                    let player = req.param("player")?.to_string();
+                    let team = decode_percent_param(req.param("team")?, "team")?;
+                    let player = decode_percent_param(req.param("player")?, "player")?;
                     validate_team(&team)?;
                     validate_player(&player)?;
                     let body = req.body_string().await?;
@@ -393,8 +394,8 @@ pub fn mount_routes<State: Clone + Send + Sync + 'static>(
             .get(move |req: tide::Request<State>| {
                 let team_store = team_store.clone();
                 async move {
-                    let team = req.param("team")?.to_string();
-                    let player = req.param("player")?.to_string();
+                    let team = decode_percent_param(req.param("team")?, "team")?;
+                    let player = decode_percent_param(req.param("player")?, "player")?;
                     validate_team(&team)?;
                     validate_player(&player)?;
                     Ok(json_response(tide::StatusCode::Ok, GameStateOutput {
@@ -413,8 +414,8 @@ pub fn mount_routes<State: Clone + Send + Sync + 'static>(
             .post(move |req: tide::Request<State>| {
                 let team_store = team_store.clone();
                 async move {
-                    let team = req.param("team")?.to_string();
-                    let player = req.param("player")?.to_string();
+                    let team = decode_percent_param(req.param("team")?, "team")?;
+                    let player = decode_percent_param(req.param("player")?, "player")?;
                     validate_team(&team)?;
                     validate_player(&player)?;
                     reset_game_session(&team_store, &team, &player)?;
@@ -436,8 +437,8 @@ pub fn mount_routes<State: Clone + Send + Sync + 'static>(
                 let cfg = cfg.clone();
                 let team_store = team_store.clone();
                 async move {
-                    let team = req.param("team")?.to_string();
-                    let player = req.param("player")?.to_string();
+                    let team = decode_percent_param(req.param("team")?, "team")?;
+                    let player = decode_percent_param(req.param("player")?, "player")?;
                     validate_team(&team)?;
                     validate_player(&player)?;
 
@@ -530,7 +531,7 @@ pub fn mount_routes<State: Clone + Send + Sync + 'static>(
                 let cfg = get_cfg.clone();
                 let team_store = get_team_store.clone();
                 async move {
-                    let team = req.param("team")?.to_string();
+                    let team = decode_percent_param(req.param("team")?, "team")?;
                     validate_team(&team)?;
                     if let Some(response) = team_prompt_authorization_error(&req, &cfg) {
                         return Ok(response);
@@ -548,7 +549,7 @@ pub fn mount_routes<State: Clone + Send + Sync + 'static>(
                 let cfg = cfg.clone();
                 let team_store = team_store.clone();
                 async move {
-                    let team = req.param("team")?.to_string();
+                    let team = decode_percent_param(req.param("team")?, "team")?;
                     validate_team(&team)?;
                     if let Some(response) = team_prompt_authorization_error(&req, &cfg) {
                         return Ok(response);
@@ -587,7 +588,7 @@ pub fn mount_routes<State: Clone + Send + Sync + 'static>(
                 let cfg = cfg.clone();
                 let team_store = team_store.clone();
                 async move {
-                    let team = req.param("team")?.to_string();
+                    let team = decode_percent_param(req.param("team")?, "team")?;
                     validate_team(&team)?;
                     let out = HistoryOutput {
                         history: team_history(&team_store, &cfg, &team)?,
@@ -685,7 +686,7 @@ fn mount_sl_routes<State: Clone + Send + Sync + 'static>(
                 let jobs = jobs.clone();
                 let team_store = team_store.clone();
                 async move {
-                    let team = req.param("team")?.to_string();
+                    let team = decode_percent_param(req.param("team")?, "team")?;
                     validate_team(&team)?;
                     let body = req.body_string().await?;
                     let message = match sl_message_from_body(&body) {
@@ -889,6 +890,18 @@ fn cors_preflight_response() -> tide::Response {
     let mut response = tide::Response::new(tide::StatusCode::NoContent);
     add_cors_headers(&mut response);
     response
+}
+
+fn decode_percent_param(value: &str, label: &str) -> tide::Result<String> {
+    percent_decode_str(value)
+        .decode_utf8()
+        .map(|decoded| decoded.into_owned())
+        .map_err(|_| {
+            tide::Error::from_str(
+                tide::StatusCode::BadRequest,
+                format!("{label} contains invalid percent-encoding"),
+            )
+        })
 }
 
 fn route_catalog() -> RouteCatalogOutput {
@@ -1801,7 +1814,7 @@ mod tests {
 
             let mut post = tide::http::Request::new(
                 tide::http::Method::Post,
-                tide::http::Url::parse("http://localhost/sl/ask/alpha").unwrap(),
+                tide::http::Url::parse("http://localhost/sl/ask/secondlife%2Dactors").unwrap(),
             );
             post.set_body(r#"{"message":"hello"}"#);
             let mut response: tide::Response = app.respond(post).await.unwrap();
