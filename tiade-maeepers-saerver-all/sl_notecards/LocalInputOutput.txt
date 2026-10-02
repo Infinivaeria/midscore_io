@@ -2,7 +2,7 @@
 #
 # In Second Life, create a notecard named "LocalInputOutput" in the object,
 # paste this Ruby-only source, save it, then say:
-#   /7 ruby-local-input-notecard LocalInputOutput
+#   /7 local-input-ruby-notecard LocalInputOutput
 #
 # The controller supplies the latest nearby channel-0 message in local_input.
 # Keep public replies off if that message is private.

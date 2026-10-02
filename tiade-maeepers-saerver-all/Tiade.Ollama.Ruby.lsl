@@ -18,8 +18,8 @@
 // RUBY_TOKEN to the server's TIADE_RUBY_EVAL_TOKEN. Then chat on /7:
 //   /7 ask what is a prim?      /7 ruby [1, 2, 3].sum
 //   /7 notecard Demo            /7 ruby-notecard Script
-//   /7 local-input              /7 ruby-local-input puts local_input.upcase
-//   /7 ruby-local-input-notecard LocalInputRuby
+//   /7 local-input              /7 local-input-ruby puts local_input.upcase
+//   /7 local-input-ruby-notecard LocalInputRuby
 //   /7 var-set score 21          /7 var-get score
 //   /7 file-write notes.txt hi  /7 matrix-get A
 //
@@ -29,7 +29,7 @@
 //   wait <seconds>             pause the notecard
 //   ruby-begin ... ruby-end    send the enclosed lines as ONE Ruby program
 // Ruby notecard (`/7 ruby-notecard <name>`): the whole notecard is one program.
-// Local-input Ruby notecard (`/7 ruby-local-input-notecard <name>`): the
+// Local-input Ruby notecard (`/7 local-input-ruby-notecard <name>`): the
 // whole Ruby-only card runs with local_input set to the latest channel-0 text.
 
 string  BASE_URL        = "https://stimky.info";
@@ -316,7 +316,7 @@ integer ruby_local_input(string code)
     code = llStringTrim(code, STRING_TRIM);
     if (code == "")
     {
-        notify("Usage: ruby-local-input <Ruby code>  (for example: puts local_input.upcase)");
+        notify("Usage: local-input-ruby <Ruby code>  (for example: puts local_input.upcase)");
         return FALSE;
     }
     return ruby("local_input = " + ruby_string_arg(gLastLocalChat) + "\n" + code);
@@ -388,7 +388,7 @@ store_command(string verb, string rest)
 start_notecard(string name, integer mode)
 {
     name = llStringTrim(name, STRING_TRIM);
-    if (name == "") { notify("Usage: notecard <name>, ruby-notecard <name>, or ruby-local-input-notecard <name>"); return; }
+    if (name == "") { notify("Usage: notecard <name>, ruby-notecard <name>, or local-input-ruby-notecard <name>"); return; }
     if (gNcMode != NC_OFF) { notify("Already running notecard '" + gNcName + "'. Use notecard-stop first."); return; }
     if (llGetInventoryType(name) != INVENTORY_NOTECARD)
     {
@@ -592,7 +592,7 @@ command(string message, string speaker)
 
     if (verb == "ask") ask(rest, speaker);
     else if (verb == "ruby") ruby(rest);
-    else if (verb == "ruby-local-input") ruby_local_input(rest);
+    else if (verb == "local-input-ruby" || verb == "ruby-local-input") ruby_local_input(rest);
     else if (verb == "ruby-reset") ruby_reset();
     else if (verb == "debug")
     {
@@ -615,7 +615,7 @@ command(string message, string speaker)
         || verb == "matrix-get") store_command(verb, rest);
     else if (verb == "notecard") start_notecard(rest, NC_COMMANDS);
     else if (verb == "ruby-notecard") start_notecard(rest, NC_RUBY);
-    else if (verb == "ruby-local-input-notecard") start_notecard(rest, NC_RUBY_LOCAL_INPUT);
+    else if (verb == "local-input-ruby-notecard" || verb == "ruby-local-input-notecard") start_notecard(rest, NC_RUBY_LOCAL_INPUT);
     else if (verb == "notecard-stop")
     {
         if (gNcMode == NC_OFF) notify("No notecard is running.");

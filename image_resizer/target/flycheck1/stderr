@@ -1,5 +1,3 @@
-    Blocking waiting for file lock on package cache
-    Blocking waiting for file lock on package cache
 warning: unused dependency `async-native-tls`
  --> Cargo.toml:8:1
   |
@@ -58,4 +56,4 @@ warning: unused dependency `tokio-native-tls`
    |
 help: consider removing the dependency on `tokio-native-tls`
 warning: `image_resizer` (manifest) generated 8 warnings
-    Finished `dev` profile [optimized + debuginfo] target(s) in 0.42s
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.71s

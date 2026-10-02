@@ -21,11 +21,11 @@ Installation
    gLastLocalChat value privately in owner chat.
 6. To run that check from a command notecard, upload LocalInputCommands.txt as
    a notecard named LocalInputCommands and say /7 notecard LocalInputCommands.
-7. To process the value in Ruby, say /7 ruby-local-input <Ruby code>. The
+7. To process the value in Ruby, say /7 local-input-ruby <Ruby code>. The
    value is available to that code as local_input; for example:
-   /7 ruby-local-input puts local_input.upcase
+   /7 local-input-ruby puts local_input.upcase
 8. For a Ruby-only code notecard, upload LocalInputRuby.txt as a notecard
-   named LocalInputRuby and say /7 ruby-local-input-notecard LocalInputRuby.
+   named LocalInputRuby and say /7 local-input-ruby-notecard LocalInputRuby.
 
 Behavior and privacy
 --------------------
@@ -33,7 +33,7 @@ Behavior and privacy
 - The value exists only in script memory and is cleared when the main script
   resets, recompiles, or is re-rezzed.
 - Captured chat is NOT sent to Ollama or Ruby and is NOT treated as a command.
-- It is sent to Ruby only when the owner runs ruby-local-input. The text is
+- It is sent to Ruby only when the owner runs local-input-ruby. The text is
   escaped and assigned to the Ruby local_input variable as data.
 - Only the owner can issue /7 controller commands. Nearby chatters cannot use
   their channel-0 messages to execute a command.

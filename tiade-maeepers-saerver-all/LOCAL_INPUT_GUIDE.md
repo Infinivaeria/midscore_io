@@ -37,14 +37,14 @@ is re-rezzed.
 
 ## Inline Ruby
 
-Use `/7 ruby-local-input <Ruby code>` to bind the latest captured message to
+Use `/7 local-input-ruby <Ruby code>` to bind the latest captured message to
 the Ruby variable `local_input` and run code against it.
 
 ```text
-/7 ruby-local-input puts local_input
-/7 ruby-local-input puts local_input.strip.upcase
-/7 ruby-local-input puts local_input.split.length
-/7 ruby-local-input puts local_input.reverse
+/7 local-input-ruby puts local_input
+/7 local-input-ruby puts local_input.strip.upcase
+/7 local-input-ruby puts local_input.split.length
+/7 local-input-ruby puts local_input.reverse
 ```
 
 The controller safely escapes the captured text and passes it as Ruby data; a
@@ -61,12 +61,12 @@ Use this for a multi-line Ruby program that needs `local_input`.
 3. Run:
 
    ```text
-   /7 ruby-local-input-notecard LocalInputRuby
+   /7 local-input-ruby-notecard LocalInputRuby
    ```
 
 Before the card runs, the controller assigns the captured message to
 `local_input`. The card must contain Ruby source only. Do not include `/7`,
-`local-input`, `ruby-local-input`, `ruby-begin`, or `ruby-end` in it.
+`local-input`, `local-input-ruby`, `ruby-begin`, or `ruby-end` in it.
 
 ### Input/output example
 
@@ -78,7 +78,7 @@ Before the card runs, the controller assigns the captured message to
 Upload that source as a notecard named `LocalInputOutput`, then run:
 
 ```text
-/7 ruby-local-input-notecard LocalInputOutput
+/7 local-input-ruby-notecard LocalInputOutput
 ```
 
 ## Command notecard
@@ -95,16 +95,16 @@ input and then runs an inline Ruby example.
    ```
 
 Never run this card with `/7 ruby-notecard LocalInputCommands`. Ruby will see
-`local-input` and `ruby-local-input` as invalid Ruby syntax.
+`local-input` and `local-input-ruby` as invalid Ruby syntax.
 
 ## Choosing a variation
 
 | Need | Use |
 | --- | --- |
 | See the latest value only | `/7 local-input` |
-| One small transformation | `/7 ruby-local-input <Ruby code>` |
-| Multi-line Ruby processing | `/7 ruby-local-input-notecard <name>` |
-| Demonstrate input and output | `LocalInputOutput` with `ruby-local-input-notecard` |
+| One small transformation | `/7 local-input-ruby <Ruby code>` |
+| Multi-line Ruby processing | `/7 local-input-ruby-notecard <name>` |
+| Demonstrate input and output | `LocalInputOutput` with `local-input-ruby-notecard` |
 | Run controller commands from a card | `/7 notecard LocalInputCommands` |
 
 ## Privacy and output
@@ -130,7 +130,7 @@ then retry. A reset clears the previous value.
 
 **Ruby syntax error mentioning `local-input`** — A command notecard was run as
 a Ruby notecard. Run it with `/7 notecard <name>`, or use a Ruby-only card with
-`/7 ruby-local-input-notecard <name>`.
+`/7 local-input-ruby-notecard <name>`.
 
 **“Not enough script memory to read notecard”** — Recompile/reset the current
 main script, use `/7 status` to check free memory, and prefer a small Ruby-only

@@ -29,26 +29,26 @@ OWNER COMMANDS
   It reports that no input exists if nobody has spoken since the main script
   was reset.
 
-/7 ruby-local-input <Ruby code>
+/7 local-input-ruby <Ruby code>
   Runs Ruby after assigning the captured text to local_input.
-  Example: /7 ruby-local-input puts local_input.upcase
-  Example: /7 ruby-local-input puts local_input.split.length
+  Example: /7 local-input-ruby puts local_input.upcase
+  Example: /7 local-input-ruby puts local_input.split.length
 
 RUBY-ONLY NOTECARD
 ------------------
 To run a Ruby program against the captured value:
 
 1. Upload LocalInputRuby.txt as an object notecard named LocalInputRuby.
-2. Run: /7 ruby-local-input-notecard LocalInputRuby
+2. Run: /7 local-input-ruby-notecard LocalInputRuby
 
 The entire card is Ruby source. The controller sets local_input before it
-runs. Do not put /7 commands, local-input, or ruby-local-input lines in this
+runs. Do not put /7 commands, local-input, or local-input-ruby lines in this
 kind of card.
 
 LocalInputOutput.txt is a Ruby-only example that displays the captured input
 and a transformed output. Upload it as LocalInputOutput, then run:
 
-  /7 ruby-local-input-notecard LocalInputOutput
+  /7 local-input-ruby-notecard LocalInputOutput
 
 COMMAND NOTECARD
 ----------------
@@ -66,7 +66,7 @@ PRIVACY AND SAFETY
 - gLastLocalChat is cleared when the main script resets, recompiles, or is
   re-rezzed.
 - Local chat is not sent to Ollama or Ruby automatically.
-- ruby-local-input and ruby-local-input-notecard are explicit owner actions.
+- local-input-ruby and local-input-ruby-notecard are explicit owner actions.
 - Captured text is escaped as data before Ruby receives it; it is not inserted
   as executable Ruby source.
 - Keep /7 public off when the captured text is private, because Ruby output
@@ -84,7 +84,7 @@ Ruby says no local input was captured:
 
 Ruby syntax error mentioning local-input:
   You ran a command card with ruby-notecard. Use /7 notecard
-  LocalInputCommands, or use ruby-local-input-notecard with LocalInputRuby.
+  LocalInputCommands, or use local-input-ruby-notecard with LocalInputRuby.
 
 Ruby token error:
   Configure RUBY_TOKEN in Tiade.Ollama.Ruby.lsl to match the server token.

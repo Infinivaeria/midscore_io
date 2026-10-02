@@ -2,7 +2,7 @@
 #
 # In Second Life, create a notecard named "LocalInputRuby" in the object,
 # paste this Ruby-only source, save it, then say:
-#   /7 ruby-local-input-notecard LocalInputRuby
+#   /7 local-input-ruby-notecard LocalInputRuby
 #
 # The controller sets local_input from the latest nearby channel-0 message
 # before this program runs. Keep public replies off for private input.

@@ -47,7 +47,7 @@ help(integer page)
     {
         notify("HELP 4/8 - MAGNUS RUBY AND SESSIONS");
         notify(c + "ruby <code> - run one Ruby program. Example: " + c + "ruby x = 21; puts x * 2. Locals persist in the selected session.");
-        notify(c + "ruby-local-input <code> - run Ruby with the latest nearby channel-0 message in local_input. Example: " + c + "ruby-local-input puts local_input.upcase. Chat text is passed as escaped data, not executable source.");
+        notify(c + "local-input-ruby <code> - run Ruby with the latest nearby channel-0 message in local_input. Example: " + c + "local-input-ruby puts local_input.upcase. Chat text is passed as escaped data, not executable source.");
         notify("Ruby runs one request at a time. Wait for its reply before sending another ruby command or ruby-reset; this avoids simulator HTTP timeouts.");
         notify(c + "session <id> - use a shared Ruby/storage session (1-64 ASCII letters, digits, _ or -). Default is this object's UUID; choose the same ID as a Forth client to share stored data.");
         notify(c + "session-reset - select this object's UUID again. " + c + "ruby-reset - clear Ruby locals in the selected session, NOT its shared variables, files or matrices.");
@@ -80,10 +80,10 @@ help(integer page)
     {
         notify("HELP 8/8 - RUBY NOTECARDS AND TROUBLESHOOTING");
         notify(c + "ruby-notecard RubyScript - send the ENTIRE notecard as Ruby. It must contain Ruby only: no team, ask, /7 ruby or ruby-begin lines. Script memory still limits large notecards.");
-        notify(c + "ruby-local-input-notecard LocalInputRuby - send a Ruby-only card with local_input set to the latest nearby channel-0 message. Use this for Ruby that processes captured chat; the card must not contain local-input or ruby-local-input commands.");
+        notify(c + "local-input-ruby-notecard LocalInputRuby - send a Ruby-only card with local_input set to the latest nearby channel-0 message. Use this for Ruby that processes captured chat; the card must not contain local-input or local-input-ruby commands.");
         notify("Use " + c + "notecard Demo for command cards, NOT ruby-notecard Demo. Use ruby-notecard only for Ruby-only cards. Example Ruby line: puts var_get('greeting').");
         notify("If Ruby says set RUBY_TOKEN, configure it in the main script; HTTP 401 means it does not match the server. HTTP 503 means the server Ruby route is disabled. Check " + c + "status and " + c + "health for setup.");
-        notify("If a notecard cannot be found, check its exact case-sensitive inventory name. If local-input, ruby-local-input or ruby-begin reaches Ruby, the command card was run with ruby-notecard instead of notecard.");
+        notify("If a notecard cannot be found, check its exact case-sensitive inventory name. If local-input, local-input-ruby or ruby-begin reaches Ruby, the command card was run with ruby-notecard instead of notecard.");
     }
 }
 

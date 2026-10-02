@@ -4,8 +4,8 @@
 // to the controller as a link message. The controller stores the latest value
 // in gLastLocalChat. It is deliberately not interpreted as a command and is
 // not sent to Ollama/Ruby automatically, so everyday local conversation stays
-// local. The owner may explicitly process it with /7 ruby-local-input <code>
-// or /7 ruby-local-input-notecard <name>.
+// local. The owner may explicitly process it with /7 local-input-ruby <code>
+// or /7 local-input-ruby-notecard <name>.
 
 integer LOCAL_CHAT_INPUT_MESSAGE = -708643;
 

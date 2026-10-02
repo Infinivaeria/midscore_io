@@ -10,4 +10,4 @@
 # channel-0 message) privately to the object owner. The second supplies that
 # message to Ruby as local_input. Keep public replies off when it is private.
 local-input
-ruby-local-input puts "Local input: #{local_input}"
+local-input-ruby puts "Local input: #{local_input}"
