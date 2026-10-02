@@ -1,6 +1,7 @@
 // Tiade.Ollama.Ruby.lsl
 // Owner-controlled Second Life client for the Tide server.
-// Install Tiade.Ollama.Ruby.Help.lsl in the same prim for /7 help.
+// Install Tiade.Ollama.Ruby.Chat.lsl and Tiade.Ollama.Ruby.Help.lsl in the
+// same prim. Chat owns the listeners; Help owns the /7 help text.
 //
 // Server routes used:
 //   POST /sl/ask/<team>  {"message","speaker"}  -> 202 {"job":"<id>"}
@@ -31,7 +32,6 @@ string  TEAM_NAME       = "secondlife";
 string  RUBY_TOKEN      = "";      // must match TIADE_RUBY_EVAL_TOKEN on the server
 integer CONTROL_CHANNEL = 7;       // avatars can only chat on positive channels
 integer PUBLIC_REPLIES  = FALSE;   // FALSE: llOwnerSay, TRUE: llSay on channel 0
-integer AUTO_ASK        = FALSE;   // relay the owner's channel-0 chat to Ollama
 integer DEBUG_OUTPUT    = TRUE;    // FALSE: only explicit Ruby output, not => last value
 float   TICK_SECONDS    = 2.0;     // one job poll per tick keeps under the HTTP throttle
 integer ASK_DEADLINE    = 240;     // seconds before a queued ask is abandoned
@@ -51,11 +51,11 @@ integer NC_OFF      = 0;
 integer NC_COMMANDS = 1;
 integer NC_RUBY     = 2;
 integer HELP_LINK_MESSAGE = -708641;
+integer CHAT_COMMAND_MESSAGE = -708642;
 string  HELP_SCRIPT = "Tiade.Ollama.Ruby.Help.lsl";
 
 key     gOwner;
 string  gSession;       // Ruby locals and shared stores use this session
-integer gPublicListen;
 list    gRequests;      // [request_key, kind, job_id] for in-flight HTTP requests
 list    gJobs;          // [job_id, deadline_unix] for queued Ollama replies
 integer gPollIndex;     // round-robin position in gJobs
@@ -233,19 +233,40 @@ integer ruby_ready()
     return TRUE;
 }
 
+integer ruby_in_flight()
+{
+    integer i;
+    integer count = llGetListLength(gRequests);
+    for (i = 0; i < count; i += 3)
+    {
+        integer kind = llList2Integer(gRequests, i + 1);
+        if (kind == KIND_RUBY || kind == KIND_RESET) return TRUE;
+    }
+    return FALSE;
+}
+
 integer ruby(string code)
 {
     if (!ruby_ready()) return FALSE;
     if (llStringTrim(code, STRING_TRIM) == "") { notify("Usage: ruby <code>"); return FALSE; }
+    if (ruby_in_flight())
+    {
+        if (gNcExecuting) gNcThrottled = TRUE;
+        else notify("Ruby is still running; wait for its reply before sending another Ruby command.");
+        return FALSE;
+    }
     if (llGetListLength(gRequests) / 3 >= MAX_REQUESTS)
     {
         if (gNcExecuting) gNcThrottled = TRUE;
         else notify("Too many outstanding HTTP requests; wait for replies or reset the script.");
         return FALSE;
     }
-    if (llGetFreeMemory() < llStringLength(code) * 8 + 8192)
+    integer required_memory = llStringLength(code) * 4 + 2048;
+    integer free_memory = llGetFreeMemory();
+    if (free_memory < required_memory)
     {
-        notify("Not enough script memory to send Ruby; use a smaller program or reset the script.");
+        notify("Not enough script memory to send Ruby (" + (string)free_memory + " free, "
+            + (string)required_memory + " needed); use a smaller program or reset the script.");
         return FALSE;
     }
     string include_result = "false";
@@ -257,6 +278,11 @@ integer ruby(string code)
 
 ruby_reset()
 {
+    if (ruby_in_flight())
+    {
+        notify("Ruby is still running; wait for its reply before resetting the session.");
+        return;
+    }
     if (ruby_ready()) send(KIND_RESET, "", BASE_URL + "/sl/ruby/reset", "POST",
         "{\"session\":" + json_string(gSession) + "}", TRUE);
 }
@@ -493,18 +519,9 @@ show_status()
         "Ruby: " + on_off(RUBY_TOKEN != ""),
         "Debug output: " + on_off(DEBUG_OUTPUT),
         "Public replies: " + on_off(PUBLIC_REPLIES),
-        "Auto ask: " + on_off(AUTO_ASK),
         "Waiting replies: " + (string)(llGetListLength(gJobs) / 2),
         "Notecard: " + nc,
         "Free memory: " + (string)llGetFreeMemory()], "\n"));
-}
-
-set_auto(integer enabled)
-{
-    AUTO_ASK = enabled;
-    if (gPublicListen) llListenRemove(gPublicListen);
-    gPublicListen = 0;
-    if (AUTO_ASK) gPublicListen = llListen(0, "", gOwner, "");
 }
 
 command(string message, string speaker)
@@ -550,7 +567,6 @@ command(string message, string speaker)
     }
     else if (verb == "team" && rest != "") { TEAM_NAME = rest; notify("Team: " + TEAM_NAME); }
     else if (verb == "public") { PUBLIC_REPLIES = is_on(rest); notify("Public replies " + on_off(PUBLIC_REPLIES)); }
-    else if (verb == "auto") { set_auto(is_on(rest)); notify("Auto ask " + on_off(AUTO_ASK)); }
     else if (verb == "url")
     {
         if (llSubStringIndex(rest, "https://") == 0)
@@ -570,7 +586,7 @@ command(string message, string speaker)
             show_help((integer)rest);
         else notify("Usage: /" + (string)CONTROL_CHANNEL + " help <1-8>");
     }
-    else ask(message, speaker);   // plain text is treated as a question
+    else ask(message, speaker);   // plain /7 text is treated as a question
 }
 
 handle_job_status(string job_id, string body)
@@ -599,10 +615,9 @@ default
         gNcMode = NC_OFF;
         gNcQuery = NULL_KEY;
         gNcWaitRequest = NULL_KEY;
-        llListen(CONTROL_CHANNEL, "", gOwner, "");
-        set_auto(AUTO_ASK);
         update_timer();
-        notify("Ready on /" + (string)CONTROL_CHANNEL + ". Say /" + (string)CONTROL_CHANNEL + " help");
+        notify("Ready on /" + (string)CONTROL_CHANNEL + ". Install Chat and Help scripts, then say /"
+            + (string)CONTROL_CHANNEL + " help");
     }
 
     on_rez(integer param) { llResetScript(); }
@@ -620,11 +635,11 @@ default
         if (llDetectedKey(0) == gOwner) { show_status(); show_help(0); }
     }
 
-    listen(integer channel, string name, key id, string message)
+    link_message(integer sender_num, integer num, string message, key id)
     {
         if (id != gOwner) return;
-        if (channel == CONTROL_CHANNEL) command(message, name);
-        else if (channel == 0 && AUTO_ASK) ask(message, name);
+        string speaker = llKey2Name(id);
+        if (num == CHAT_COMMAND_MESSAGE) command(message, speaker);
     }
 
     dataserver(key query_id, string data)
@@ -670,6 +685,7 @@ default
             }
             else if (status == 422) say("[ruby error] ", body);
             else if (status == 401) notify("Ruby token rejected (HTTP 401): RUBY_TOKEN must equal TIADE_RUBY_EVAL_TOKEN.");
+            else if (status == 499) notify("Ruby response timed out (HTTP 499). The server may still be running it; wait before sending another Ruby command.");
             else notify("Ruby request failed (HTTP " + (string)status + "): " + body);
         }
         else if (kind == KIND_RESET)

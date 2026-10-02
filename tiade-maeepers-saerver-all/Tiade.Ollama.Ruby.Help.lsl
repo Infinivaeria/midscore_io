@@ -1,4 +1,5 @@
-// Put this script beside Tiade.Ollama.Ruby.lsl in the same prim.
+// Put this script beside Tiade.Ollama.Ruby.lsl and Tiade.Ollama.Ruby.Chat.lsl
+// in the same prim.
 // Help requests arrive by link message so the HTTP/notecard script does not
 // need to hold the help text in its own limited script memory.
 
@@ -16,38 +17,36 @@ help(integer page)
     if (page == 0)
     {
         notify("HELP: " + c + "help <1-8> shows one page. " + c + "status shows current settings.");
-        notify("1 Setup | 2 Ollama | 3 Auto/public | 4 Ruby | 5 Variables | 6 Files/matrices | 7 Command cards | 8 Ruby cards/troubleshooting");
+        notify("1 Setup | 2 Ollama | 3 Public replies | 4 Ruby | 5 Variables | 6 Files/matrices | 7 Command cards | 8 Ruby cards/troubleshooting");
     }
     else if (page == 1)
     {
         notify("HELP 1/8 - SETUP (only the object owner can use /" + (string)CONTROL_CHANNEL + ")");
-        notify("Put both scripts in the same prim and set BASE_URL in the main script to your HTTPS server. For Ruby, set RUBY_TOKEN in the main script to the server's TIADE_RUBY_EVAL_TOKEN, then save/reset it. Never put a token in chat or a notecard.");
+        notify("Put the main, Chat and Help scripts in the same prim. Set BASE_URL in the main script to your HTTPS server. For Ruby, set RUBY_TOKEN in the main script to the server's TIADE_RUBY_EVAL_TOKEN, then save/reset it. Never put a token in chat or a notecard.");
         notify(c + "health checks server/Ollama; " + c + "status shows server, team, session, Ruby enabled, replies and notecard progress. Touch the object for status and the help index.");
         notify("Ruby executes on your server with its privileges. Only use a trusted server and keep the token private; changing a script requires recompiling it in-world.");
     }
     else if (page == 2)
     {
         notify("HELP 2/8 - OLLAMA QUESTIONS AND SETTINGS");
-        notify(c + "ask <message> - send a question; example: " + c + "ask What is a prim? Plain unrecognized text is also sent as a question.");
+        notify(c + "ask <message> - send a question; example: " + c + "ask What is a prim? Plain unrecognized /" + (string)CONTROL_CHANNEL + " text is also sent as a question.");
         notify(c + "team <name> - choose a team and its shared Ollama history (default: secondlife). Team does not change the Ruby session.");
         notify(c + "url <https://host> - switch server for this script, without a trailing slash; " + c + "health checks connectivity.");
         notify("Ollama replies are queued, then polled every 2s; at most 4 may be pending. A reply is abandoned after 240s.");
     }
     else if (page == 3)
     {
-        notify("HELP 3/8 - AUTO INPUT AND PUBLIC REPLIES (both default off)");
-        notify(c + "auto on - forward your nearby channel-0 chat to Ollama as questions. Example: say Hello on public chat; the object asks Ollama for you.");
-        notify(c + "auto off - stop forwarding. Only the object's owner is heard; other avatars' chat is ignored. /" + (string)CONTROL_CHANNEL + " commands still work with auto off.");
+        notify("HELP 3/8 - PUBLIC REPLIES");
         notify(c + "public on - say Ollama answers and Ruby output in nearby public chat (channel 0). Anyone nearby may see them; do not use for private data.");
         notify(c + "public off - send Ollama answers and Ruby output to the owner only. Errors from Ruby evaluation follow the same reply setting.");
-        notify("Auto controls INPUT; public controls OUTPUT. Either works without the other. Auto sends even casual owner chat to the selected team; public may expose shared values printed by Ruby.");
-        notify("Status, help, settings confirmations, HTTP diagnostics and Ruby reset messages remain owner-only. Changes last until the main script resets/recompiles or re-rezzes; both then default off.");
-        notify("Example: " + c + "auto on then speak normally; " + c + "public off keeps the answer owner-only. Use " + c + "status to check both switches.");
+        notify("Status, help, settings confirmations, HTTP diagnostics and Ruby reset messages remain owner-only. The public setting resets to off when the main script resets, recompiles or re-rezzes.");
+        notify("Use " + c + "status to check the current reply setting. Local channel-0 chat is never accepted as input.");
     }
     else if (page == 4)
     {
         notify("HELP 4/8 - MAGNUS RUBY AND SESSIONS");
         notify(c + "ruby <code> - run one Ruby program. Example: " + c + "ruby x = 21; puts x * 2. Locals persist in the selected session.");
+        notify("Ruby runs one request at a time. Wait for its reply before sending another ruby command or ruby-reset; this avoids simulator HTTP timeouts.");
         notify(c + "session <id> - use a shared Ruby/storage session (1-64 ASCII letters, digits, _ or -). Default is this object's UUID; choose the same ID as a Forth client to share stored data.");
         notify(c + "session-reset - select this object's UUID again. " + c + "ruby-reset - clear Ruby locals in the selected session, NOT its shared variables, files or matrices.");
         notify(c + "debug off - hide automatic => last value replies; explicit puts/print and Ruby errors remain visible. " + c + "debug on - show last values again (default).");

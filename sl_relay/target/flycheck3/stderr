@@ -1,10 +1,7 @@
     Blocking waiting for file lock on package cache
-   Compiling curl-sys v0.4.83+curl-8.15.0
-   Compiling curl v0.4.49
-   Compiling isahc v0.9.14
-    Checking http-client v6.5.3
-    Checking surf v2.3.2
-    Checking sl_relay v0.1.0 (/root/midscore_io/sl_relay)
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
 warning: unused dependency `async-native-tls`
  --> Cargo.toml:9:1
   |
@@ -63,4 +60,4 @@ warning: unused dependency `tokio-native-tls`
    |
 help: consider removing the dependency on `tokio-native-tls`
 warning: `sl_relay` (manifest) generated 8 warnings
-    Finished `dev` profile [optimized + debuginfo] target(s) in 29.77s
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.84s

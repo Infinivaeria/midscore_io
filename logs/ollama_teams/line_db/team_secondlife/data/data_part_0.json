@@ -140,6 +140,14 @@
       {
         "reply": "Sure! What is the purpose of the Second Life user interface menu?",
         "user": "ArityWolf Resident says: ask test"
+      },
+      {
+        "reply": "To write \"wolf-fox\" in Thai, you would use the following characters: สุเหตุ (suek), อุโนไซน์ (unoen) and ยว (yaw). The spelling for these words is as follows: สุเหตุอุโนไซน์ยว.",
+        "user": "ArityWolf Resident says: ask how do you write wolf-fox in thai?"
+      },
+      {
+        "reply": "The Thai word for \"wolf\" is แมว.",
+        "user": "ArityWolf Resident says: how do you write wolf-fox in thai?"
       }
     ]
   },
