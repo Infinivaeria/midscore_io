@@ -11,8 +11,9 @@
 //! header is only trustworthy for requests that really come from Second Life,
 //! so it is a second check, never a replacement for the token.
 
-use std::time::Duration;
+use std::{sync::{Arc, OnceLock}, time::Duration};
 
+use magnus::{Object, Ruby, function};
 use serde_json::Value;
 
 use crate::ruby_vm::{self, RubyError};
@@ -24,22 +25,58 @@ const DEFAULT_SECONDS: u64 = 10;
 const MAX_CODE_CHARS: usize = 16_000;
 const MAX_SESSION_CHARS: usize = 128;
 
+pub type StoreCall = Arc<dyn Fn(&str, &str, Value) -> Result<Value, String> + Send + Sync>;
+static STORE_CALL: OnceLock<StoreCall> = OnceLock::new();
+
+fn host_call(session: String, operation: String, args: String) -> Result<String, magnus::Error> {
+    let ruby = Ruby::get().expect("Ruby host_call runs only on the VM thread");
+    let fail = |message: String| magnus::Error::new(ruby.exception_runtime_error(), message);
+    let args = serde_json::from_str(&args).map_err(|error| fail(error.to_string()))?;
+    let callback = STORE_CALL.get().ok_or_else(|| fail("Ruby store is unavailable".into()))?;
+    let result = callback(&session, &operation, args).map_err(fail)?;
+    serde_json::to_string(&result).map_err(|error| fail(error.to_string()))
+}
+
+fn install_store(ruby: &Ruby) -> Result<(), magnus::Error> {
+    let module = ruby.define_module("TiadeSL")?;
+    module.define_singleton_method("host_call", function!(host_call, 3))
+}
+
 // Ruby side: per-session bindings, stdout capture and a Ruby-level timeout so
 // a runaway snippet cannot hold the shared VM thread. Input arrives as an
 // Array of strings via `ruby_vm::call_with_strings`, never spliced into source.
 const PRELUDE: &str = r###"
 require 'stringio'
 require 'timeout'
+require 'json'
 
 module TiadeSL
   SESSIONS = {}
   MAX_SESSIONS = 256
   MAX_OUTPUT = 4000
 
+  module Storage
+    def store_call(operation, args = {})
+      JSON.parse(TiadeSL.host_call(@tiade_session, operation, JSON.generate(args)))
+    end
+
+    def var_set(name, value) = store_call('var_set', {name: name, value: value})
+    def var_get(name) = store_call('var_get', {name: name})
+    def var_delete(name) = store_call('var_delete', {name: name})
+    def var_view = store_call('var_view')
+    def file_write(name, content) = store_call('file_write', {name: name, content: content})
+    def file_read(name) = store_call('file_read', {name: name})
+    def file_list = store_call('file_list')
+    def file_delete(name) = store_call('file_delete', {name: name})
+    def matrix_get(name) = store_call('matrix_get', {name: name})
+  end
+
   def self.binding_for(session)
     unless SESSIONS.key?(session)
       SESSIONS.shift if SESSIONS.size >= MAX_SESSIONS
-      SESSIONS[session] = Object.new.instance_eval { binding }
+      context = Object.new.extend(Storage)
+      context.instance_variable_set(:@tiade_session, session)
+      SESSIONS[session] = context.instance_eval { binding }
     end
     SESSIONS[session]
   end
@@ -75,7 +112,14 @@ end
 :tiade_sl_ruby_ready
 "###;
 
-pub fn mount<State: Clone + Send + Sync + 'static>(app: &mut tide::Server<State>) {
+pub fn mount<State: Clone + Send + Sync + 'static>(
+    app: &mut tide::Server<State>,
+    store_call: StoreCall,
+) -> Result<(), String> {
+    STORE_CALL.set(store_call).map_err(|_| "Ruby store already registered".to_string())?;
+    if let Err(error) = ruby_vm::install(install_store) {
+        eprintln!("Second Life Ruby routes: Ruby store installation failed: {error}");
+    }
     if let Err(error) = ruby_vm::eval_blocking(PRELUDE) {
         eprintln!("Second Life Ruby routes: prelude failed to load: {error}");
     }
@@ -131,6 +175,7 @@ pub fn mount<State: Clone + Send + Sync + 'static>(app: &mut tide::Server<State>
             Err(error) => ruby_error_response(error),
         })
     });
+    Ok(())
 }
 
 struct SlRubyRequest {
@@ -277,13 +322,31 @@ mod tests {
     fn sl_ruby_routes_end_to_end() {
         ruby_vm::start().expect("Ruby VM should start");
         let mut app = tide::new();
+        let calls = Arc::new(std::sync::Mutex::new(Vec::<(String, String, Value)>::new()));
+        let recorded = Arc::clone(&calls);
+        let store: StoreCall = Arc::new(move |session, operation, args| {
+            recorded.lock().unwrap().push((session.to_string(), operation.to_string(), args.clone()));
+            if args.get("name").and_then(Value::as_str) == Some("missing") {
+                return Err("entry was not found".into());
+            }
+            match operation {
+                "var_set" => Ok(args["value"].clone()),
+                "var_get" => Ok(serde_json::json!(42)),
+                "var_delete" | "file_delete" => Ok(Value::Bool(true)),
+                "var_view" => Ok(serde_json::json!({"score": 42})),
+                "file_write" | "file_read" => Ok(serde_json::json!("hello")),
+                "file_list" => Ok(serde_json::json!(["memo.txt"])),
+                "matrix_get" => Ok(serde_json::json!({"rows": 1, "cols": 2, "values": [3, 4]})),
+                _ => Err(format!("unexpected operation: {operation}")),
+            }
+        });
         // SAFETY: no other test in this crate reads or writes these variables.
         unsafe {
             std::env::remove_var(TOKEN_ENV);
             std::env::remove_var(OWNERS_ENV);
             std::env::set_var(SECONDS_ENV, "1");
         }
-        mount(&mut app);
+        mount(&mut app, store).expect("Ruby store should mount");
 
         async_std::task::block_on(async {
             let (status, _) = post(&app, "/sl/ruby/eval", &[], "1 + 1").await;
@@ -303,6 +366,19 @@ mod tests {
             let (_, body) = post(&app, "/sl/ruby/eval", &[("Authorization", "Bearer s3cret")],
                 r#"{"code":"defined?(x).inspect","session":"other"}"#).await;
             assert_eq!(body, "=> \"nil\"", "sessions are isolated");
+
+            let (status, body) = post(&app, "/sl/ruby/eval", &auth,
+                r#"puts var_set("score", 42); puts var_get("score"); puts var_view["score"]; puts var_delete("score"); puts file_write("memo.txt", "hello"); puts file_read("memo.txt"); puts file_list.inspect; puts file_delete("memo.txt"); puts matrix_get("A")["values"].inspect"#).await;
+            assert_eq!(status, 200, "{body}");
+            assert!(body.contains("42\n42\n42\ntrue\nhello\nhello\n[\"memo.txt\"]\ntrue\n[3, 4]\n"), "{body}");
+            let recorded = calls.lock().unwrap();
+            assert_eq!(recorded.len(), 9);
+            assert!(recorded.iter().all(|(session, _, _)| session == "obj-1"));
+            assert_eq!(recorded[0].2, serde_json::json!({"name":"score","value":42}));
+            drop(recorded);
+
+            let (status, body) = post(&app, "/sl/ruby/eval", &auth, r#"var_get("missing")"#).await;
+            assert_eq!((status, body.as_str()), (422, "RuntimeError: entry was not found"));
 
             let (status, body) = post(&app, "/sl/ruby/eval", &auth, "raise ArgumentError, 'boom'").await;
             assert_eq!((status, body.as_str()), (422, "ArgumentError: boom"));
@@ -328,6 +404,8 @@ mod tests {
             assert_eq!(body, "session obj-1 reset");
             let (_, body) = post(&app, "/sl/ruby/eval", &with_owner, "defined?(x).inspect").await;
             assert_eq!(body, "=> \"nil\"");
+            let (_, body) = post(&app, "/sl/ruby/eval", &with_owner, r#"var_get("score")"#).await;
+            assert_eq!(body, "=> 42", "reset must not erase the shared store");
         });
 
         unsafe {

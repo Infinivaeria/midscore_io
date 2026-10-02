@@ -200,6 +200,15 @@ pub fn eval_blocking(code: impl Into<String>) -> Result<String, RubyError> {
     async_std::task::block_on(eval(code))
 }
 
+/// Installs a native Ruby method on the VM thread before it is used by a prelude.
+pub fn install(function: fn(&Ruby) -> Result<(), magnus::Error>) -> Result<(), RubyError> {
+    let result_rx = submit_with(move |ruby| {
+        function(ruby)?;
+        Ok(ruby.str_new("ready").as_value())
+    })?;
+    async_std::task::block_on(wait(result_rx, DEFAULT_TIMEOUT)).map(|_| ())
+}
+
 /// Evaluates `code` and wraps the outcome in a `text/plain` Tide response.
 pub async fn text_response(code: &str) -> tide::Result {
     let (status, body) = match eval(code).await {

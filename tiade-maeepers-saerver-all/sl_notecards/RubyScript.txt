@@ -12,3 +12,7 @@ rolls = Dice.new(6).roll(5)
 puts "rolled: #{rolls.join(', ')}"
 puts "quote test: \"ok\" and backslash \\ and tab\tdone"
 @last_total = rolls.sum
+var_set("last_total", @last_total)
+file_write("rolls.txt", rolls.join(", "))
+puts "shared total: #{var_get('last_total')}"
+puts "saved rolls: #{file_read('rolls.txt')}"

@@ -388,7 +388,7 @@ Evaluation is serial: a slow script delays later Ruby requests. A timed-out scri
 
 ### Second Life: Ollama and Ruby
 
-[Tiade.Ollama.Ruby.lsl](Tiade.Ollama.Ruby.lsl) is an owner-only LSL client for both features (`/7 ask ...`, `/7 ruby ...`, `/7 help`). The in-world help command prints extended command, setup, Ruby safety, and notecard-runner guidance.
+[Tiade.Ollama.Ruby.lsl](Tiade.Ollama.Ruby.lsl) is an owner-only LSL client for both features (`/7 ask ...`, `/7 ruby ...`, `/7 help`). The in-world `/7 help` prints seven sections covering setup, Ollama, Magnus Ruby sessions, shared variables, files and matrices, both notecard formats, and troubleshooting. Touching the object shows status and the same help to its owner.
 It can also run notecards from the object's inventory:
 
 - `/7 notecard <name>` runs one `/7` command per line, in order (`ask ...`, `ruby ...`, `team ...`, `ruby-reset`, ...). `#` and `//` lines are comments, a leading `/7 ` is optional, `ask` lines wait for their Ollama reply, `wait <seconds>` pauses, and lines between `ruby-begin` and `ruby-end` are sent as one multi-line Ruby program. Requests throttled by the region are retried instead of skipped.
@@ -397,8 +397,18 @@ It can also run notecards from the object's inventory:
 
 Example notecards: [sl_notecards/Demo.txt](sl_notecards/Demo.txt) (commands) and [sl_notecards/RubyScript.txt](sl_notecards/RubyScript.txt) (one Ruby program). `/7 health` checks `GET /ollama/health`.
 
+- **Shared session and store commands:** `/7 session <id>` selects a shared session (1-64 ASCII letters, digits, `_`, or `-`); `/7 session-reset` selects this object's key again. `/7 ruby-reset` only clears Ruby locals in the selected session, not stored variables or files. `/7 var-set <name> <text>`, `/7 var-get <name>`, `/7 var-delete <name>`, `/7 var-view`, `/7 file-write <name> <text>`, `/7 file-read <name>`, `/7 file-delete <name>`, `/7 file-list`, and `/7 matrix-get <name>` use the Magnus-backed Ruby store methods. The chat setters send **strings**; use `/7 ruby` or a Ruby notecard for typed values or multiline content. The matrix must already have been created in the same session using Forth. Names and file-size restrictions are enforced by the server; the Ruby token is required.
 - **Ollama:** Second Life drops HTTP requests after about 60 s, so `POST /sl/ask/:team` returns a job id at once and the script polls `GET /sl/job/:id`. Replies share the team history used by `/chat/:team`, are plain text, and are capped at `OLLAMA_SL_REPLY_CHARS` (1000) characters and `OLLAMA_SL_NUM_PREDICT` (200) tokens with a 2048-token context (`OLLAMA_SL_NUM_CTX`). The relay keeps the model loaded (`OLLAMA_KEEP_ALIVE`, default `60m`), preloads it at startup (`OLLAMA_PRELOAD=false` disables this) and caches the installed-model lookup for 60 s.
 - **Ruby:** `POST /sl/ruby/eval` ([src/sl_ruby.rs](src/sl_ruby.rs)) evaluates code in the embedded VM. Send `{"code":"...","session":"..."}` JSON or plain-text code, with the token in `X-Ruby-Token` or `Authorization: Bearer`. The session defaults to the calling object's key, and local variables persist per session until `POST /sl/ruby/reset`. Captured `$stdout` plus `=> value.inspect` come back as `text/plain` (200). Ruby exceptions, `exit` and the per-call timeout (`TIADE_RUBY_EVAL_SECONDS`, default 10) return `422`.
+- **Shared store methods:** Ordinary Ruby submitted to `/sl/ruby/eval` can call `var_set(name, value)`, `var_get(name)`, `var_delete(name)`, `var_view`, `file_write(name, content)`, `file_read(name)`, `file_list`, `file_delete(name)`, and `matrix_get(name)`. These use the request's session and the same partitioned variables, sandboxed UTF-8 files, and persisted Forth matrices as the `/vars/*` and `/forth/*` routes; `matrix_get` returns a hash with `rows`, `cols`, and row-major `values`. Names and file-size limits follow those routes; missing reads and invalid input raise Ruby errors, while deleting a missing entry returns `false`. `ruby-reset` clears Ruby locals, not shared stored data.
+
+```ruby
+var_set("score", 21)
+puts var_get("score")
+file_write("notes.txt", "hello from Ruby")
+puts file_read("notes.txt")
+puts matrix_get("A")["values"].inspect
+```
 - **Security:** this is arbitrary code execution with the server's privileges. The routes return `503` until `TIADE_RUBY_EVAL_TOKEN` is set. `TIADE_RUBY_EVAL_SL_OWNERS` (comma-separated avatar keys) also checks `X-SecondLife-Owner-Key`; that header can be forged outside Second Life, so the token stays mandatory.
 - **Configuration:** `start.sh` loads `server.env` (git-ignored, mode 600) when present; put the token and any of the variables above there.
 

@@ -1,0 +1,70 @@
+[
+  {
+    "value": [
+      {
+        "reply": "It's currently 6 pm in Second Life time.",
+        "user": "A ityWolf Resident says: what time is it in second life time?"
+      },
+      {
+        "reply": "It's 7:00 PM in real-world time.",
+        "user": "A ityWolf Resident says: what time is it?"
+      },
+      {
+        "reply": "The derivative of 7x is 0, since there are no variables involved except x.",
+        "user": "A ityWolf Resident says: what is the de ivative of 7x"
+      },
+      {
+        "reply": "The derivative of 7x is d/x = 0, since there are no variables involved except x.",
+        "user": "A ityWolf Resident says: what is the de ivative of 7x d/x?"
+      },
+      {
+        "reply": "The derivative of f(x) = 2x is d/dx = 2.",
+        "user": "A ityWolf Resident says: what is the de ivative of f(x) = 2x?"
+      },
+      {
+        "reply": "AI: The correct spelling of the name \"McAvoy Meadows\" is \"McAvoy_Meadows\".",
+        "user": "A ityWolf Resident says: who is mcca p mavendo f of ivo y towe ?"
+      },
+      {
+        "reply": "AityWolf Resident is the user's Second Life avatar name.",
+        "user": "A ityWolf Resident says: who is a itywolf esident of second life?"
+      },
+      {
+        "reply": "AityWolf Resident is an avatar in Second Life.",
+        "user": "A ityWolf Resident says: who is A ityWolf?"
+      },
+      {
+        "reply": "AityWolf Resident is the user's Second Life avatar name.",
+        "user": "A ityWolf Resident says: who is a itywolf?"
+      },
+      {
+        "reply": "To find all real solutions of an equation, we use the method of completing the square. Let's rewrite it as follows: f(x) = (x^2 - 1)/4 The discriminant of this quadratic is (-1)^2 + 4(-1) = 3 > 0, so there are at least two real solutions. To find them, we need to complete the square using a linear factor: f(x) = (x^2 - 1)/4 + b/(2(x^2-1)) where b is any real number. We can find b by completing the square again: f(x) = (x^2 - 1)/4 + sqrt(3)/8/2(x^2 - 1) + b/(4x^2 - 3) The discriminant of this quadratic is sqrt(3)*(-3)/16 >",
+        "user": "A ityWolf Resident says: f(x) x^2 + 1 = 0 :: solve fo x"
+      },
+      {
+        "reply": "Sure, I can give you a two word greeting in your preferred language. However, I cannot offer human-level conversation just yet.",
+        "user": "A ityWolf Resident says: Give me a two wo d g eeting."
+      }
+    ]
+  },
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {}
+]

@@ -8,13 +8,15 @@
 //   POST /sl/ruby/eval   {"code"}  header X-Ruby-Token -> 200 output | 422 Ruby error
 //   POST /sl/ruby/reset  {}        header X-Ruby-Token -> 200
 //   GET  /ollama/health  -> 200 {"status":"ok",...} | 503
-// The Ruby session is this object's key, so locals persist between `ruby`
-// commands until `ruby-reset`.
+// The Ruby session defaults to this object's key. /7 session <id> selects
+// another session shared with the Forth and RubyForth routes.
 //
 // Setup: put this script in an object you own, set BASE_URL and, for Ruby,
 // RUBY_TOKEN to the server's TIADE_RUBY_EVAL_TOKEN. Then chat on /7:
 //   /7 ask what is a prim?      /7 ruby [1, 2, 3].sum
 //   /7 notecard Demo            /7 ruby-notecard Script
+//   /7 var-set score 21          /7 var-get score
+//   /7 file-write notes.txt hi  /7 matrix-get A
 //
 // Command notecard (`/7 notecard <name>`): one command per line, run in order.
 //   # or // starts a comment; a leading "/7 " is optional.
@@ -48,6 +50,7 @@ integer NC_COMMANDS = 1;
 integer NC_RUBY     = 2;
 
 key     gOwner;
+string  gSession;       // Ruby locals and shared stores use this session
 integer gPublicListen;
 list    gRequests;      // [request_key, kind, job_id] for in-flight HTTP requests
 list    gJobs;          // [job_id, deadline_unix] for queued Ollama replies
@@ -108,14 +111,38 @@ string replace_all(string text, string find, string with)
 
 // llList2Json embeds strings that look like JSON ("[1,2]", "{}") unquoted,
 // so request bodies are built with explicit string escaping instead.
+// LSL has no \r escape, and \t compiles to spaces; decode those characters at runtime.
 string json_string(string text)
 {
     text = replace_all(text, "\\", "\\\\");
     text = replace_all(text, "\"", "\\\"");
     text = replace_all(text, "\n", "\\n");
-    text = replace_all(text, "\r", "\\r");
-    text = replace_all(text, "\t", "\\t");
+    text = replace_all(text, llUnescapeURL("%0D"), "\\r");
+    text = replace_all(text, llUnescapeURL("%09"), "\\t");
     return "\"" + text + "\"";
+}
+
+// Preserve JSON's escaping inside a single-quoted Ruby literal. Never
+// interpolate chat or notecard text directly into Ruby source.
+string ruby_string_arg(string text)
+{
+    string encoded = json_string(text);
+    encoded = replace_all(encoded, "\\", "\\\\");
+    encoded = replace_all(encoded, "'", "\\'");
+    return "JSON.parse('" + encoded + "')";
+}
+
+integer valid_session(string name)
+{
+    integer length = llStringLength(name);
+    if (length < 1 || length > 64) return FALSE;
+    integer i;
+    string allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-";
+    for (i = 0; i < length; ++i)
+    {
+        if (llSubStringIndex(allowed, llGetSubString(name, i, i)) == -1) return FALSE;
+    }
+    return TRUE;
 }
 
 // ---------------------------------------------------------------- HTTP
@@ -200,12 +227,64 @@ ruby(string code)
 {
     if (!ruby_ready()) return;
     if (llStringTrim(code, STRING_TRIM) == "") { notify("Usage: ruby <code>"); return; }
-    send(KIND_RUBY, "", BASE_URL + "/sl/ruby/eval", "POST", "{\"code\":" + json_string(code) + "}", TRUE);
+    send(KIND_RUBY, "", BASE_URL + "/sl/ruby/eval", "POST",
+        "{\"code\":" + json_string(code) + ",\"session\":" + json_string(gSession) + "}", TRUE);
 }
 
 ruby_reset()
 {
-    if (ruby_ready()) send(KIND_RESET, "", BASE_URL + "/sl/ruby/reset", "POST", "{}", TRUE);
+    if (ruby_ready()) send(KIND_RESET, "", BASE_URL + "/sl/ruby/reset", "POST",
+        "{\"session\":" + json_string(gSession) + "}", TRUE);
+}
+
+store_command(string verb, string rest)
+{
+    if (!ruby_ready()) return;
+    string name = rest;
+    string value = "";
+    if (verb == "var-set" || verb == "file-write")
+    {
+        integer space = llSubStringIndex(rest, " ");
+        if (space == -1)
+        {
+            notify("Usage: " + verb + " <name> <value>");
+            return;
+        }
+        name = llGetSubString(rest, 0, space - 1);
+        value = llStringTrim(llGetSubString(rest, space + 1, -1), STRING_TRIM);
+        if (value == "")
+        {
+            notify("Usage: " + verb + " <name> <value>");
+            return;
+        }
+    }
+    if (verb != "var-view" && verb != "file-list" && (name == "" || llSubStringIndex(name, " ") != -1))
+    {
+        notify("Usage: " + verb + " <name>");
+        return;
+    }
+    if ((verb == "var-view" || verb == "file-list") && rest != "")
+    {
+        notify("Usage: " + verb);
+        return;
+    }
+
+    string code;
+    if (verb == "var-view") code = "var_view";
+    else if (verb == "file-list") code = "file_list";
+    else if (verb == "var-set") code = "var_set(" + ruby_string_arg(name) + ", " + ruby_string_arg(value) + ")";
+    else if (verb == "file-write") code = "file_write(" + ruby_string_arg(name) + ", " + ruby_string_arg(value) + ")";
+    else
+    {
+        string method = "";
+        if (verb == "var-get") method = "var_get";
+        else if (verb == "var-delete") method = "var_delete";
+        else if (verb == "file-read") method = "file_read";
+        else if (verb == "file-delete") method = "file_delete";
+        else if (verb == "matrix-get") method = "matrix_get";
+        code = method + "(" + ruby_string_arg(name) + ")";
+    }
+    ruby(code);
 }
 
 // ---------------------------------------------------------------- notecards
@@ -367,27 +446,45 @@ notecard_eof()
 help()
 {
     string c = "/" + (string)CONTROL_CHANNEL + " ";
-    notify("HELP 1/4 - CHAT AND SETTINGS (owner only, channel " + (string)CONTROL_CHANNEL + ")");
-    notify(c + "ask <message> - ask Ollama as team '" + TEAM_NAME + "'. Plain text is also a question.");
-    notify(c + "team <name> - switch team and its shared chat history.");
-    notify(c + "url <https://host> - change the server (no trailing slash).");
-    notify(c + "health - check the server and Ollama.   " + c + "status - show settings.");
+    notify("HELP 1/7 - SETUP (only the object owner can use /" + (string)CONTROL_CHANNEL + ")");
+    notify("Put this script in your object and set BASE_URL to your HTTPS server. For Ruby, set RUBY_TOKEN in the script to the server's TIADE_RUBY_EVAL_TOKEN, then save/reset the script. Never put a token in chat or a notecard.");
+    notify(c + "health checks server/Ollama; " + c + "status shows server, team, session, Ruby enabled, replies and notecard progress. Touch the object for status and help.");
+    notify("Ruby executes on your server with its privileges. Only use a trusted server and keep the token private; changing the script requires recompiling it in-world.");
 
-    notify("HELP 2/4 - RUBY (needs RUBY_TOKEN = server TIADE_RUBY_EVAL_TOKEN)");
-    notify(c + "ruby <code> - run Ruby on the server; locals persist for this object.");
-    notify(c + "ruby-reset - clear this object's Ruby session.");
-    notify("Ruby runs with server privileges. Never share the token.");
+    notify("HELP 2/7 - OLLAMA QUESTIONS AND SETTINGS");
+    notify(c + "ask <message> - send a question; example: " + c + "ask What is a prim? Plain unrecognized text is also sent as a question.");
+    notify(c + "team <name> - choose a team and its shared Ollama history (default: secondlife). Team does not change the Ruby session.");
+    notify(c + "url <https://host> - switch server for this script, without a trailing slash; " + c + "health checks connectivity.");
+    notify(c + "auto on|off - relay your channel-0 chat to Ollama (default off). " + c + "public on|off - say replies in public local chat instead of owner-only (default off).");
+    notify("Ollama replies are queued, then polled every " + (string)((integer)TICK_SECONDS) + "s; at most " + (string)MAX_JOBS + " may be pending. A reply is abandoned after " + (string)ASK_DEADLINE + "s.");
 
-    notify("HELP 3/4 - NOTECARDS (put the notecard in this object's inventory)");
-    notify(c + "notecard <name> - run one command per line, in order. Example notecard:");
-    notify("  # comment\n  team secondlife\n  ask What is a prim?\n  wait 2\n  ruby x = 21\n  ruby-begin\n  def double(n) = n * 2\n  puts double(x)\n  ruby-end");
-    notify(c + "ruby-notecard <name> - send the whole notecard as one Ruby program.");
-    notify(c + "notecard-stop - stop. ask lines wait for their reply; throttled lines are retried.");
+    notify("HELP 3/7 - MAGNUS RUBY AND SESSIONS");
+    notify(c + "ruby <code> - run one Ruby program. Example: " + c + "ruby x = 21; puts x * 2. Locals persist in the selected session.");
+    notify(c + "session <id> - use a shared Ruby/storage session (1-64 ASCII letters, digits, _ or -). Default is this object's UUID; choose the same ID as a Forth client to share stored data.");
+    notify(c + "session-reset - select this object's UUID again. " + c + "ruby-reset - clear Ruby locals in the selected session, NOT its shared variables, files or matrices.");
+    notify("Ruby replies show captured puts output and => last value. Errors appear as [ruby error]; code or server timeouts may fail. The Ruby route requires a matching token.");
 
-    notify("HELP 4/4 - REPLIES");
-    notify(c + "public on|off - replies in local chat or owner only (default off).");
-    notify(c + "auto on|off - forward your channel-0 chat to Ollama (default off).");
-    notify("Replies are polled every " + (string)((integer)TICK_SECONDS) + "s and abandoned after " + (string)ASK_DEADLINE + "s.");
+    notify("HELP 4/7 - SHARED VARIABLES (Ruby token required)");
+    notify(c + "var-set <name> <text> - save a STRING; example: " + c + "var-set greeting Hello world");
+    notify(c + "var-get <name> - read one value; " + c + "var-view - show stored values; " + c + "var-delete <name> - remove it (false if absent).");
+    notify("For numbers, arrays or other JSON-compatible values, use Ruby: " + c + "ruby var_set('score', 21); puts var_get('score'). Missing reads raise Ruby errors.");
+
+    notify("HELP 5/7 - SANDBOXED FILES AND FORTH MATRICES");
+    notify(c + "file-write <name> <text> - write a UTF-8 STRING; " + c + "file-read <name> - read it; " + c + "file-list - list names; " + c + "file-delete <name> - remove it.");
+    notify("File names must be safe basenames (letters, digits, _, -, .; no '..', leading dot or path). Files are limited to 65536 bytes on the server; use a Ruby notecard for multiline content.");
+    notify(c + "matrix-get <name> - read a matrix made by Forth in this session. Returns rows, cols and row-major values; Ruby can inspect it with " + c + "ruby matrix_get('A')['values'].inspect.");
+
+    notify("HELP 6/7 - COMMAND NOTECARDS");
+    notify("Create a notecard named Demo in this object's inventory and say " + c + "notecard Demo. Each line is one command, without /" + (string)CONTROL_CHANNEL + " (a leading /" + (string)CONTROL_CHANNEL + " is optional).");
+    notify("Example Demo lines: # comment | team secondlife | ask What is a prim? | wait 2 | var-set greeting Hello | var-get greeting. Write each command on its own line.");
+    notify("Lines starting # or // are comments. ask waits for its Ollama reply; wait <seconds> pauses; ruby-begin through ruby-end sends the enclosed lines as ONE multiline Ruby program.");
+    notify(c + "notecard-stop - stop the active notecard. A throttled request is retried; editing/removing a running card or timing out while reading it stops the run.");
+
+    notify("HELP 7/7 - RUBY NOTECARDS AND TROUBLESHOOTING");
+    notify(c + "ruby-notecard RubyScript - send the ENTIRE notecard as Ruby (up to " + (string)MAX_RUBY_CHARS + " characters). It must contain Ruby only: no team, ask, /7 ruby or ruby-begin lines.");
+    notify("Use " + c + "notecard Demo for command cards, NOT ruby-notecard Demo. Use ruby-notecard only for Ruby-only cards. Example Ruby line: puts var_get('greeting').");
+    notify("If Ruby says set RUBY_TOKEN, configure it in the script; HTTP 401 means it does not match the server. HTTP 503 means the server Ruby route is disabled. Check " + c + "status and " + c + "health for setup.");
+    notify("If a notecard cannot be found, check its exact case-sensitive inventory name. If commands such as ruby-begin reach Ruby, the command card was run with ruby-notecard instead of notecard.");
 }
 
 show_status()
@@ -397,6 +494,7 @@ show_status()
     notify(llDumpList2String([
         "Server: " + BASE_URL,
         "Team: " + TEAM_NAME,
+        "Session: " + gSession,
         "Ruby: " + on_off(RUBY_TOKEN != ""),
         "Public replies: " + on_off(PUBLIC_REPLIES),
         "Auto ask: " + on_off(AUTO_ASK),
@@ -428,6 +526,15 @@ command(string message, string speaker)
     if (verb == "ask") ask(rest, speaker);
     else if (verb == "ruby") ruby(rest);
     else if (verb == "ruby-reset") ruby_reset();
+    else if (verb == "session")
+    {
+        if (valid_session(rest)) { gSession = rest; notify("Ruby session: " + gSession); }
+        else notify("Session must be 1-64 ASCII letters, digits, '_' or '-'.");
+    }
+    else if (verb == "session-reset") { gSession = (string)llGetKey(); notify("Ruby session: " + gSession); }
+    else if (verb == "var-set" || verb == "var-get" || verb == "var-delete" || verb == "var-view"
+        || verb == "file-write" || verb == "file-read" || verb == "file-delete" || verb == "file-list"
+        || verb == "matrix-get") store_command(verb, rest);
     else if (verb == "notecard") start_notecard(rest, NC_COMMANDS);
     else if (verb == "ruby-notecard") start_notecard(rest, NC_RUBY);
     else if (verb == "notecard-stop")
@@ -474,6 +581,7 @@ default
     state_entry()
     {
         gOwner = llGetOwner();
+        gSession = (string)llGetKey();
         gRequests = [];
         gJobs = [];
         gNcMode = NC_OFF;

@@ -3815,7 +3815,68 @@ impl Clone for AppState {
 
     app.with(LogRoute);
     mount_ollama_routes(&mut app, OllamaRelayConfig::default())?;
-    sl_ruby::mount(&mut app);
+    let ruby_state = state.clone();
+    let ruby_store: sl_ruby::StoreCall = Arc::new(move |session, operation, args| {
+      let session = session_id(Some(session))?;
+      let name = || args.get("name").and_then(Value::as_str)
+        .ok_or_else(|| "name must be a string".to_string());
+      match operation {
+        "var_set" => {
+          let name = name()?;
+          let value = args.get("value").ok_or_else(|| "value is required".to_string())?.clone();
+          let mut store = ruby_state.vars_store.lock()
+            .map_err(|_| "variable store lock poisoned".to_string())?;
+          let values = Map::from_iter([(name.to_string(), value.clone())]);
+          vars_set_scoped(&mut store, &session, &values);
+          if scoped_program_value(&store, &session, name) != Some(value.clone()) {
+            return Err("variable store is full or could not update the value".to_string());
+          }
+          Ok(value)
+        }
+        "var_get" => {
+          let name = name()?;
+          let mut store = ruby_state.vars_store.lock()
+            .map_err(|_| "variable store lock poisoned".to_string())?;
+          vars_get_scoped(&mut store, &session, name)
+            .ok_or_else(|| format!("variable '{}' was not found", name))
+        }
+        "var_delete" => {
+          let name = name()?;
+          let mut store = ruby_state.vars_store.lock()
+            .map_err(|_| "variable store lock poisoned".to_string())?;
+          let existed = scoped_vars_entry_id(&store, &session, name).is_some();
+          vars_delete_scoped(&mut store, &session, name);
+          Ok(Value::Bool(existed))
+        }
+        "var_view" => {
+          let mut store = ruby_state.vars_store.lock()
+            .map_err(|_| "variable store lock poisoned".to_string())?;
+          let view = vars_snapshot_scoped(&store, &session);
+          vars_record_history_scoped(&mut store, &session, "VIEW".to_string());
+          Ok(Value::Object(view))
+        }
+        "file_write" => {
+          let content = args.get("content").and_then(Value::as_str)
+            .ok_or_else(|| "content must be a string".to_string())?;
+          forth_write_file_scoped(&session, name()?, content)?;
+          Ok(Value::String(content.to_string()))
+        }
+        "file_read" => Ok(Value::String(forth_read_file_scoped(&session, name()?)?)),
+        "file_list" => serde_json::to_value(forth_list_files_scoped(&session)?)
+          .map_err(|error| error.to_string()),
+        "file_delete" => Ok(Value::Bool(forth_delete_file_scoped(&session, name()?)?)),
+        "matrix_get" => {
+          let store = ruby_state.vars_store.lock()
+            .map_err(|_| "variable store lock poisoned".to_string())?;
+          serde_json::to_value(forth_matrix_load_scoped(&store, &session, name()?)?)
+            .map_err(|error| error.to_string())
+        }
+        _ => Err(format!("unknown Ruby store operation '{}'", operation)),
+      }
+    });
+    sl_ruby::mount(&mut app, ruby_store).map_err(|error| {
+      tide::Error::from_str(StatusCode::InternalServerError, error)
+    })?;
 
    
 

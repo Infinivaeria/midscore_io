@@ -89,6 +89,8 @@ is explicit and cannot be confused with a normal variable name.
 
 Matrices are created and changed by Forth words such as `matrix`, `mset`,
 `m.scale`, `m.solve`, `m.transpose`, and `m.show`.
+Ordinary Ruby sent to `POST /sl/ruby/eval` can read the same session's matrix
+with `matrix_get("A")` (a hash with `rows`, `cols`, and row-major `values`).
 
 ### Sandboxed files
 
@@ -101,6 +103,12 @@ Matrices are created and changed by Forth words such as `matrix`, `mset`,
 
 File names are safe basenames. Files are separate from the partitioned-array
 language state and are not automatically executable.
+Ordinary Ruby sent to `POST /sl/ruby/eval` can access the same session's
+files with `file_write(name, content)`, `file_read(name)`, `file_list`, and
+`file_delete(name)`. Its `var_set(name, value)`, `var_get(name)`,
+`var_view`, and `var_delete(name)` methods use the same session-backed
+variable store as `/vars/*`. See [README.md](README.md#second-life-ollama-and-ruby)
+for a Ruby example and the route's authentication requirements.
 
 ## Second Life Bridge
 
