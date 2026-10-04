@@ -20,8 +20,8 @@ export interface InitOutput {
     readonly health: (a: number, b: number) => any;
     readonly history: (a: number, b: number, c: number, d: number) => any;
     readonly routes: (a: number, b: number) => any;
-    readonly wasm_bindgen_7381e3ffb33ff63e___convert__closures_____invoke___js_sys_6584109c9f2890c9___Function_fn_wasm_bindgen_7381e3ffb33ff63e___JsValue_____wasm_bindgen_7381e3ffb33ff63e___sys__Undefined___js_sys_6584109c9f2890c9___Function_fn_wasm_bindgen_7381e3ffb33ff63e___JsValue_____wasm_bindgen_7381e3ffb33ff63e___sys__Undefined_______true_: (a: number, b: number, c: any, d: any) => void;
-    readonly wasm_bindgen_7381e3ffb33ff63e___convert__closures_____invoke___wasm_bindgen_7381e3ffb33ff63e___JsValue__core_b52b693664fa5425___result__Result_____wasm_bindgen_7381e3ffb33ff63e___JsError___true_: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen_d322b084701632ee___convert__closures_____invoke___js_sys_57c650381fa6d84d___Function_fn_wasm_bindgen_d322b084701632ee___JsValue_____wasm_bindgen_d322b084701632ee___sys__Undefined___js_sys_57c650381fa6d84d___Function_fn_wasm_bindgen_d322b084701632ee___JsValue_____wasm_bindgen_d322b084701632ee___sys__Undefined_______true_: (a: number, b: number, c: any, d: any) => void;
+    readonly wasm_bindgen_d322b084701632ee___convert__closures_____invoke___wasm_bindgen_d322b084701632ee___JsValue__core_9282b149af6fb2f5___result__Result_____wasm_bindgen_d322b084701632ee___JsError___true_: (a: number, b: number, c: any) => [number, number];
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store: (a: number) => void;
