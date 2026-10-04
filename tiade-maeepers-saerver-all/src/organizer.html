@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Organizer · Frequency journal</title>
+  <style>
+    :root { color-scheme: light; --paper:#f5f4ee; --card:#fffef9; --ink:#243830; --muted:#66736b; --line:#d8ded3; --green:#285c46; --lime:#dcec9e; }
+    * { box-sizing:border-box; } body { margin:0; background:var(--paper); color:var(--ink); font:15px/1.5 system-ui,sans-serif; }
+    button,input,textarea,select { font:inherit; } button,select { cursor:pointer; } button { border:1px solid var(--line); border-radius:7px; padding:10px 15px; background:var(--card); color:var(--ink); }
+    button:hover { border-color:var(--green); background:#edf2e6; } button:disabled { cursor:wait; opacity:.55; } :focus-visible { outline:3px solid #7c9d38; outline-offset:3px; }
+    input,textarea,select { min-width:0; padding:10px 12px; border:1px solid #aab9ac; border-radius:7px; color:var(--ink); background:var(--card); } textarea { resize:vertical; width:100%; }
+    label { display:block; font-size:.85rem; font-weight:600; } label input,label select,label textarea { display:block; width:100%; margin-top:6px; }
+    h1,h2,h3,p { margin-top:0; } h1 { font:normal clamp(2.4rem,6vw,4.3rem)/1.1 Georgia,serif; letter-spacing:-.045em; margin-bottom:15px; } h2 { font:normal 1.5rem/1.2 Georgia,serif; margin-bottom:8px; } h3 { font-size:1rem; }
+    .shell { max-width:1380px; margin:auto; padding:0 32px 50px; } header { display:flex; justify-content:space-between; gap:16px; padding:22px 0; border-bottom:1px solid var(--line); align-items:center; }
+    .brand { font-weight:700; letter-spacing:-.04em; font-size:1.15rem; } .brand span { display:inline-grid; place-items:center; width:30px; height:30px; margin-right:8px; color:var(--card); background:var(--green); border-radius:8px; }
+    .eyebrow { font:600 11px/1.5 ui-monospace,monospace; letter-spacing:.13em; text-transform:uppercase; color:var(--green); margin-bottom:14px; } .muted { color:var(--muted); } .small { font-size:.8rem; }
+    .intro { padding:38px 0 18px; display:flex; justify-content:space-between; gap:24px; align-items:end; } .intro p { max-width:560px; } .badge { white-space:nowrap; padding:7px 12px; background:#e6ebdf; border-radius:100px; font-size:.75rem; }
+    .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:8px 0 28px; } .stat { padding:20px 22px; border:1px solid var(--line); border-radius:10px; background:var(--card); } .stat:first-child { background:var(--green); color:white; border-color:var(--green); } .stat .label { font-size:.8rem; } .stat strong { display:block; font-size:2.2rem; letter-spacing:-.05em; font-weight:500; margin:4px 0; font-variant-numeric:tabular-nums; }
+    .workspace { display:grid; grid-template-columns:300px minmax(0,1fr); gap:24px; align-items:start; } .workspace > * { min-width:0; } .panel { border:1px solid var(--line); background:var(--card); border-radius:10px; padding:24px; margin-bottom:24px; }
+    .panel-head { display:flex; justify-content:space-between; align-items:start; gap:15px; margin-bottom:20px; } .panel-head p { margin:0; } .primary { background:var(--green); color:white; border-color:var(--green); } .primary:hover { color:white; background:#1c4433; }
+    #tag-form { border-bottom:1px solid var(--line); padding-bottom:22px; margin-bottom:20px; } .input-row { display:flex; gap:7px; margin-top:6px; } .input-row input { width:100%; } .input-row button { flex-shrink:0; }
+    #tags { display:grid; gap:10px; } .tag { border:1px solid var(--line); border-radius:8px; overflow:hidden; } .tag.selected { border-color:var(--green); box-shadow:0 0 0 1px var(--green); } .tag-click { display:flex; justify-content:space-between; align-items:center; gap:12px; text-align:left; width:100%; border:0; border-radius:0; padding:14px; background:#f0f3e8; } .tag-click span:first-child { overflow-wrap:anywhere; font-weight:600; } .tag-click .plus { color:var(--green); padding:2px 7px; background:var(--lime); border-radius:5px; flex-shrink:0; }
+    .tag-footer { display:flex; align-items:center; justify-content:space-between; padding:6px 10px; gap:8px; } .tag-footer button { padding:5px 7px; font-size:.75rem; border-color:transparent; }
+    .empty { padding:24px 12px; text-align:center; border:1px dashed var(--line); border-radius:8px; color:var(--muted); } .empty strong { display:block; color:var(--ink); margin-bottom:5px; }
+    .table-wrap { overflow:auto; } table { border-collapse:collapse; width:100%; font-size:.85rem; font-variant-numeric:tabular-nums; } th,td { text-align:right; padding:12px 13px; border-bottom:1px solid var(--line); white-space:nowrap; } th:first-child,td:first-child { text-align:left; padding-left:0; max-width:210px; white-space:normal; overflow-wrap:anywhere; } thead th { color:var(--muted); font-size:.7rem; font-weight:600; } tfoot { background:#f0f3e8; font-weight:700; } tfoot th { padding-left:10px!important; }
+    .table-note { margin:14px 0 0; font-size:.75rem; color:var(--muted); } .split { display:grid; grid-template-columns:1fr 1fr; gap:24px; } .split .panel { min-width:0; } #entry-form { display:grid; gap:14px; } .form-end { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .history-controls { display:flex; flex-wrap:wrap; gap:12px; align-items:end; } .history-controls label { flex:1; min-width:120px; } .history { max-height:300px; overflow:auto; margin-top:16px; } .bar-cell { width:45%; } .bar { height:7px; min-width:2px; background:var(--green); border-radius:3px; } .history th { position:sticky; top:0; background:var(--card); }
+    .table-controls { display:flex; flex-wrap:wrap; gap:12px; align-items:end; margin:18px 0; } .table-controls label { flex:1; min-width:120px; } .table-controls .check { display:flex; align-items:center; gap:8px; } .check input { width:auto; margin:0; } .archive-wrap { max-height:520px; } .archive-wrap thead th { position:sticky; top:0; background:var(--card); } .archive-wrap td:first-child { white-space:nowrap; } .count-changed { animation:count-pulse 1s ease; } @keyframes count-pulse { from { background:var(--lime); } to { background:transparent; } } @media(prefers-reduced-motion:reduce) { .count-changed { animation:none; } }
+    dialog { width:min(550px,calc(100% - 32px)); border:1px solid var(--line); border-radius:12px; padding:24px; background:var(--card); color:var(--ink); } dialog::backdrop { background:#24383099; } .dialog-actions,.item-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; margin-top:14px; } .item-actions { grid-column:1/-1; margin-top:8px; } .item-actions button { font-size:.8rem; padding:5px 10px; } .danger { color:#9e3326; } .tag .item-actions { padding:0 10px 10px; } #edit-text { width:100%; margin-top:8px; }
+    #journal-entries { margin-top:20px; } .journal-controls { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; margin-top:18px; }
+    #recent { max-height:420px; overflow:auto; } .event { display:grid; grid-template-columns:1fr auto; gap:4px 15px; padding:15px 0; border-bottom:1px solid var(--line); } .event p { white-space:pre-wrap; overflow-wrap:anywhere; margin:5px 0 0; grid-column:1/-1; } .event time { font:11px/1.6 ui-monospace,monospace; color:var(--muted); } .event strong { overflow-wrap:anywhere; font-size:.85rem; } .pill { font-size:11px; color:var(--green); background:#edf2e6; padding:2px 7px; border-radius:4px; margin-left:8px; white-space:nowrap; }
+    #status { min-height:24px; margin:0 0 16px; color:var(--green); font-size:.85rem; } #status.error { color:#a02d25; } footer { display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; color:var(--muted); font-size:.75rem; padding-top:15px; border-top:1px solid var(--line); }
+    @media(max-width:1050px) { .workspace { grid-template-columns:250px minmax(0,1fr); gap:16px; } .panel { padding:18px; } .split { grid-template-columns:1fr; gap:0; } }
+    @media(max-width:720px) { .shell { padding:0 16px 30px; } .intro { display:block; padding-top:28px; } .intro .badge { display:inline-block; margin-bottom:10px; } .stats { grid-template-columns:repeat(2,1fr); gap:10px; } .stat { padding:15px; } .workspace { grid-template-columns:1fr; } #tags { grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); } .event { grid-template-columns:1fr; } .event time { grid-row:2; } }
+  </style>
+</head>
+<body>
+<main class="shell">
+  <header><div class="brand"><span aria-hidden="true">o.</span>organizer</div><div class="muted small">Your everyday frequency journal</div></header>
+  <section class="intro"><div><p class="eyebrow">Small moments. A clearer picture.</p><h1>Keep track of what happens.</h1><p class="muted">Organize life into tags. Tap one to log a moment, or add a note for the details. See your patterns take shape over time.</p></div><span class="badge">Pacific time · PST / PDT</span></section>
+  <section class="stats" aria-label="Overview"><div class="stat"><span class="label">All occurrences</span><strong id="total">—</strong><span class="small">Every recorded moment</span></div><div class="stat"><span class="label">This month</span><strong id="month">—</strong><span class="small muted" id="month-label">Current calendar month</span></div><div class="stat"><span class="label">Today</span><strong id="today">—</strong><span class="small muted">Since midnight Pacific time</span></div><div class="stat"><span class="label">Your tags</span><strong id="tag-count">—</strong><span class="small muted">Things you're tracking</span></div></section>
+  <p id="status" role="status" aria-live="polite">Loading your organizer…</p>
+  <div class="workspace">
+    <aside class="panel"><h2>Your tags</h2><p class="muted small">Click a tag to record +1 occurrence.</p><form id="tag-form"><label for="tag-name">New tag</label><div class="input-row"><input id="tag-name" name="name" maxlength="80" required placeholder="e.g. Morning walk" autocomplete="off"><button type="submit" class="primary">Add</button></div></form><div id="tags"><div class="empty">Loading tags…</div></div></aside>
+    <div>
+      <section class="panel"><div class="panel-head"><div><h2>Frequency table</h2><p class="muted small">One click or one entry = one occurrence.</p></div><button type="button" id="refresh">Refresh</button></div><div class="table-controls"><label>Find a tag<input id="frequency-search" type="search" placeholder="Filter table tags"></label><label>Sort by<select id="frequency-sort"><option value="name">Tag name</option><option value="0" selected>All time</option><option value="1">Year</option><option value="2">Month</option><option value="3">Week</option><option value="4">Day</option><option value="5">Hour</option><option value="6">Minute</option><option value="7">Second</option></select></label><label>Order<select id="frequency-order"><option value="desc">Descending</option><option value="asc">Ascending</option></select></label><label class="check"><input id="live-refresh" type="checkbox" checked>Live · every 5s</label></div><p id="live-status" class="small muted">Waiting for data…</p><div class="table-wrap"><table><caption class="eyebrow" style="text-align:left">Occurrences by current calendar period</caption><thead><tr><th scope="col">Tag</th><th scope="col">All time</th><th scope="col">Year</th><th scope="col">Month</th><th scope="col">Week</th><th scope="col">Day</th><th scope="col">Hour</th><th scope="col">Minute</th><th scope="col">Second</th></tr></thead><tbody id="frequency"></tbody><tfoot id="frequency-total"></tfoot></table></div><p class="table-note">Each column counts its current Pacific time period, through the last refresh. PST / PDT adjusts automatically. Weeks begin Monday. All time includes your entire history.</p></section>
+      <section class="panel"><h2>Frequency archive</h2><p class="muted small">Every saved click and journal entry, across all tags. Browse the full history by period.</p><form id="archive-form" class="table-controls"><label>Archive period<select id="archive-unit"><option value="second">Second</option><option value="minute">Minute</option><option value="hour">Hour</option><option value="day" selected>Day</option><option value="week">Week</option><option value="month">Month</option><option value="year">Year</option></select></label><label>From (Pacific)<input id="archive-from" type="date"></label><label>Through (Pacific)<input id="archive-to" type="date"></label><button type="submit" class="primary">Apply</button><button id="archive-all" type="button">All dates</button></form><p id="archive-summary" class="small muted"></p><div class="table-wrap archive-wrap"><table><caption class="eyebrow" style="text-align:left">Archived occurrences by tag</caption><thead id="archive-head"></thead><tbody id="archive-body"></tbody><tfoot id="archive-total"></tfoot></table></div><nav class="journal-controls" aria-label="Archive pages"><button type="button" id="archive-newer">Newer periods</button><span id="archive-page" class="small muted"></span><button type="button" id="archive-older">Older periods</button></nav><p class="table-note">Dates are inclusive in Pacific time. Only periods with activity appear; totals cover the entire selected range, across all pages. Partial periods reflect only the selected dates. Saved history is retained after restart.</p></section>
+      <div class="split">
+        <section class="panel" id="journal-panel"><h2 id="journal-heading" tabindex="-1">Tag journal</h2><p class="muted small">Keep a collection of entries under each tag. Every saved note adds +1 occurrence.</p><label class="check"><input id="include-deleted" type="checkbox">Show archived journals and entries</label><form id="entry-form"><label>Journal tag<select id="entry-tag" required><option value="">Create a tag first</option></select></label><label>What happened?<textarea id="entry-note" rows="6" maxlength="2000" required placeholder="Write a new journal entry…"></textarea></label><div class="form-end"><span class="muted small">Recorded at the time you save</span><button class="primary" type="submit">Save entry +1</button></div></form><h3 id="journal-label" style="margin-top:24px">Saved entries</h3><div id="journal-entries"></div><nav class="journal-controls" aria-label="Journal pages"><button id="journal-newer" type="button">Newer entries</button><span id="journal-page" class="small muted"></span><button id="journal-older" type="button">Older entries</button></nav></section>
+        <section class="panel"><h2>Over time</h2><p class="muted small">The latest 30 periods, including periods with zero occurrences.</p><div class="history-controls"><label>Show<select id="filter-tag"><option value="">All tags</option></select></label><label>Group by<select id="unit"><option value="second">Second</option><option value="minute">Minute</option><option value="hour">Hour</option><option value="day" selected>Day</option><option value="week">Week</option><option value="month">Month</option><option value="year">Year</option></select></label></div><div class="history"><table><thead><tr><th scope="col">Period starting (Pacific)</th><th scope="col">Count</th><th scope="col">Activity</th></tr></thead><tbody id="history"></tbody></table></div></section>
+      </div>
+      <section class="panel"><div class="panel-head"><div><h2>Recent activity</h2><p class="muted small" id="recent-label">Clicks and entries, newest first. Uses the “Show” filter above.</p></div></div><div id="recent"></div></section>
+    </div>
+  </div>
+  <footer><span>Every moment counts. Build your own record.</span><span id="updated">Connecting…</span></footer>
+</main>
+<dialog id="edit-dialog" aria-labelledby="edit-heading"><form id="edit-form"><h2 id="edit-heading"></h2><p id="edit-help" class="muted small"></p><label id="edit-label">Text<textarea id="edit-text" rows="5"></textarea></label><p id="edit-error" role="alert" class="danger"></p><div class="dialog-actions"><button id="edit-cancel" type="button">Cancel</button><button id="edit-save" class="primary" type="submit">Save changes</button></div></form></dialog>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const number = value => new Intl.NumberFormat().format(value);
+  const timeZone = 'America/Los_Angeles';
+  // Include the abbreviation so the repeated fall-back hour is distinguishable.
+  function pacificTime(value, unit = 'second') {
+    const options = { timeZone, year:'numeric' };
+    if (unit !== 'year') options.month = '2-digit';
+    if (!['year', 'month'].includes(unit)) options.day = '2-digit';
+    if (['hour', 'minute', 'second'].includes(unit)) {
+      Object.assign(options, { hour:'2-digit', hourCycle:'h23', timeZoneName:'short' });
+      if (unit !== 'hour') options.minute = '2-digit';
+      if (unit === 'second') options.second = '2-digit';
+    }
+    return new Intl.DateTimeFormat('en-US', options).format(new Date(value));
+  }
+  let data = null, busy = false, journalPage = 0;
+  const drafts = new Map();
+  let editCommand = null;
+  let archivePage = 0, archiveFilter = { unit:'day', from:'', to:'' }, revision = 0, polling = false;
+  let previousCounts = new Map();
+  const element = (tag, text, className) => {
+    const node = document.createElement(tag);
+    if (text !== undefined) node.textContent = text;
+    if (className) node.className = className;
+    return node;
+  };
+  function status(message, error = false) {
+    $('status').textContent = message;
+    $('status').classList.toggle('error', error);
+  }
+  function availability() {
+    document.querySelectorAll('button, input, select, textarea').forEach(node => { node.disabled = busy || !data; });
+    $('refresh').disabled = busy;
+    $('archive-newer').disabled = busy || !data || data.archive.page === 0;
+    $('archive-older').disabled = busy || !data || data.archive.page + 1 >= data.archive.pages;
+    $('journal-newer').disabled = busy || !data || data.journal.page === 0;
+    $('journal-older').disabled = busy || !data || data.journal.page + 1 >= data.journal.pages;
+    if (!busy && data && (!data.tags.length || data.journal.deleted)) {
+      $('entry-form').querySelectorAll('input, textarea, button').forEach(node => { node.disabled = true; });
+    }
+  }
+  function queryParams(command = { action:'read' }) {
+    const query = new URLSearchParams({ unit: $('unit').value, archive_unit:archiveFilter.unit, archive_page:String(archivePage) });
+    if (archiveFilter.from) query.set('archive_from', archiveFilter.from);
+    if (archiveFilter.to) query.set('archive_to', archiveFilter.to);
+    if ($('filter-tag').value) query.set('tag', $('filter-tag').value);
+    if ($('entry-tag').value) query.set('journal_tag', $('entry-tag').value);
+    if ($('include-deleted').checked) query.set('include_deleted', 'true');
+    query.set('journal_page', command.action === 'add_entry' ? '0' : String(journalPage));
+    return query;
+  }
+  async function request(command, message = '') {
+    if (busy) return false;
+    busy = true;
+    revision += 1;
+    availability();
+    status(command.action === 'read' ? 'Refreshing…' : 'Saving…');
+    const query = queryParams(command);
+    try {
+      const response = await fetch('/organizer?' + query, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(command)
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'The organizer is unavailable. Try refreshing.');
+      data = result;
+      if (command.action === 'delete_tag') drafts.delete(command.tag_id);
+      render();
+      status(message || 'Up to date.');
+      return true;
+    } catch (error) {
+      if (data) {
+        $('entry-tag').value = data.journal.tag_id || '';
+        $('entry-note').value = drafts.get($('entry-tag').value) || '';
+        journalPage = data.journal.page;
+      }
+      if ($('edit-dialog').open) $('edit-error').textContent = error.message;
+      const network = error instanceof TypeError || error instanceof SyntaxError;
+      status(network ? 'Connection interrupted. Refresh to check whether your last action was saved before trying again.' : error.message, true);
+      return false;
+    } finally {
+      busy = false;
+      availability();
+    }
+  }
+  function selectOptions(id, all) {
+    const select = $(id), previous = select.value;
+    select.replaceChildren();
+    if (all) select.append(new Option('All tags', ''));
+    if (!data.tags.length && !all) select.append(new Option('Create a tag first', ''));
+    const choices = id === 'entry-tag' && $('include-deleted').checked ? data.archive.tags : data.tags;
+    for (const tag of choices) select.append(new Option(tag.name + (tag.deleted ? ' (archived)' : ''), tag.id));
+    if ([...select.options].some(option => option.value === previous)) select.value = previous;
+  }
+  function renderTables() {
+    $('total').textContent = number(data.totals[0]);
+    $('month').textContent = number(data.totals[2]);
+    $('today').textContent = number(data.totals[4]);
+    $('tag-count').textContent = number(data.tags.length);
+    $('month-label').textContent = new Date(data.as_of).toLocaleDateString(undefined, { month:'long', year:'numeric', timeZone });
+    $('updated').textContent = 'Last refreshed ' + pacificTime(data.as_of);
+    $('frequency').replaceChildren();
+    const term = $('frequency-search').value.trim().toLocaleLowerCase(), sort = $('frequency-sort').value;
+    const direction = $('frequency-order').value === 'asc' ? 1 : -1;
+    const visible = data.tags.filter(tag => tag.name.toLocaleLowerCase().includes(term)).sort((a,b) => {
+      const compared = sort === 'name' ? a.name.localeCompare(b.name) : a.counts[Number(sort)] - b.counts[Number(sort)];
+      return direction * compared || a.name.localeCompare(b.name);
+    });
+    const visibleTotals = Array(8).fill(0);
+    for (const tag of visible) {
+      const row = element('tr'), name = element('th', tag.name); name.scope = 'row'; row.append(name);
+      tag.counts.forEach((count,i) => {
+        const cell = element('td', number(count));
+        if (previousCounts.has(tag.id) && previousCounts.get(tag.id)[i] !== count) cell.className = 'count-changed';
+        row.append(cell); visibleTotals[i] += count;
+      });
+      $('frequency').append(row);
+    }
+    previousCounts = new Map(data.tags.map(tag => [tag.id, tag.counts]));
+    if (!visible.length) {
+      const row = element('tr'), cell = element('td', 'No matching tags.', 'muted');
+      cell.colSpan = 9; row.append(cell); $('frequency').append(row);
+    }
+    const total = element('tr'), totalLabel = element('th', term ? 'Visible tags total' : 'Active tags total');
+    totalLabel.scope = 'row'; total.append(totalLabel);
+    visibleTotals.forEach(count => total.append(element('td', number(count))));
+    $('frequency-total').replaceChildren(total);
+    $('history').replaceChildren();
+    const max = Math.max(1, ...data.history.map(bucket => bucket.count));
+    for (const bucket of [...data.history].reverse()) {
+      const row = element('tr'), cell = element('td', undefined, 'bar-cell');
+      const bar = element('div', undefined, 'bar');
+      bar.style.width = (bucket.count / max * 100) + '%';
+      bar.hidden = bucket.count === 0; bar.setAttribute('aria-hidden', 'true'); cell.append(bar);
+      const unit = $('unit').value;
+      row.append(element('td', pacificTime(bucket.at, unit)), element('td', number(bucket.count)), cell);
+      $('history').append(row);
+    }
+    const archive = data.archive;
+    archivePage = archive.page;
+    $('archive-summary').textContent = number(archive.total) + ' occurrences in ' + number(archive.periods) + (archive.periods === 1 ? ' active period' : ' active periods') + ' · all tags';
+    $('archive-page').textContent = 'Page ' + (archive.page + 1) + ' of ' + archive.pages;
+    const head = element('tr');
+    for (const name of ['Period starting (Pacific)', 'Total', ...archive.tags.map(tag => tag.name + (tag.deleted ? ' (archived)' : ''))]) {
+      const th = element('th', name); th.scope = 'col'; head.append(th);
+    }
+    $('archive-head').replaceChildren(head);
+    $('archive-body').replaceChildren();
+    for (const period of archive.rows) {
+      const row = element('tr'); row.append(element('td', pacificTime(period.at, archiveFilter.unit)), element('td', number(period.total)));
+      period.counts.forEach(count => row.append(element('td', number(count))));
+      $('archive-body').append(row);
+    }
+    if (!archive.rows.length) {
+      const row = element('tr'), cell = element('td', 'No occurrences in this date range.', 'muted');
+      cell.colSpan = archive.tags.length + 2; row.append(cell); $('archive-body').append(row);
+    }
+    const footer = element('tr'), label = element('th', 'Entire range'); label.scope = 'row';
+    footer.append(label, element('td', number(archive.total)));
+    archive.totals.forEach(count => footer.append(element('td', number(count))));
+    $('archive-total').replaceChildren(footer);
+    $('live-status').textContent = ($('live-refresh').checked ? 'Live · updated ' : 'Paused · last updated ') + pacificTime(data.as_of);
+  }
+  function render() {
+    renderTables();
+    selectOptions('entry-tag', false);
+    selectOptions('filter-tag', true);
+    $('entry-tag').value = data.journal.tag_id || '';
+    $('entry-note').value = drafts.get($('entry-tag').value) || '';
+    journalPage = data.journal.page;
+    $('tags').replaceChildren();
+    const names = new Map(data.archive.tags.map(tag => [tag.id, tag.name + (tag.deleted ? ' (archived)' : '')]));
+    for (const tag of data.tags) {
+      const card = element('div', undefined, 'tag' + ($('entry-tag').value === tag.id ? ' selected' : ''));
+      const click = element('button', undefined, 'tag-click');
+      click.type = 'button';
+      click.setAttribute('aria-label', 'Record one occurrence of ' + tag.name);
+      click.append(element('span', tag.name), element('span', '+1', 'plus'));
+      click.addEventListener('click', () => request({ action:'click', tag_id:tag.id }, 'Recorded +1 for ' + tag.name + '.'));
+      const bottom = element('div', undefined, 'tag-footer');
+      const view = element('button', 'Open journal');
+      view.type = 'button';
+      view.setAttribute('aria-label', 'Open journal for ' + tag.name);
+      view.addEventListener('click', async () => {
+        $('entry-tag').value = tag.id;
+        journalPage = 0;
+        if (await request({ action:'read' })) {
+          $('journal-heading').focus();
+          $('journal-panel').scrollIntoView({ block:'start' });
+        }
+      });
+      bottom.append(element('span', number(tag.entry_count) + (tag.entry_count === 1 ? ' entry' : ' entries'), 'small muted'), view);
+      const actions = element('div', undefined, 'item-actions');
+      const rename = element('button', 'Rename'); rename.type = 'button'; rename.setAttribute('aria-label', 'Rename tag ' + tag.name);
+      rename.addEventListener('click', () => openEditor({ action:'rename_tag', tag_id:tag.id }, 'Rename tag', tag.name));
+      const remove = element('button', 'Delete', 'danger'); remove.type = 'button'; remove.setAttribute('aria-label', 'Delete tag ' + tag.name);
+      remove.addEventListener('click', () => openEditor({ action:'delete_tag', tag_id:tag.id }, 'Delete tag “' + tag.name + '”?'));
+      actions.append(rename, remove);
+      card.append(click, bottom, actions);
+      $('tags').append(card);
+    }
+    if (!data.tags.length) {
+      const empty = element('div', undefined, 'empty');
+      empty.append(element('strong', 'What would you like to track?'), element('span', 'Add your first tag above.'));
+      $('tags').append(empty);
+    }
+    $('journal-label').textContent = (names.get(data.journal.tag_id) || 'Tag journal') + ' · ' + number(data.journal.total) + (data.journal.total === 1 ? ' saved entry' : ' saved entries');
+    $('journal-page').textContent = 'Page ' + (data.journal.page + 1) + ' of ' + data.journal.pages;
+    $('journal-entries').replaceChildren();
+    for (const entry of data.journal.entries) {
+      const article = element('article', undefined, 'event');
+      const time = element('time', pacificTime(entry.at));
+      time.dateTime = entry.at;
+      article.append(time, element('p', entry.note));
+      if (entry.deleted || data.journal.deleted) {
+        article.append(element('span', 'Archived · read only', 'small muted'));
+      } else {
+        const actions = element('div', undefined, 'item-actions');
+        const edit = element('button', 'Edit entry'); edit.type = 'button';
+        edit.addEventListener('click', () => openEditor({ action:'edit_entry', entry_id:entry.id }, 'Edit journal entry', entry.note));
+        const remove = element('button', 'Delete entry', 'danger'); remove.type = 'button';
+        remove.addEventListener('click', () => openEditor({ action:'delete_entry', entry_id:entry.id }, 'Delete journal entry?'));
+        actions.append(edit, remove); article.append(actions);
+      }
+      $('journal-entries').append(article);
+    }
+    if (!data.journal.entries.length) $('journal-entries').append(element('div', data.tags.length ? 'No journal entries for this tag yet. Write your first one above.' : 'Create a tag to start its journal.', 'empty'));
+    $('recent').replaceChildren();
+    $('recent-label').textContent = 'Showing ' + data.recent.length + ' of ' + number(data.matching_events) + ' occurrences · ' + ($('filter-tag').selectedOptions[0]?.textContent || 'All tags') + ' · newest first';
+    for (const event of data.recent) {
+      const article = element('article', undefined, 'event');
+      const heading = element('strong', names.get(event.tag_id) || 'Tag');
+      heading.append(element('span', event.note ? 'Entry +1' : 'Click +1', 'pill'));
+      const time = element('time', pacificTime(event.at)); time.dateTime = event.at;
+      article.append(heading, time);
+      if (event.note) article.append(element('p', event.note));
+      $('recent').append(article);
+    }
+    if (!data.recent.length) $('recent').append(element('div', 'No occurrences yet. Click a tag or save your first entry.', 'empty'));
+  }
+  function openEditor(command, heading, value = '') {
+    editCommand = command;
+    const deleting = command.action.startsWith('delete_');
+    $('edit-heading').textContent = heading;
+    $('edit-help').textContent = deleting
+      ? 'This removes the item from active views. Recorded occurrences still count, and saved journals remain available with “Show archived journals and entries”.'
+      : 'Your original timestamps, journal associations, and frequency counts will stay the same.';
+    $('edit-label').hidden = deleting;
+    $('edit-text').required = !deleting;
+    $('edit-text').maxLength = command.action === 'rename_tag' ? 80 : 2000;
+    $('edit-text').value = value;
+    $('edit-error').textContent = '';
+    $('edit-save').textContent = deleting ? 'Delete' : 'Save changes';
+    $('edit-dialog').showModal();
+    (deleting ? $('edit-cancel') : $('edit-text')).focus();
+  }
+  $('edit-cancel').addEventListener('click', () => $('edit-dialog').close());
+  $('edit-dialog').addEventListener('cancel', event => { if (busy) event.preventDefault(); });
+  $('edit-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!editCommand || busy) return;
+    const command = { ...editCommand };
+    if (command.action === 'rename_tag') command.name = $('edit-text').value;
+    if (command.action === 'edit_entry') command.note = $('edit-text').value;
+    if (await request(command, command.action.startsWith('delete_') ? 'Item archived. Recorded frequency is preserved.' : 'Changes saved.')) {
+      $('edit-dialog').close();
+      editCommand = null;
+    }
+  });
+  $('include-deleted').addEventListener('change', () => { journalPage = 0; request({ action:'read' }); });
+  $('tag-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    if (await request({ action:'add_tag', name:$('tag-name').value }, 'Tag added. Click it whenever it happens.')) $('tag-name').value = '';
+  });
+  $('entry-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const tagId = $('entry-tag').value;
+    if (await request({ action:'add_entry', tag_id:tagId, note:$('entry-note').value }, 'Entry added to the journal and +1 occurrence recorded.')) {
+      drafts.delete(tagId);
+      $('entry-note').value = '';
+      $('entry-note').focus();
+    }
+  });
+  $('entry-note').addEventListener('input', () => drafts.set($('entry-tag').value, $('entry-note').value));
+  $('entry-tag').addEventListener('change', () => {
+    journalPage = 0;
+    $('entry-note').value = drafts.get($('entry-tag').value) || '';
+    request({ action:'read' });
+  });
+  $('journal-newer').addEventListener('click', () => { journalPage = Math.max(0, journalPage - 1); request({ action:'read' }); });
+  $('journal-older').addEventListener('click', () => { journalPage += 1; request({ action:'read' }); });
+  $('refresh').addEventListener('click', () => request({ action:'read' }));
+  $('unit').addEventListener('change', () => request({ action:'read' }));
+  $('filter-tag').addEventListener('change', () => request({ action:'read' }));
+  for (const id of ['frequency-search', 'frequency-sort', 'frequency-order']) {
+    $(id).addEventListener(id === 'frequency-search' ? 'input' : 'change', () => { if (data) renderTables(); });
+  }
+  $('archive-form').addEventListener('submit', event => {
+    event.preventDefault();
+    const from = $('archive-from').value, to = $('archive-to').value;
+    if (from && to && from > to) { status('Archive start date must be on or before the end date.', true); return; }
+    archiveFilter = { unit:$('archive-unit').value, from, to }; archivePage = 0;
+    request({ action:'read' });
+  });
+  $('archive-all').addEventListener('click', () => {
+    $('archive-from').value = ''; $('archive-to').value = '';
+    archiveFilter = { unit:$('archive-unit').value, from:'', to:'' }; archivePage = 0;
+    request({ action:'read' });
+  });
+  $('archive-newer').addEventListener('click', () => { archivePage = Math.max(0, archivePage - 1); request({ action:'read' }); });
+  $('archive-older').addEventListener('click', () => { archivePage += 1; request({ action:'read' }); });
+  async function poll() {
+    if (!data || busy || polling || $('edit-dialog').open || document.hidden || !$('live-refresh').checked) return;
+    const started = revision;
+    polling = true;
+    try {
+      const response = await fetch('/organizer?' + queryParams(), { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ action:'read' }) });
+      if (!response.ok) throw new Error('Refresh failed');
+      const result = await response.json();
+      if (started !== revision || busy || !$('live-refresh').checked) return;
+      const tagsChanged = JSON.stringify(data.tags.map(t=>[t.id,t.name])) !== JSON.stringify(result.tags.map(t=>[t.id,t.name]));
+      data = result;
+      if (tagsChanged) { render(); availability(); } else { renderTables(); }
+      // Leave the journal, drafts, and active form controls alone during polling.
+      $('archive-newer').disabled = data.archive.page === 0;
+      $('archive-older').disabled = data.archive.page + 1 >= data.archive.pages;
+    } catch {
+      if (started === revision) $('live-status').textContent = 'Live refresh unavailable. Showing the last saved counts; retrying in 5 seconds.';
+    } finally { polling = false; }
+  }
+  $('live-refresh').addEventListener('change', () => { if (data) renderTables(); if ($('live-refresh').checked) poll(); });
+  setInterval(poll, 5000);
+  request({ action:'read' });
+})();
+</script>
+</body>
+</html>

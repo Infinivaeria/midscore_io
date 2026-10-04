@@ -53,3 +53,6 @@ server_main_domain_name.txt
 # wasm-pack output
 /pkg/
 tiade-maeepers-saerver-all/server.log
+
+# Organizer runtime partitions
+/tiade-maeepers-saerver-all/organizer_data/

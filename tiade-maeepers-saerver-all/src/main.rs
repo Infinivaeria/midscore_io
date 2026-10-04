@@ -3,6 +3,7 @@
 
 mod ruby_vm;
 mod sl_ruby;
+mod organizer;
 
 use std::io::{self, BufRead};
 use tide::utils::After;
@@ -3814,6 +3815,7 @@ impl Clone for AppState {
     }
 
     app.with(LogRoute);
+    organizer::mount(&mut app)?;
     mount_ollama_routes(&mut app, OllamaRelayConfig::default())?;
     let ruby_state = state.clone();
     let ruby_store: sl_ruby::StoreCall = Arc::new(move |session, operation, args| {
