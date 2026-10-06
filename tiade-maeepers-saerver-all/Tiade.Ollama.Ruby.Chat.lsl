@@ -1,4 +1,5 @@
-// Put this script beside Tiade.Ollama.Ruby.lsl in the same prim.
+// Legacy adapter for older split controllers only. Do not install beside the
+// combined Tiade.Ollama.Ruby.lsl, which now owns this listener directly.
 // It owns the control-channel listener and forwards owner commands to the main controller.
 
 integer CONTROL_CHANNEL = 7;       // must match Tiade.Ollama.Ruby.lsl

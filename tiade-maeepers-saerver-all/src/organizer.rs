@@ -283,25 +283,66 @@ fn archive(records: &[Record], query: &Query, now: DateTime<Utc>) -> Value {
 fn snapshot(records: &[Record], query: &Query, now: DateTime<Utc>) -> Value {
     let units = [Unit::Year, Unit::Month, Unit::Week, Unit::Day, Unit::Hour, Unit::Minute, Unit::Second];
     let starts = units.map(|unit| floor(now, unit));
-    let mut totals = vec![0u64; 8];
-    let tags: Vec<Value> = records.iter().filter_map(|r| {
-        let Record::Tag { id, name, deleted } = r else { return None };
-        let mut counts = vec![0u64; 8];
-        let mut entry_count = 0u64;
-        for event in records {
-            if let Record::Event { tag_id, at, note, deleted: entry_deleted, .. } = event {
-                if tag_id == id && *at <= now {
-                    counts[0] += 1;
-                    if !note.is_empty() && !entry_deleted { entry_count += 1; }
-                    for (i, start) in starts.iter().enumerate() {
-                        if at >= start { counts[i + 1] += 1; }
-                    }
+    let mut tags_all: Vec<(String, String, bool)> = Vec::new();
+    let mut tag_index: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for record in records {
+        let Record::Tag { id, name, deleted } = record else { continue };
+        if tag_index.contains_key(id.as_str()) {
+            continue;
+        }
+        tag_index.insert(id.as_str(), tags_all.len());
+        tags_all.push((id.clone(), name.clone(), *deleted));
+    }
+
+    let mut tag_counts = vec![vec![0u64; 8]; tags_all.len()];
+    let mut tag_entry_counts = vec![vec![0u64; 8]; tags_all.len()];
+    let mut tag_entry_total = vec![0u64; tags_all.len()];
+
+    for record in records {
+        let Record::Event { tag_id, at, note, deleted: entry_deleted, .. } = record else { continue };
+        if *at > now {
+            continue;
+        }
+        let Some(&idx) = tag_index.get(tag_id.as_str()) else { continue };
+
+        tag_counts[idx][0] += 1;
+        for (i, start) in starts.iter().enumerate() {
+            if at >= start {
+                tag_counts[idx][i + 1] += 1;
+            }
+        }
+
+        if !note.is_empty() {
+            if !entry_deleted {
+                tag_entry_total[idx] += 1;
+            }
+            tag_entry_counts[idx][0] += 1;
+            for (i, start) in starts.iter().enumerate() {
+                if at >= start {
+                    tag_entry_counts[idx][i + 1] += 1;
                 }
             }
         }
-        for (total, count) in totals.iter_mut().zip(&counts) { *total += count; }
-        if *deleted { return None; }
-        Some(json!({ "id": id, "name": name, "counts": counts, "entry_count": entry_count }))
+    }
+
+    let mut totals = vec![0u64; 8];
+    for counts in &tag_counts {
+        for (total, count) in totals.iter_mut().zip(counts) {
+            *total += *count;
+        }
+    }
+
+    let tags: Vec<Value> = tags_all.iter().enumerate().filter_map(|(idx, (id, name, deleted))| {
+        if *deleted {
+            return None;
+        }
+        Some(json!({
+            "id": id,
+            "name": name,
+            "counts": tag_counts[idx],
+            "entry_counts": tag_entry_counts[idx],
+            "entry_count": tag_entry_total[idx],
+        }))
     }).collect();
     let events: Vec<&Record> = records.iter().filter(|r| matches!(r,
         Record::Event { tag_id, at, .. } if *at <= now && query.tag.as_ref().is_none_or(|id| id == tag_id)

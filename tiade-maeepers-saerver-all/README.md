@@ -10,6 +10,9 @@ the Second Life bridge, LSL operation, security, and troubleshooting.
 For Second Life channel-0 capture and Ruby/notecard workflows, see
 [LOCAL_INPUT_GUIDE.md](LOCAL_INPUT_GUIDE.md).
 
+For the complete Ruby/LSL/Magnus command, storage, persistence, and HTTP reference,
+see [README_RUBY_LSL_MAGNUS.md](README_RUBY_LSL_MAGNUS.md).
+
 ## Version
 
 - 1.0.0
@@ -391,7 +394,7 @@ Evaluation is serial: a slow script delays later Ruby requests. A timed-out scri
 
 ### Second Life: Ollama and Ruby
 
-[Tiade.Ollama.Ruby.lsl](Tiade.Ollama.Ruby.lsl) is the owner-only HTTP, Ruby, session, and notecard controller. **Install and compile it with [Tiade.Ollama.Ruby.Chat.lsl](Tiade.Ollama.Ruby.Chat.lsl) and [Tiade.Ollama.Ruby.Help.lsl](Tiade.Ollama.Ruby.Help.lsl) in the same prim, keeping the exact inventory names.** Chat owns the `/7` listener; Help owns the help text; both communicate with the main controller through link messages, preserving main-script memory for HTTP and notecard work. `/7 help` shows an eight-page index; `/7 help 1` through `/7 help 8` show one topic at a time (setup, Ollama, public replies, Ruby sessions, variables, files/matrices, command notecards, and Ruby notecards/troubleshooting). Local channel-0 chat is never accepted as input. `/7 public on` makes Ollama and Ruby replies visible in nearby public chat. Touching the object shows status and the help index to its owner.
+[Tiade.Ollama.Ruby.lsl](Tiade.Ollama.Ruby.lsl) combines the owner-only command listener, local-chat capture, HTTP, Ruby, sessions, and notecard runner in one script, with a complete command reference at the end. **Install and compile only it and [Tiade.Ollama.Ruby.Help.lsl](Tiade.Ollama.Ruby.Help.lsl) in the same prim, keeping the exact inventory names. Remove legacy Chat and LocalInput scripts.** Configure `BASE_URL` and `RUBY_TOKEN` in the main script; if changing `CONTROL_CHANNEL`, keep it positive and identical in both scripts. Help owns the help text and receives requests through link messages, preserving main-script memory. `/7 help` lists every command and an eight-page index; `/7 help all` lists commands, aliases, card directives, and Ruby storage helpers; `/7 help 1` through `/7 help 8` show one detailed topic at a time. Local channel-0 chat is captured in memory but never executed or sent automatically; `/7 local-input` displays it privately and `/7 local-input-ruby <code>` explicitly processes it. `/7 public on` makes Ollama and Ruby replies visible in nearby public chat. Touching the object shows status and help to its owner.
 It can also run notecards from the object's inventory:
 
 - `/7 notecard <name>` runs one `/7` command per line, in order (`ask ...`, `ruby ...`, `team ...`, `ruby-reset`, ...). `#` and `//` lines are comments, a leading `/7 ` is optional, `ask` lines wait for their Ollama reply, `wait <seconds>` pauses, and lines between `ruby-begin` and `ruby-end` are sent as one multi-line Ruby program. Requests throttled by the region are retried instead of skipped.

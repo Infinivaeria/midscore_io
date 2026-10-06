@@ -1,8 +1,8 @@
 // Tiade.Ollama.Ruby.lsl
 // Owner-controlled Second Life client for the Tide server.
-// Install Tiade.Ollama.Ruby.Chat.lsl, Tiade.Ollama.Ruby.LocalInput.lsl and
-// Tiade.Ollama.Ruby.Help.lsl in the same prim. The input scripts own the
-// listeners; Help owns the /7 help text.
+// This script includes the owner command and nearby-chat listeners.
+// Install only this script and Tiade.Ollama.Ruby.Help.lsl in the same prim.
+// Remove the legacy Chat and LocalInput scripts; Help owns the /7 help text.
 //
 // Server routes used:
 //   POST /sl/ask/<team>  {"message","speaker"}  -> 202 {"job":"<id>"}
@@ -57,8 +57,6 @@ integer NC_COMMANDS = 1;
 integer NC_RUBY     = 2;
 integer NC_RUBY_LOCAL_INPUT = 3;
 integer HELP_LINK_MESSAGE = -708641;
-integer CHAT_COMMAND_MESSAGE = -708642;
-integer LOCAL_CHAT_INPUT_MESSAGE = -708643;
 string  HELP_SCRIPT = "Tiade.Ollama.Ruby.Help.lsl";
 
 key     gOwner;
@@ -639,9 +637,10 @@ command(string message, string speaker)
     else if (verb == "help")
     {
         if (rest == "") show_help(0);
+        else if (llToLower(rest) == "all") show_help(9);
         else if (llStringLength(rest) == 1 && llSubStringIndex("12345678", rest) != -1)
             show_help((integer)rest);
-        else notify("Usage: /" + (string)CONTROL_CHANNEL + " help <1-8>");
+        else notify("Usage: /" + (string)CONTROL_CHANNEL + " help [all|1-8]");
     }
     else ask(message, speaker);   // plain /7 text is treated as a question
 }
@@ -673,8 +672,10 @@ default
         gNcMode = NC_OFF;
         gNcQuery = NULL_KEY;
         gNcWaitRequest = NULL_KEY;
+        llListen(CONTROL_CHANNEL, "", gOwner, "");
+        llListen(0, "", NULL_KEY, "");
         update_timer();
-        notify("Ready on /" + (string)CONTROL_CHANNEL + ". Install Chat and Help scripts, then say /"
+        notify("Ready on /" + (string)CONTROL_CHANNEL + ". Commands and local capture are built in. For commands, install " + HELP_SCRIPT + " and say /"
             + (string)CONTROL_CHANNEL + " help");
     }
 
@@ -693,18 +694,11 @@ default
         if (llDetectedKey(0) == gOwner) { show_status(); show_help(0); }
     }
 
-    link_message(integer sender_num, integer num, string message, key id)
+    listen(integer channel, string name, key id, string message)
     {
-        if (num == LOCAL_CHAT_INPUT_MESSAGE)
-        {
-            // Tiade.Ollama.Ruby.LocalInput.lsl accepts channel-0 messages
-            // from nearby avatars. Keep the text available for later
-            // controller features without treating it as a command or
-            // sending it to the server.
-            gLastLocalChat = message;
-        }
-        else if (id == gOwner && num == CHAT_COMMAND_MESSAGE)
-            command(message, llKey2Name(id));
+        if (channel == 0) gLastLocalChat = message;
+        else if (channel == CONTROL_CHANNEL && id == gOwner)
+            command(message, name);
     }
 
     dataserver(key query_id, string data)
@@ -805,3 +799,72 @@ default
         update_timer();
     }
 }
+
+// ======================================================================
+// COMPLETE COMMAND REFERENCE (owner chat on /7 by default)
+// Change the prefix below if you change CONTROL_CHANNEL. Do not type <>.
+// Verbs are case-insensitive; names, text and Ruby source retain their case.
+//
+// QUESTIONS AND SETTINGS
+// /7 ask <message>                 Ask Ollama; unknown /7 text also asks.
+// /7 team <name>                   Select the shared Ollama conversation.
+// /7 url <https://host>            Select the trusted server (token sent there).
+// /7 public on|off                 Public replies or owner-only (default off).
+//                                 on/1/true/yes enable; other values disable.
+// /7 health                        Check server/Ollama health.
+// /7 status                        Settings, queues, local preview, free memory.
+// /7 help                          Every command plus the help-page index.
+// /7 help all                      Every command, aliases and card directives.
+// /7 help <1-8>                    Detailed help for one topic.
+//
+// MAGNUS RUBY AND SESSIONS (Ruby/storage commands require RUBY_TOKEN)
+// /7 ruby <code>                   Execute Ruby in the selected server session.
+// /7 ruby-reset                    Clear Ruby locals, NOT persistent stores.
+// /7 debug on|off                  Show/hide automatic Ruby return values.
+//                                 Explicit puts/print and errors remain visible.
+// /7 session <id>                  Shared Ruby/storage ID: 1-64 ASCII letters,
+//                                 digits, underscores or hyphens.
+// /7 session-reset                 Select this object's UUID again; no deletion.
+//
+// LOCAL CHAT (latest delivered channel-0 message; never auto-executed/sent)
+// /7 local-input                   Show the captured text privately to owner.
+// /7 local-input-ruby <code>       Run Ruby with captured text in local_input.
+// /7 ruby-local-input <code>       Alias for local-input-ruby.
+// Capture clears on script reset; explicitly var_set to keep it on disk.
+// /7 local-input-ruby var_set("last_chat", local_input)
+//
+// PERSISTENT SESSION STORAGE (Rust partitioned array on the server)
+// /7 var-set <name> <text>         Store a STRING; successful saves reach disk.
+// /7 var-get <name>                Read one stored value.
+// /7 var-delete <name>             Persist removal; false if absent.
+// /7 var-view                      Read the session's stored variables.
+// /7 ruby var_set("score", 21)     Store typed JSON-compatible values via Ruby.
+// Reuse the same session ID after server/object restarts to access saved data.
+// Ruby locals alone are not disk-persistent. Enable debug to see return values.
+//
+// FILES AND MATRICES
+// /7 file-write <name> <text>      Write/replace a UTF-8 file in this session.
+// /7 file-read <name>              Read a file.
+// /7 file-delete <name>            Remove a file.
+// /7 file-list                     List session files.
+// /7 matrix-get <name>             Read a Forth-created matrix in this session.
+// File names: safe ASCII basenames, at most 128 characters, no leading dot,
+// '..' or paths. Server write limit: 65536 bytes. LSL memory limits also apply.
+// Ruby helpers: var_set(name, value), var_get(name), var_delete(name),
+// var_view(), file_write(name, text), file_read(name), file_delete(name),
+// file_list(), matrix_get(name). Use /7 ruby <code> or a Ruby-only notecard.
+//
+// NOTECARDS (exact inventory name; one active card; no nested card runs)
+// /7 notecard <name>               Execute a card of commands in order.
+// /7 ruby-notecard <name>          Execute the entire card as Ruby source.
+// /7 local-input-ruby-notecard <name>  Ruby card with captured local_input.
+// /7 ruby-local-input-notecard <name>  Alias for local-input-ruby-notecard.
+// /7 notecard-stop                Stop reading; already-sent work may finish.
+// Command-card-only directives (not standalone chat commands):
+//   wait <seconds>                Pause the card by an integer number of seconds.
+//   ruby-begin                    Start a multiline Ruby block.
+//   ruby-end                      End/send that block (standalone line).
+// Blank lines and lines starting # or // are skipped in command cards.
+// An optional /7 prefix works outside Ruby blocks; ask waits for its answer.
+// Ruby-only cards must contain Ruby, not /7 commands or card directives.
+// ======================================================================

@@ -323,16 +323,51 @@ mod tests {
         let mut app = tide::new();
         let calls = Arc::new(std::sync::Mutex::new(Vec::<(String, String, Value)>::new()));
         let recorded = Arc::clone(&calls);
+        let snapshot_path = std::env::temp_dir().join(format!("ruby-route-{}.json", uuid::Uuid::new_v4()));
+        let persisted_path = snapshot_path.clone();
+        let mut entries = partitioned_array_rust::PartitionedArray::new(1, 2, 1, true);
+        entries.allocate(false);
+        let entries = Arc::new(std::sync::Mutex::new(entries));
+        let stored_entries = Arc::clone(&entries);
         let store: StoreCall = Arc::new(move |session, operation, args| {
             recorded.lock().unwrap().push((session.to_string(), operation.to_string(), args.clone()));
-            if args.get("name").and_then(Value::as_str) == Some("missing") {
-                return Err("entry was not found".into());
+            if operation.starts_with("var_") {
+                let mut entries = stored_entries.lock().unwrap();
+                let entry_id = entries.non_empty_ids().into_iter().find(|entry_id| {
+                    let row = entries.get(*entry_id).unwrap();
+                    row.get("session").and_then(Value::as_str) == Some(session)
+                        && row.get("name") == args.get("name")
+                });
+                return match operation {
+                    "var_set" => crate::persistent_snapshot::update(&mut *entries, |next| {
+                        let write = |row: &mut serde_json::Map<String, Value>| {
+                            row.insert("session".into(), serde_json::json!(session));
+                            row.insert("name".into(), args["name"].clone());
+                            row.insert("value".into(), args["value"].clone());
+                        };
+                        if let Some(entry_id) = entry_id {
+                            assert!(next.set_with(entry_id, write));
+                        } else {
+                            next.add(write).ok_or_else(|| "store full".to_string())?;
+                        }
+                        Ok(args["value"].clone())
+                    }, |next| crate::persistent_snapshot::save(&persisted_path, next)),
+                    "var_get" => entry_id.map(|entry_id| entries.get(entry_id).unwrap()["value"].clone())
+                        .ok_or_else(|| "entry was not found".into()),
+                    "var_delete" => crate::persistent_snapshot::update(&mut *entries, |next| {
+                        if let Some(entry_id) = entry_id { next.delete(entry_id); }
+                        Ok(Value::Bool(entry_id.is_some()))
+                    }, |next| crate::persistent_snapshot::save(&persisted_path, next)),
+                    "var_view" => Ok(Value::Object(entries.non_empty_ids().into_iter().filter_map(|entry_id| {
+                        let row = entries.get(entry_id)?;
+                        (row.get("session")?.as_str()? == session)
+                            .then(|| (row["name"].as_str().unwrap().to_string(), row["value"].clone()))
+                    }).collect())),
+                    _ => Err(format!("unexpected operation: {operation}")),
+                };
             }
             match operation {
-                "var_set" => Ok(args["value"].clone()),
-                "var_get" => Ok(serde_json::json!(42)),
-                "var_delete" | "file_delete" => Ok(Value::Bool(true)),
-                "var_view" => Ok(serde_json::json!({"score": 42})),
+                "file_delete" => Ok(Value::Bool(true)),
                 "file_write" | "file_read" => Ok(serde_json::json!("hello")),
                 "file_list" => Ok(serde_json::json!(["memo.txt"])),
                 "matrix_get" => Ok(serde_json::json!({"rows": 1, "cols": 2, "values": [3, 4]})),
@@ -399,6 +434,19 @@ mod tests {
             assert_eq!(recorded[0].2, serde_json::json!({"name":"score","value":42}));
             drop(recorded);
 
+            *entries.lock().unwrap() = crate::persistent_snapshot::load(&snapshot_path).unwrap().unwrap();
+            let (_, body) = post(&app, "/sl/ruby/eval", &auth, "var_view").await;
+            assert_eq!(body, "=> {}", "deletion survives restoring the partitioned snapshot");
+            let (status, _) = post(&app, "/sl/ruby/eval", &auth,
+                r#"var_set("score", 42); var_set("progress", {"items" => ["key", true, nil]})"#).await;
+            assert_eq!(status, 200);
+            let (status, _) = post(&app, "/sl/ruby/eval", &[("X-Ruby-Token", "s3cret")],
+                r#"{"session":"other","code":"var_set('score', 7)"}"#).await;
+            assert_eq!(status, 200);
+            *entries.lock().unwrap() = crate::persistent_snapshot::load(&snapshot_path).unwrap().unwrap();
+            let (_, body) = post(&app, "/sl/ruby/eval", &auth, r#"var_get("progress")["items"].to_json"#).await;
+            assert_eq!(body, r#"=> "[\"key\",true,null]""#);
+
             let (status, body) = post(&app, "/sl/ruby/eval", &auth, r#"var_get("missing")"#).await;
             assert_eq!((status, body.as_str()), (422, "RuntimeError: entry was not found"));
 
@@ -435,5 +483,6 @@ mod tests {
             std::env::remove_var(OWNERS_ENV);
             std::env::remove_var(SECONDS_ENV);
         }
+        std::fs::remove_file(snapshot_path).unwrap();
     }
 }

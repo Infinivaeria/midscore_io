@@ -1,18 +1,19 @@
 # Local Input Guide
 
-`Tiade.Ollama.Ruby.LocalInput.lsl` captures ordinary nearby Second Life chat
+The combined `Tiade.Ollama.Ruby.lsl` captures ordinary nearby Second Life chat
 on channel `0`. The main controller keeps only the newest message in its
 `gLastLocalChat` variable. Capturing never executes chat as a command and
 never sends it to Ollama or Ruby automatically.
 
 ## Install
 
-Put these scripts in the same prim and save or reset them:
+Put only these two scripts in the same prim and save or reset them:
 
 - `Tiade.Ollama.Ruby.lsl`
-- `Tiade.Ollama.Ruby.Chat.lsl`
-- `Tiade.Ollama.Ruby.LocalInput.lsl`
 - `Tiade.Ollama.Ruby.Help.lsl`
+
+Remove the old Chat and LocalInput scripts; both listeners are built into the
+main script now. `/7 help` or `/7 help all` lists every command and alias.
 
 Nearby avatars may speak normally on channel `0`. Only the object owner can
 run controller commands on `/7` or send captured input to Ruby.
@@ -121,9 +122,8 @@ Never run this card with `/7 ruby-notecard LocalInputCommands`. Ruby will see
 
 ## Troubleshooting
 
-**No local input captured** — Confirm `Tiade.Ollama.Ruby.LocalInput.lsl` is in
-the same prim as the main script, reset both scripts, and have someone speak on
-channel `0`.
+**No local input captured** — Confirm the combined `Tiade.Ollama.Ruby.lsl` is
+compiled and running, reset it, and have someone speak on channel `0`.
 
 **“No local channel-0 input”** — Speak nearby after the main script starts,
 then retry. A reset clears the previous value.

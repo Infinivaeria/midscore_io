@@ -33,7 +33,9 @@ with a static file server or mocked requests does not persist changes.
   the journal. Unsaved drafts are retained per tag while the page stays open.
 - The frequency table shows all-time totals and the current Pacific calendar year,
   month, week (Monday start), day, hour, minute, and second. These are counts,
-  not average rates. Refresh updates the displayed periods and other clients' changes.
+  not average rates. Use the Count selector to switch between all occurrences
+  (clicks + entries) and journal-entry-only frequency. Refresh updates the
+  displayed periods and other clients' changes.
 - The live table refreshes every five seconds while the tab is visible. Pause
   with the Live checkbox. Search tags and sort by name or any frequency column;
   filtered table totals cover visible tags, while overview cards cover all tags.

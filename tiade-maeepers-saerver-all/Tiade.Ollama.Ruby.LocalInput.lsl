@@ -1,4 +1,5 @@
-// Put this script beside Tiade.Ollama.Ruby.lsl in the same prim.
+// Legacy adapter for older split controllers only. Do not install beside the
+// combined Tiade.Ollama.Ruby.lsl, which now owns this listener directly.
 //
 // It receives ordinary nearby chat (channel 0) from any avatar and sends it
 // to the controller as a link message. The controller stores the latest value

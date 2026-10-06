@@ -3,18 +3,19 @@ Tiade Local Input Help
 
 WHAT IT DOES
 ------------
-Tiade.Ollama.Ruby.LocalInput.lsl listens on ordinary nearby chat (channel 0).
+The combined Tiade.Ollama.Ruby.lsl listens on nearby chat (channel 0).
 Each message replaces the main controller's gLastLocalChat value. The value is
 kept only in script memory; it is not a history or permanent chat log.
 
 INSTALLATION
 ------------
-Put all four scripts in the SAME prim, then save or reset them:
+Put only these two scripts in the SAME prim, then save or reset them:
 
   Tiade.Ollama.Ruby.lsl
-  Tiade.Ollama.Ruby.Chat.lsl
-  Tiade.Ollama.Ruby.LocalInput.lsl
   Tiade.Ollama.Ruby.Help.lsl
+
+Remove the old Chat and LocalInput scripts; their listeners are built in.
+Use /7 help or /7 help all for every command, alias and card directive.
 
 Anyone nearby can speak on channel 0. Only the object owner can run /7
 commands and view or explicitly process the captured value.
@@ -76,8 +77,8 @@ PRIVACY AND SAFETY
 TROUBLESHOOTING
 ---------------
 No input captured:
-  Confirm LocalInput is in the same prim as the main script, then save/reset
-  both scripts. Have someone nearby say ordinary text on channel 0.
+  Confirm the combined main script is compiled and running, then save/reset
+  it. Have someone nearby say ordinary text on channel 0.
 
 Ruby says no local input was captured:
   Wait for a nearby channel-0 message, then rerun the Ruby command/card.

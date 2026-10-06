@@ -4,6 +4,7 @@
 mod ruby_vm;
 mod sl_ruby;
 mod organizer;
+mod persistent_snapshot;
 
 use std::io::{self, BufRead};
 use tide::utils::After;
@@ -935,6 +936,7 @@ async fn main() -> tide::Result<()> {
     revision: u64,
   }
 
+  #[derive(Clone)]
   struct VarsStore {
     entries: partitioned_array_rust::PartitionedArray,
     history: partitioned_array_rust::PartitionedArray,
@@ -983,13 +985,14 @@ async fn main() -> tide::Result<()> {
       })
   }
 
-  fn restore_memory_stores() -> Option<(ChatlogStore, VarsStore, partitioned_array_rust::PartitionedArray, partitioned_array_rust::PartitionedArray, partitioned_array_rust::PartitionedArray)> {
-    let bytes = std::fs::read(memory_store_path()).ok()?;
-    let snapshot = serde_json::from_slice::<PersistedMemoryStores>(&bytes).ok()?;
+  fn restore_memory_stores() -> std::io::Result<Option<(ChatlogStore, VarsStore, partitioned_array_rust::PartitionedArray, partitioned_array_rust::PartitionedArray, partitioned_array_rust::PartitionedArray)>> {
+    let Some(snapshot) = persistent_snapshot::load::<PersistedMemoryStores>(&memory_store_path())? else {
+      return Ok(None);
+    };
     if snapshot.version != 1 {
-      return None;
+      return Err(std::io::Error::other("unsupported partitioned memory snapshot version"));
     }
-    Some((
+    Ok(Some((
       ChatlogStore {
         entries: snapshot.chatlog_entries,
         revision: snapshot.chatlog_revision,
@@ -1001,7 +1004,7 @@ async fn main() -> tide::Result<()> {
       snapshot.forth_bridge_queue,
       snapshot.custom_words,
       snapshot.avatar_frequency,
-    ))
+    )))
   }
 
   fn persist_memory_stores(state: &AppState) -> std::io::Result<()> {
@@ -1011,6 +1014,10 @@ async fn main() -> tide::Result<()> {
     let vars_store = state.vars_store.lock().map_err(|_| {
       std::io::Error::other("variable store lock poisoned")
     })?;
+    persist_memory_stores_with_vars(state, &chatlog_store, &vars_store)
+  }
+
+  fn persist_memory_stores_with_vars(state: &AppState, chatlog_store: &ChatlogStore, vars_store: &VarsStore) -> std::io::Result<()> {
     let forth_bridge_queue = state.forth_bridge_queue.lock().map_err(|_| {
       std::io::Error::other("Forth bridge queue lock poisoned")
     })?;
@@ -1030,15 +1037,17 @@ async fn main() -> tide::Result<()> {
       custom_words: custom_words.clone(),
       avatar_frequency: avatar_frequency.clone(),
     };
-    let payload = serde_json::to_vec_pretty(&snapshot)
-      .map_err(std::io::Error::other)?;
-    let path = memory_store_path();
-    if let Some(parent) = path.parent() {
-      std::fs::create_dir_all(parent)?;
-    }
-    let temporary_path = path.with_extension("tmp");
-    std::fs::write(&temporary_path, payload)?;
-    std::fs::rename(temporary_path, path)
+    persistent_snapshot::save(&memory_store_path(), &snapshot)
+  }
+
+  fn update_persisted_vars<Output>(state: &AppState, change: impl FnOnce(&mut VarsStore) -> Result<Output, String>) -> Result<Output, String> {
+    let chatlog_store = state.chatlog_store.lock()
+      .map_err(|_| "chatlog store lock poisoned".to_string())?;
+    let mut vars_store = state.vars_store.lock()
+      .map_err(|_| "variable store lock poisoned".to_string())?;
+    persistent_snapshot::update(&mut *vars_store, change, |next| {
+      persist_memory_stores_with_vars(state, &chatlog_store, next)
+    })
   }
 
   fn vars_entry_id(store: &VarsStore, name: &str) -> Option<usize> {
@@ -3626,7 +3635,7 @@ async fn main() -> tide::Result<()> {
   }
 
     // Main HTTPS server - handling all defined routes
-let (chatlog_store, vars_store, forth_bridge_queue, custom_words, avatar_frequency) = restore_memory_stores()
+let (chatlog_store, vars_store, forth_bridge_queue, custom_words, avatar_frequency) = restore_memory_stores()?
   .unwrap_or_else(|| (new_chatlog_store(), new_vars_store(), new_forth_bridge_queue(), new_custom_words_store(), new_avatar_frequency_store()));
 let state = AppState {
     queue: Mutex::new(Vec::new()),
@@ -3826,14 +3835,14 @@ impl Clone for AppState {
         "var_set" => {
           let name = name()?;
           let value = args.get("value").ok_or_else(|| "value is required".to_string())?.clone();
-          let mut store = ruby_state.vars_store.lock()
-            .map_err(|_| "variable store lock poisoned".to_string())?;
-          let values = Map::from_iter([(name.to_string(), value.clone())]);
-          vars_set_scoped(&mut store, &session, &values);
-          if scoped_program_value(&store, &session, name) != Some(value.clone()) {
-            return Err("variable store is full or could not update the value".to_string());
-          }
-          Ok(value)
+          update_persisted_vars(&ruby_state, |store| {
+            let values = Map::from_iter([(name.to_string(), value.clone())]);
+            vars_set_scoped(store, &session, &values);
+            if scoped_program_value(store, &session, name) != Some(value.clone()) {
+              return Err("variable store is full or could not update the value".to_string());
+            }
+            Ok(value)
+          })
         }
         "var_get" => {
           let name = name()?;
@@ -3844,11 +3853,14 @@ impl Clone for AppState {
         }
         "var_delete" => {
           let name = name()?;
-          let mut store = ruby_state.vars_store.lock()
-            .map_err(|_| "variable store lock poisoned".to_string())?;
-          let existed = scoped_vars_entry_id(&store, &session, name).is_some();
-          vars_delete_scoped(&mut store, &session, name);
-          Ok(Value::Bool(existed))
+          update_persisted_vars(&ruby_state, |store| {
+            let existed = scoped_vars_entry_id(store, &session, name).is_some();
+            vars_delete_scoped(store, &session, name);
+            if scoped_vars_entry_id(store, &session, name).is_some() {
+              return Err("could not delete the variable".to_string());
+            }
+            Ok(Value::Bool(existed))
+          })
         }
         "var_view" => {
           let mut store = ruby_state.vars_store.lock()

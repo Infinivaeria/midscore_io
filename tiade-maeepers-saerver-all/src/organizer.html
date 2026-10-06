@@ -44,7 +44,7 @@
   <div class="workspace">
     <aside class="panel"><h2>Your tags</h2><p class="muted small">Click a tag to record +1 occurrence.</p><form id="tag-form"><label for="tag-name">New tag</label><div class="input-row"><input id="tag-name" name="name" maxlength="80" required placeholder="e.g. Morning walk" autocomplete="off"><button type="submit" class="primary">Add</button></div></form><div id="tags"><div class="empty">Loading tags…</div></div></aside>
     <div>
-      <section class="panel"><div class="panel-head"><div><h2>Frequency table</h2><p class="muted small">One click or one entry = one occurrence.</p></div><button type="button" id="refresh">Refresh</button></div><div class="table-controls"><label>Find a tag<input id="frequency-search" type="search" placeholder="Filter table tags"></label><label>Sort by<select id="frequency-sort"><option value="name">Tag name</option><option value="0" selected>All time</option><option value="1">Year</option><option value="2">Month</option><option value="3">Week</option><option value="4">Day</option><option value="5">Hour</option><option value="6">Minute</option><option value="7">Second</option></select></label><label>Order<select id="frequency-order"><option value="desc">Descending</option><option value="asc">Ascending</option></select></label><label class="check"><input id="live-refresh" type="checkbox" checked>Live · every 5s</label></div><p id="live-status" class="small muted">Waiting for data…</p><div class="table-wrap"><table><caption class="eyebrow" style="text-align:left">Occurrences by current calendar period</caption><thead><tr><th scope="col">Tag</th><th scope="col">All time</th><th scope="col">Year</th><th scope="col">Month</th><th scope="col">Week</th><th scope="col">Day</th><th scope="col">Hour</th><th scope="col">Minute</th><th scope="col">Second</th></tr></thead><tbody id="frequency"></tbody><tfoot id="frequency-total"></tfoot></table></div><p class="table-note">Each column counts its current Pacific time period, through the last refresh. PST / PDT adjusts automatically. Weeks begin Monday. All time includes your entire history.</p></section>
+      <section class="panel"><div class="panel-head"><div><h2>Frequency table</h2><p class="muted small">One click or one entry = one occurrence.</p></div><button type="button" id="refresh">Refresh</button></div><div class="table-controls"><label>Find a tag<input id="frequency-search" type="search" placeholder="Filter table tags"></label><label>Count<select id="frequency-kind"><option value="all" selected>All occurrences</option><option value="entries">Journal entries</option></select></label><label>Sort by<select id="frequency-sort"><option value="name">Tag name</option><option value="0" selected>All time</option><option value="1">Year</option><option value="2">Month</option><option value="3">Week</option><option value="4">Day</option><option value="5">Hour</option><option value="6">Minute</option><option value="7">Second</option></select></label><label>Order<select id="frequency-order"><option value="desc">Descending</option><option value="asc">Ascending</option></select></label><label class="check"><input id="live-refresh" type="checkbox" checked>Live · every 5s</label></div><p id="live-status" class="small muted">Waiting for data…</p><div class="table-wrap"><table><caption id="frequency-caption" class="eyebrow" style="text-align:left">Counts by current calendar period</caption><thead><tr><th scope="col">Tag</th><th scope="col">All time</th><th scope="col">Year</th><th scope="col">Month</th><th scope="col">Week</th><th scope="col">Day</th><th scope="col">Hour</th><th scope="col">Minute</th><th scope="col">Second</th></tr></thead><tbody id="frequency"></tbody><tfoot id="frequency-total"></tfoot></table></div><p id="frequency-note" class="table-note">Each column counts its current Pacific time period, through the last refresh. PST / PDT adjusts automatically. Weeks begin Monday. All time includes your entire history.</p></section>
       <section class="panel"><h2>Frequency archive</h2><p class="muted small">Every saved click and journal entry, across all tags. Browse the full history by period.</p><form id="archive-form" class="table-controls"><label>Archive period<select id="archive-unit"><option value="second">Second</option><option value="minute">Minute</option><option value="hour">Hour</option><option value="day" selected>Day</option><option value="week">Week</option><option value="month">Month</option><option value="year">Year</option></select></label><label>From (Pacific)<input id="archive-from" type="date"></label><label>Through (Pacific)<input id="archive-to" type="date"></label><button type="submit" class="primary">Apply</button><button id="archive-all" type="button">All dates</button></form><p id="archive-summary" class="small muted"></p><div class="table-wrap archive-wrap"><table><caption class="eyebrow" style="text-align:left">Archived occurrences by tag</caption><thead id="archive-head"></thead><tbody id="archive-body"></tbody><tfoot id="archive-total"></tfoot></table></div><nav class="journal-controls" aria-label="Archive pages"><button type="button" id="archive-newer">Newer periods</button><span id="archive-page" class="small muted"></span><button type="button" id="archive-older">Older periods</button></nav><p class="table-note">Dates are inclusive in Pacific time. Only periods with activity appear; totals cover the entire selected range, across all pages. Partial periods reflect only the selected dates. Saved history is retained after restart.</p></section>
       <div class="split">
         <section class="panel" id="journal-panel"><h2 id="journal-heading" tabindex="-1">Tag journal</h2><p class="muted small">Keep a collection of entries under each tag. Every saved note adds +1 occurrence.</p><label class="check"><input id="include-deleted" type="checkbox">Show archived journals and entries</label><form id="entry-form"><label>Journal tag<select id="entry-tag" required><option value="">Create a tag first</option></select></label><label>What happened?<textarea id="entry-note" rows="6" maxlength="2000" required placeholder="Write a new journal entry…"></textarea></label><div class="form-end"><span class="muted small">Recorded at the time you save</span><button class="primary" type="submit">Save entry +1</button></div></form><h3 id="journal-label" style="margin-top:24px">Saved entries</h3><div id="journal-entries"></div><nav class="journal-controls" aria-label="Journal pages"><button id="journal-newer" type="button">Newer entries</button><span id="journal-page" class="small muted"></span><button id="journal-older" type="button">Older entries</button></nav></section>
@@ -160,23 +160,29 @@
     $('month-label').textContent = new Date(data.as_of).toLocaleDateString(undefined, { month:'long', year:'numeric', timeZone });
     $('updated').textContent = 'Last refreshed ' + pacificTime(data.as_of);
     $('frequency').replaceChildren();
+    const kind = $('frequency-kind').value;
     const term = $('frequency-search').value.trim().toLocaleLowerCase(), sort = $('frequency-sort').value;
     const direction = $('frequency-order').value === 'asc' ? 1 : -1;
     const visible = data.tags.filter(tag => tag.name.toLocaleLowerCase().includes(term)).sort((a,b) => {
-      const compared = sort === 'name' ? a.name.localeCompare(b.name) : a.counts[Number(sort)] - b.counts[Number(sort)];
+      const countsA = kind === 'entries' ? a.entry_counts : a.counts;
+      const countsB = kind === 'entries' ? b.entry_counts : b.counts;
+      const compared = sort === 'name' ? a.name.localeCompare(b.name) : countsA[Number(sort)] - countsB[Number(sort)];
       return direction * compared || a.name.localeCompare(b.name);
     });
     const visibleTotals = Array(8).fill(0);
     for (const tag of visible) {
       const row = element('tr'), name = element('th', tag.name); name.scope = 'row'; row.append(name);
-      tag.counts.forEach((count,i) => {
+      const counts = kind === 'entries' ? tag.entry_counts : tag.counts;
+      const previous = previousCounts.get(tag.id);
+      const previousCountsForKind = previous ? (kind === 'entries' ? previous.entry_counts : previous.counts) : null;
+      counts.forEach((count,i) => {
         const cell = element('td', number(count));
-        if (previousCounts.has(tag.id) && previousCounts.get(tag.id)[i] !== count) cell.className = 'count-changed';
+        if (previousCountsForKind && previousCountsForKind[i] !== count) cell.className = 'count-changed';
         row.append(cell); visibleTotals[i] += count;
       });
       $('frequency').append(row);
     }
-    previousCounts = new Map(data.tags.map(tag => [tag.id, tag.counts]));
+    previousCounts = new Map(data.tags.map(tag => [tag.id, { counts: tag.counts, entry_counts: tag.entry_counts }]));
     if (!visible.length) {
       const row = element('tr'), cell = element('td', 'No matching tags.', 'muted');
       cell.colSpan = 9; row.append(cell); $('frequency').append(row);
@@ -185,6 +191,10 @@
     totalLabel.scope = 'row'; total.append(totalLabel);
     visibleTotals.forEach(count => total.append(element('td', number(count))));
     $('frequency-total').replaceChildren(total);
+    $('frequency-caption').textContent = kind === 'entries' ? 'Saved journal entries by current calendar period' : 'Occurrences by current calendar period';
+    $('frequency-note').textContent = (kind === 'entries'
+      ? 'Each column counts saved journal entries in its current Pacific time period, through the last refresh. Clicks are excluded. Archived entries still count. PST / PDT adjusts automatically. Weeks begin Monday. All time includes your entire history.'
+      : 'Each column counts its current Pacific time period, through the last refresh. PST / PDT adjusts automatically. Weeks begin Monday. All time includes your entire history.');
     $('history').replaceChildren();
     const max = Math.max(1, ...data.history.map(bucket => bucket.count));
     for (const bucket of [...data.history].reverse()) {
@@ -352,7 +362,7 @@
   $('refresh').addEventListener('click', () => request({ action:'read' }));
   $('unit').addEventListener('change', () => request({ action:'read' }));
   $('filter-tag').addEventListener('change', () => request({ action:'read' }));
-  for (const id of ['frequency-search', 'frequency-sort', 'frequency-order']) {
+  for (const id of ['frequency-search', 'frequency-kind', 'frequency-sort', 'frequency-order']) {
     $(id).addEventListener(id === 'frequency-search' ? 'input' : 'change', () => { if (data) renderTables(); });
   }
   $('archive-form').addEventListener('submit', event => {
