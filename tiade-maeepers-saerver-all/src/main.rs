@@ -7072,6 +7072,7 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Second Life Administrator Chatlog Console</title>
 <style>
+html { overflow-anchor: none; }
 body { font-family: system-ui, sans-serif; background: #0b0c10; color: #c5c6c7; margin: 0; padding: 0; }
 header { padding: 16px 24px; background: #1f2833; border-bottom: 1px solid #45a29e; }
 h1 { margin: 0; font-size: 20px; color: #66fcf1; }
@@ -7097,6 +7098,7 @@ th { color: #c5c6c7; }
 .recent-message.is-quarantined { border-left-color: #ff6b6b; }
 .recent-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: #c5c6c7; font-size: 11px; }
 .recent-message-text { margin-top: 6px; color: #f4f6f7; line-height: 1.45; overflow-wrap: anywhere; }
+#recentMessageStatus { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
 .message-tag { display: inline-block; padding: 2px 5px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
 .tag-neutral { background: #45a29e22; color: #c5c6c7; }
 .tag-positive { background: #4cd13722; color: #8bea9b; }
@@ -7114,13 +7116,17 @@ th { color: #c5c6c7; }
 .chat-alerts.has-new-chats { background: #134943; border-color: #66fcf1; }
 .chat-alerts button { margin: 4px 8px 4px 0; padding: 6px 10px; cursor: pointer; }
 .chat-alerts [role="status"] { font-weight: 700; color: #fff; }
+.chat-alerts [role="status"], #chatAlertPermission { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-alerts button:disabled { cursor: default; }
+.recent-messages { overflow-anchor: none; }
 @media (max-width: 900px) { header, main { padding-left: 12px; padding-right: 12px; } main { grid-template-columns: minmax(0, 1fr); } .chart { height: 190px; } }
 </style>
 </head>
 <body>
 <aside id="chatAlerts" class="chat-alerts" aria-label="New chat alerts">
   <button id="enableChatAlerts" type="button">Enable sound &amp; notifications</button>
-  <button id="dismissChatAlerts" type="button" hidden>Dismiss new chats</button>
+  <button id="dismissChatAlerts" type="button" disabled>Dismiss new chats</button>
+  <button id="showLatestChats" type="button" disabled>Show latest chats</button>
   <span id="chatAlertMessage" role="status" aria-live="polite">Watching for new chats.</span>
   <div id="chatAlertPermission" class="small">Enable alerts to allow beeps and desktop notifications.</div>
 </aside>
@@ -8126,7 +8132,6 @@ function renderLineChart(canvasId, data, xKey, yKey, color) {
 let heat3dRot = { y: 0.6, x: 0.35 };
 let heat3dNormalized = null;
 let heat3dDragging = false;
-let dashboardRefreshInFlight = false;
 let dashboardResizeObserver = null;
 
 function normalizeHeat3D(data) {
@@ -8193,7 +8198,7 @@ function renderHeat3D(canvasId, data) {
   }
 }
 
-function attachHeat3DRotation(canvasId, data) {
+function attachHeat3DRotation(canvasId) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   let dragging = false;
@@ -8226,7 +8231,7 @@ function attachHeat3DRotation(canvasId, data) {
     heat3dRot.x = Math.max(-1.5, Math.min(1.5, heat3dRot.x + (event.clientY - lastY) * 0.01));
     lastX = event.clientX;
     lastY = event.clientY;
-    renderHeat3D(canvasId, data);
+    renderHeat3D(canvasId, heat3dData);
   });
 }
 
@@ -8243,60 +8248,97 @@ function recentTagClass(tag) {
   return classes[tag] || 'tag-neutral';
 }
 
-function captureRecentScrollState(element) {
-  if (!element) return null;
-  return {
-    scrollTop: element.scrollTop,
-    hadContent: element.childElementCount > 0,
-  };
+// Mutate only while idle, and anchor to content rather than stale page coordinates.
+let interactionDeadline = 0;
+let interactionTimer = null;
+let pointerDown = false;
+let pendingDashboard = null;
+let pendingRecentMessages = null;
+let renderedRecentMessages = null;
+let lastDashboardHtml = null;
+let refreshInFlight = false;
+let refreshTimer = null;
+
+function isReadingInteractionActive() {
+  return document.hidden || pointerDown || heat3dDragging
+    || Date.now() < interactionDeadline
+    || window.getSelection()?.type === 'Range';
 }
 
-function restoreRecentScrollState(element, state) {
-  if (!element || !state || !state.hadContent) return;
-  const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
-  element.scrollTop = Math.max(0, Math.min(state.scrollTop, maxScrollTop));
+function markReadingInteraction() {
+  interactionDeadline = Date.now() + 700;
+  clearTimeout(interactionTimer);
+  interactionTimer = setTimeout(applyPendingUpdates, 750);
 }
 
-function markRecentInteraction() {
-  recentInteractionDeadline = Math.max(recentInteractionDeadline, Date.now() + 400);
+function preserveViewport(update) {
+  const top = document.getElementById('chatAlerts').getBoundingClientRect().bottom;
+  const sections = [...document.querySelectorAll('#chatlogDashboard > section')];
+  const section = sections.find(node => {
+    const rect = node.getBoundingClientRect();
+    return rect.bottom > top && rect.top < window.innerHeight;
+  });
+  // Prefer a visible row/card to the section so growth within a tall table is safe too.
+  const candidates = section ? [...section.querySelectorAll('tr, .kpi, h2, .chart, #recentMessages')] : [];
+  const anchor = candidates.find(node => node.getBoundingClientRect().bottom > top) || section;
+  const index = candidates.indexOf(anchor);
+  const label = anchor?.firstElementChild?.textContent;
+  const y = anchor?.getBoundingClientRect().top;
+  const wasAtTop = window.scrollY <= 1;
+  update();
+  if (!anchor || wasAtTop) return;
+  const nextCandidates = [...section.querySelectorAll('tr, .kpi, h2, .chart, #recentMessages')];
+  const nextAnchor = anchor.isConnected ? anchor
+    : nextCandidates.find(node => node.tagName === anchor.tagName && label && node.firstElementChild?.textContent === label)
+      || nextCandidates[index] || section;
+  const delta = nextAnchor.getBoundingClientRect().top - y;
+  if (Math.abs(delta) > 0.5) window.scrollBy({ top: delta, left: 0, behavior: 'instant' });
 }
 
-function attachRecentMessagesInteractionTracking() {
-  const root = document.getElementById('recentMessages');
-  if (!root || root.dataset.recentScrollGuardAttached === '1') return;
-  root.dataset.recentScrollGuardAttached = '1';
-
-  root.addEventListener('wheel', markRecentInteraction, { passive: true });
-  root.addEventListener('pointerdown', markRecentInteraction, { passive: true });
-  root.addEventListener('touchstart', markRecentInteraction, { passive: true });
-  root.addEventListener('scroll', markRecentInteraction, { passive: true });
-}
-
-function shouldRestoreRecentScroll(mandatory) {
-  if (mandatory) return true;
-  return Date.now() >= recentInteractionDeadline;
+function applyPendingUpdates() {
+  if (isReadingInteractionActive()) return;
+  if (pendingDashboard) applyDashboardUpdate();
+  if (pendingRecentMessages) renderRecentMessages(pendingRecentMessages);
 }
 
 function renderRecentMessages(messages) {
   const root = document.getElementById('recentMessages');
   if (!root) return;
 
-  const restoreMandatory = pendingRecentScrollRestore !== null;
-  const scrollState = pendingRecentScrollRestore || captureRecentScrollState(root);
-  pendingRecentScrollRestore = null;
-
-  root.replaceChildren();
+  const signature = JSON.stringify(messages);
+  if (signature === renderedRecentMessages) {
+    pendingRecentMessages = null;
+    document.getElementById('showLatestChats').disabled = root.scrollTop <= 1;
+    return;
+  }
+  const oldItems = [...root.children];
+  const anchor = oldItems.find(item => item.getBoundingClientRect().bottom > root.getBoundingClientRect().top);
+  const anchorOffset = anchor ? anchor.getBoundingClientRect().top - root.getBoundingClientRect().top : 0;
+  const followingLatest = root.scrollTop <= 1;
+  const available = new Map();
+  for (const item of oldItems) {
+    const key = item.dataset.messageKey;
+    if (!available.has(key)) available.set(key, []);
+    available.get(key).push(item);
+  }
+  const nextItems = [];
 
   if (!messages.length) {
     const empty = document.createElement('div');
     empty.className = 'small';
     empty.textContent = 'No messages yet.';
-    root.append(empty);
-    return;
+    nextItems.push(empty);
   }
 
   for (const message of messages) {
+    const key = JSON.stringify(message);
+    const existing = available.get(key)?.shift();
+    if (existing) {
+      nextItems.push(existing);
+      continue;
+    }
     const item = document.createElement('article');
+    item.dataset.messageKey = key;
     item.className = 'recent-message';
     if (message.quarantined) item.classList.add('is-quarantined');
 
@@ -8332,22 +8374,35 @@ function renderRecentMessages(messages) {
       item.append(terms);
     }
 
-    root.append(item);
+    nextItems.push(item);
   }
 
-  if (shouldRestoreRecentScroll(restoreMandatory)) {
-    restoreRecentScrollState(root, scrollState);
+  // If the reader's message has aged out of the server's last 50, keep their
+  // snapshot until they choose "Show latest chats" or scroll back to the top.
+  if (!followingLatest && anchor && !nextItems.includes(anchor)) {
+    pendingRecentMessages = messages;
+    document.getElementById('showLatestChats').disabled = false;
+    return;
   }
+  preserveViewport(() => {
+    // Reconcile in place: unchanged messages keep their DOM nodes and state.
+    nextItems.forEach((item, index) => {
+      if (root.children[index] !== item) root.insertBefore(item, root.children[index] || null);
+    });
+    while (root.children.length > nextItems.length) root.lastElementChild.remove();
+    if (followingLatest) root.scrollTop = 0;
+    else if (anchor) root.scrollTop += anchor.getBoundingClientRect().top - root.getBoundingClientRect().top - anchorOffset;
+  });
+  renderedRecentMessages = signature;
+  pendingRecentMessages = null;
+  document.getElementById('showLatestChats').disabled = followingLatest;
 }
 
 // Keep alert state outside the dashboard fragments replaced during refresh.
 let lastChatTotal = JSON.parse(document.getElementById('chatlogDashboardData').textContent).total_messages;
 let unreadChats = 0;
-let recentRefreshInFlight = false;
 let chatAudio = null;
 let chatNotification = null;
-let pendingRecentScrollRestore = null;
-let recentInteractionDeadline = 0;
 const chatPageTitle = document.title;
 
 async function enableChatAlerts() {
@@ -8408,7 +8463,7 @@ function detectNewChats(total) {
   const message = `${unreadChats} new chat ${unreadChats === 1 ? 'line' : 'lines'} received.`;
   document.getElementById('chatAlertMessage').textContent = message;
   document.getElementById('chatAlerts').classList.add('has-new-chats');
-  document.getElementById('dismissChatAlerts').hidden = false;
+  document.getElementById('dismissChatAlerts').disabled = false;
   document.title = `(${unreadChats} new chats) ${chatPageTitle}`;
   void beepForNewChats();
   try {
@@ -8433,32 +8488,31 @@ function dismissChatAlerts() {
   document.title = chatPageTitle;
   document.getElementById('chatAlertMessage').textContent = 'Watching for new chats.';
   document.getElementById('chatAlerts').classList.remove('has-new-chats');
-  document.getElementById('dismissChatAlerts').hidden = true;
+  document.getElementById('dismissChatAlerts').disabled = true;
   if (chatNotification) chatNotification.close();
   chatNotification = null;
 }
 
 async function refreshRecentMessages() {
-  if (recentRefreshInFlight) return;
-  recentRefreshInFlight = true;
   try {
-    const response = await fetch('/chatlog?format=recent', { cache: 'no-store' });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const payload = await response.json();
-    renderRecentMessages(payload.messages || []);
+    const payload = JSON.parse(await fetchChatlog('/chatlog?format=recent'));
+    pendingRecentMessages = payload.messages || [];
+    document.getElementById('showLatestChats').disabled = JSON.stringify(pendingRecentMessages) === renderedRecentMessages
+      && document.getElementById('recentMessages').scrollTop <= 1;
+    applyPendingUpdates();
     detectNewChats(payload.total_messages);
     const status = document.getElementById('recentMessageStatus');
     if (status) {
       const refreshedAt = new Date(payload.refreshed_at);
-      status.textContent = Number.isNaN(refreshedAt.valueOf())
+      status.textContent = pendingRecentMessages
+        ? 'Updates waiting; reading position held'
+        : Number.isNaN(refreshedAt.valueOf())
         ? 'Updated'
         : `Updated ${refreshedAt.toLocaleTimeString()}`;
     }
   } catch (_) {
     const status = document.getElementById('recentMessageStatus');
     if (status) status.textContent = 'Refresh unavailable';
-  } finally {
-    recentRefreshInFlight = false;
   }
 }
 
@@ -8492,64 +8546,114 @@ function observeDashboardSize() {
 function initializeDashboard() {
   attachChartRangeControl();
   renderCharts();
-  attachHeat3DRotation('heat3dCanvas', heat3dData);
+  attachHeat3DRotation('heat3dCanvas');
   observeDashboardSize();
-  attachRecentMessagesInteractionTracking();
-  refreshRecentMessages();
 }
 
-async function refreshDashboard() {
-  if (
-    dashboardRefreshInFlight
-    || document.hidden
-    || heat3dDragging
-    || window.getSelection().type === 'Range'
-  ) return;
-
-  dashboardRefreshInFlight = true;
+async function fetchChatlog(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
   try {
-    const response = await fetch('/chatlog', { cache: 'no-store' });
+    const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    // Read the body before releasing the timeout, including stalled responses.
+    return await response.text();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
-    const nextDocument = new DOMParser().parseFromString(await response.text(), 'text/html');
-    const nextHeader = nextDocument.getElementById('chatlogHeader');
-    const nextDashboard = nextDocument.getElementById('chatlogDashboard');
-    const nextData = nextDocument.getElementById('chatlogDashboardData');
-    if (!nextHeader || !nextDashboard || !nextData) return;
-
-    const nextDashboardData = JSON.parse(nextData.textContent);
-    const scrollX = window.scrollX;
-    const scrollY = window.scrollY;
-    const recentScrollState = captureRecentScrollState(document.getElementById('recentMessages'));
+function applyDashboardUpdate() {
+  const { nextHeader, nextDashboard, nextData, html } = pendingDashboard;
+  const nextDashboardData = JSON.parse(nextData.textContent);
+  preserveViewport(() => {
+    const headerStats = document.querySelector('#chatlogHeader > .small');
+    const nextStats = nextHeader.querySelector('.small');
+    if (headerStats.textContent !== nextStats.textContent) headerStats.textContent = nextStats.textContent;
+    const sections = [...document.querySelectorAll('#chatlogDashboard > section')];
+    for (const nextSection of nextDashboard.children) {
+      const title = nextSection.querySelector('h2')?.textContent;
+      const section = sections.find(node => node.querySelector('h2')?.textContent === title);
+      // Interactive elements stay mounted; their data is updated separately.
+      if (!section || section.querySelector('canvas, select, #recentMessages')) continue;
+      if (section.innerHTML !== nextSection.innerHTML) section.replaceChildren(...nextSection.childNodes);
+    }
+  });
+  if (document.getElementById('chatlogDashboardData').textContent !== nextData.textContent) {
     timelineData = nextDashboardData.timeline || [];
     sentimentData = nextDashboardData.sentiment || [];
     rocData = nextDashboardData.rate_of_change || [];
     heat3dData = nextDashboardData.heatmap || [];
     heat3dNormalized = null;
-
-    document.getElementById('chatlogHeader').replaceWith(nextHeader);
-    document.getElementById('chatlogDashboard').replaceWith(nextDashboard);
     document.getElementById('chatlogDashboardData').textContent = nextData.textContent;
-    pendingRecentScrollRestore = recentScrollState;
-    initializeDashboard();
-    window.requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
+    renderCharts();
+  }
+  lastDashboardHtml = html;
+  pendingDashboard = null;
+}
+
+async function refreshDashboard() {
+  if (document.hidden) return;
+  try {
+    const html = await fetchChatlog('/chatlog');
+    if (html === lastDashboardHtml || html === pendingDashboard?.html) return;
+    const nextDocument = new DOMParser().parseFromString(html, 'text/html');
+    const nextHeader = nextDocument.getElementById('chatlogHeader');
+    const nextDashboard = nextDocument.getElementById('chatlogDashboard');
+    const nextData = nextDocument.getElementById('chatlogDashboardData');
+    if (!nextHeader || !nextDashboard || !nextData) throw new Error('Incomplete dashboard');
+    JSON.parse(nextData.textContent);
+    pendingDashboard = { nextHeader, nextDashboard, nextData, html };
+    // Recheck interaction state after the request, not only before it starts.
+    applyPendingUpdates();
   } catch (_) {
-    // Keep the last successful dashboard view if a background refresh fails.
+    // Keep the last successful dashboard view and retry on the next poll.
+  }
+}
+
+async function pollChatlog() {
+  if (refreshInFlight) return;
+  clearTimeout(refreshTimer);
+  refreshInFlight = true;
+  try {
+    await refreshRecentMessages();
+    await refreshDashboard();
   } finally {
-    dashboardRefreshInFlight = false;
+    refreshInFlight = false;
+    refreshTimer = setTimeout(pollChatlog, 5000);
   }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('enableChatAlerts').addEventListener('click', enableChatAlerts);
   document.getElementById('dismissChatAlerts').addEventListener('click', dismissChatAlerts);
+  document.getElementById('showLatestChats').addEventListener('click', () => {
+    const root = document.getElementById('recentMessages');
+    root.scrollTop = 0;
+    interactionDeadline = 0;
+    applyPendingUpdates();
+    root.scrollIntoView({ block: 'center' });
+  });
+  document.getElementById('recentMessages').addEventListener('scroll', () => {
+    document.getElementById('showLatestChats').disabled = !pendingRecentMessages
+      && document.getElementById('recentMessages').scrollTop <= 1;
+  }, { passive: true });
+  for (const event of ['wheel', 'touchmove', 'keydown', 'scroll']) {
+    document.addEventListener(event, markReadingInteraction, { passive: true, capture: true });
+  }
+  document.addEventListener('pointerdown', () => { pointerDown = true; markReadingInteraction(); }, { passive: true });
+  for (const event of ['pointerup', 'pointercancel']) {
+    document.addEventListener(event, () => { pointerDown = false; markReadingInteraction(); }, { passive: true });
+  }
+  window.addEventListener('blur', () => { pointerDown = false; });
+  document.addEventListener('selectionchange', markReadingInteraction);
+  document.addEventListener('focusout', markReadingInteraction);
   initializeDashboard();
   if (!('ResizeObserver' in window)) window.addEventListener('resize', renderCharts);
-  window.addEventListener('visibilitychange', () => {
-    if (!document.hidden) refreshDashboard();
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) { applyPendingUpdates(); pollChatlog(); }
   });
-  window.setInterval(refreshRecentMessages, 5000);
-  window.setInterval(refreshDashboard, 5000);
+  pollChatlog();
 });
 </script>
 </body>
