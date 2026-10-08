@@ -6541,6 +6541,7 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
           .collect();
         let payload = serde_json::json!({
           "refreshed_at": chrono::Utc::now().to_rfc3339(),
+          "total_messages": messages_vec.len(),
           "messages": messages,
         });
         let body = serde_json::to_string(&payload).map_err(|error| {
@@ -6971,6 +6972,7 @@ app.at("/chatlog").get(|req: tide::Request<AppState>| async move {
       .map(|(x, y, z)| serde_json::json!({ "x": x, "y": y, "z": z }))
       .collect();
     let dashboard_data_json = json_for_script(&serde_json::json!({
+        "total_messages": total_messages,
         "timeline": timeline_data,
         "sentiment": sentiment_data,
         "rate_of_change": roc_data,
@@ -7108,10 +7110,20 @@ th { color: #c5c6c7; }
 .kpi span { display: block; color: #c5c6c7; font-size: 11px; }
 .kpi strong { display: block; margin-top: 4px; color: #66fcf1; font-size: 20px; }
 .recommendations { margin: 0; padding-left: 18px; line-height: 1.5; }
+.chat-alerts { position: sticky; top: 0; z-index: 10; padding: 12px 24px; background: #1f2833; border-bottom: 2px solid #45a29e; }
+.chat-alerts.has-new-chats { background: #134943; border-color: #66fcf1; }
+.chat-alerts button { margin: 4px 8px 4px 0; padding: 6px 10px; cursor: pointer; }
+.chat-alerts [role="status"] { font-weight: 700; color: #fff; }
 @media (max-width: 900px) { header, main { padding-left: 12px; padding-right: 12px; } main { grid-template-columns: minmax(0, 1fr); } .chart { height: 190px; } }
 </style>
 </head>
 <body>
+<aside id="chatAlerts" class="chat-alerts" aria-label="New chat alerts">
+  <button id="enableChatAlerts" type="button">Enable sound &amp; notifications</button>
+  <button id="dismissChatAlerts" type="button" hidden>Dismiss new chats</button>
+  <span id="chatAlertMessage" role="status" aria-live="polite">Watching for new chats.</span>
+  <div id="chatAlertPermission" class="small">Enable alerts to allow beeps and desktop notifications.</div>
+</aside>
 <header id="chatlogHeader">
   <h1>Second Life Administrator Chatlog Console</h1>
   <div class="small">In-memory partitioned log store &mdash; Parsed objects: "#);
@@ -8231,9 +8243,48 @@ function recentTagClass(tag) {
   return classes[tag] || 'tag-neutral';
 }
 
+function captureRecentScrollState(element) {
+  if (!element) return null;
+  return {
+    scrollTop: element.scrollTop,
+    hadContent: element.childElementCount > 0,
+  };
+}
+
+function restoreRecentScrollState(element, state) {
+  if (!element || !state || !state.hadContent) return;
+  const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+  element.scrollTop = Math.max(0, Math.min(state.scrollTop, maxScrollTop));
+}
+
+function markRecentInteraction() {
+  recentInteractionDeadline = Math.max(recentInteractionDeadline, Date.now() + 400);
+}
+
+function attachRecentMessagesInteractionTracking() {
+  const root = document.getElementById('recentMessages');
+  if (!root || root.dataset.recentScrollGuardAttached === '1') return;
+  root.dataset.recentScrollGuardAttached = '1';
+
+  root.addEventListener('wheel', markRecentInteraction, { passive: true });
+  root.addEventListener('pointerdown', markRecentInteraction, { passive: true });
+  root.addEventListener('touchstart', markRecentInteraction, { passive: true });
+  root.addEventListener('scroll', markRecentInteraction, { passive: true });
+}
+
+function shouldRestoreRecentScroll(mandatory) {
+  if (mandatory) return true;
+  return Date.now() >= recentInteractionDeadline;
+}
+
 function renderRecentMessages(messages) {
   const root = document.getElementById('recentMessages');
   if (!root) return;
+
+  const restoreMandatory = pendingRecentScrollRestore !== null;
+  const scrollState = pendingRecentScrollRestore || captureRecentScrollState(root);
+  pendingRecentScrollRestore = null;
+
   root.replaceChildren();
 
   if (!messages.length) {
@@ -8283,15 +8334,120 @@ function renderRecentMessages(messages) {
 
     root.append(item);
   }
+
+  if (shouldRestoreRecentScroll(restoreMandatory)) {
+    restoreRecentScrollState(root, scrollState);
+  }
+}
+
+// Keep alert state outside the dashboard fragments replaced during refresh.
+let lastChatTotal = JSON.parse(document.getElementById('chatlogDashboardData').textContent).total_messages;
+let unreadChats = 0;
+let recentRefreshInFlight = false;
+let chatAudio = null;
+let chatNotification = null;
+let pendingRecentScrollRestore = null;
+let recentInteractionDeadline = 0;
+const chatPageTitle = document.title;
+
+async function enableChatAlerts() {
+  const permissionStatus = document.getElementById('chatAlertPermission');
+  // Start both requests directly from the click, before awaiting either one.
+  let soundReady = Promise.resolve(false);
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (AudioContext) {
+      if (!chatAudio || chatAudio.state === 'closed') chatAudio = new AudioContext();
+      soundReady = chatAudio.resume().then(() => chatAudio.state === 'running', () => false);
+    }
+  } catch (_) { /* Visual alerts remain available when audio is blocked. */ }
+  let notificationPermission = Promise.resolve('unavailable');
+  try {
+    if ('Notification' in window && window.isSecureContext) {
+      notificationPermission = Notification.permission === 'default'
+        ? Notification.requestPermission().catch(() => 'unavailable')
+        : Promise.resolve(Notification.permission);
+    }
+  } catch (_) { /* Some browsers do not support desktop notifications. */ }
+  const [sound, permission] = await Promise.all([soundReady, notificationPermission]);
+  permissionStatus.textContent = `${sound ? 'Sound enabled.' : 'Sound unavailable; click to retry.'} ${
+    permission === 'granted' ? 'Desktop notifications enabled.'
+      : permission === 'denied' ? 'Desktop notifications blocked in browser settings.'
+      : 'Desktop notifications unavailable or not allowed.'
+  } Page alerts are active.`;
+}
+
+async function beepForNewChats() {
+  if (!chatAudio || chatAudio.state === 'closed') return;
+  try {
+    if (chatAudio.state !== 'running') await chatAudio.resume();
+    if (chatAudio.state !== 'running') return;
+    const oscillator = chatAudio.createOscillator();
+    const gain = chatAudio.createGain();
+    const start = chatAudio.currentTime;
+    oscillator.frequency.setValueAtTime(880, start);
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(0.15, start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.25);
+    oscillator.connect(gain);
+    gain.connect(chatAudio.destination);
+    oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
+    oscillator.start(start);
+    oscillator.stop(start + 0.3);
+  } catch (_) { /* An audio failure must not interrupt chat refresh. */ }
+}
+
+function detectNewChats(total) {
+  if (!Number.isSafeInteger(total) || total < 0) return;
+  const previousTotal = lastChatTotal;
+  // A smaller total means the log was reset. Establish a fresh baseline.
+  lastChatTotal = total;
+  if (!Number.isSafeInteger(previousTotal) || total <= previousTotal) return;
+  const count = total - previousTotal;
+  unreadChats += count;
+  const message = `${unreadChats} new chat ${unreadChats === 1 ? 'line' : 'lines'} received.`;
+  document.getElementById('chatAlertMessage').textContent = message;
+  document.getElementById('chatAlerts').classList.add('has-new-chats');
+  document.getElementById('dismissChatAlerts').hidden = false;
+  document.title = `(${unreadChats} new chats) ${chatPageTitle}`;
+  void beepForNewChats();
+  try {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      if (chatNotification) chatNotification.close();
+      chatNotification = new Notification('New Second Life chats', {
+        body: `${count} new chat ${count === 1 ? 'line is' : 'lines are'} available in the chatlog.`,
+        tag: 'second-life-new-chats',
+        silent: true,
+      });
+      chatNotification.onclick = () => {
+        window.focus();
+        document.getElementById('recentMessages')?.scrollIntoView({ block: 'center' });
+        dismissChatAlerts();
+      };
+    }
+  } catch (_) { /* Keep the page banner if desktop notifications fail. */ }
+}
+
+function dismissChatAlerts() {
+  unreadChats = 0;
+  document.title = chatPageTitle;
+  document.getElementById('chatAlertMessage').textContent = 'Watching for new chats.';
+  document.getElementById('chatAlerts').classList.remove('has-new-chats');
+  document.getElementById('dismissChatAlerts').hidden = true;
+  if (chatNotification) chatNotification.close();
+  chatNotification = null;
 }
 
 async function refreshRecentMessages() {
-  const status = document.getElementById('recentMessageStatus');
+  if (recentRefreshInFlight) return;
+  recentRefreshInFlight = true;
   try {
     const response = await fetch('/chatlog?format=recent', { cache: 'no-store' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     renderRecentMessages(payload.messages || []);
+    detectNewChats(payload.total_messages);
+    const status = document.getElementById('recentMessageStatus');
     if (status) {
       const refreshedAt = new Date(payload.refreshed_at);
       status.textContent = Number.isNaN(refreshedAt.valueOf())
@@ -8299,7 +8455,10 @@ async function refreshRecentMessages() {
         : `Updated ${refreshedAt.toLocaleTimeString()}`;
     }
   } catch (_) {
+    const status = document.getElementById('recentMessageStatus');
     if (status) status.textContent = 'Refresh unavailable';
+  } finally {
+    recentRefreshInFlight = false;
   }
 }
 
@@ -8335,6 +8494,7 @@ function initializeDashboard() {
   renderCharts();
   attachHeat3DRotation('heat3dCanvas', heat3dData);
   observeDashboardSize();
+  attachRecentMessagesInteractionTracking();
   refreshRecentMessages();
 }
 
@@ -8360,6 +8520,7 @@ async function refreshDashboard() {
     const nextDashboardData = JSON.parse(nextData.textContent);
     const scrollX = window.scrollX;
     const scrollY = window.scrollY;
+    const recentScrollState = captureRecentScrollState(document.getElementById('recentMessages'));
     timelineData = nextDashboardData.timeline || [];
     sentimentData = nextDashboardData.sentiment || [];
     rocData = nextDashboardData.rate_of_change || [];
@@ -8369,6 +8530,7 @@ async function refreshDashboard() {
     document.getElementById('chatlogHeader').replaceWith(nextHeader);
     document.getElementById('chatlogDashboard').replaceWith(nextDashboard);
     document.getElementById('chatlogDashboardData').textContent = nextData.textContent;
+    pendingRecentScrollRestore = recentScrollState;
     initializeDashboard();
     window.requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
   } catch (_) {
@@ -8379,6 +8541,8 @@ async function refreshDashboard() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('enableChatAlerts').addEventListener('click', enableChatAlerts);
+  document.getElementById('dismissChatAlerts').addEventListener('click', dismissChatAlerts);
   initializeDashboard();
   if (!('ResizeObserver' in window)) window.addEventListener('resize', renderCharts);
   window.addEventListener('visibilitychange', () => {
