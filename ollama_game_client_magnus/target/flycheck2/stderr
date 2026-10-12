@@ -1,4 +1,2 @@
-error: process didn't exit successfully: `rustc -vV` (exit status: 1)
---- stderr
-error: the 'rustc' binary, normally provided by the 'rustc' component, is not applicable to the 'nightly-x86_64-unknown-linux-gnu' toolchain
-
+    Blocking waiting for file lock on package cache
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.66s
