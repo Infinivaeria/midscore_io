@@ -361,7 +361,7 @@ const { response: reply } = await response.json();
 
 ### WebAssembly Client
 
-`wasm_client` compiles to a browser ES module and is served by the existing static-assets route. `./start.sh` installs the Rust WebAssembly target and `wasm-bindgen-cli` on first use, builds both artifacts, and starts the release server. `./start-with-wasm.sh` remains as a compatibility alias for `./start.sh`.
+`wasm_client` compiles to a browser ES module and is served by the existing static-assets route. [start.sh](./start.sh) installs the Rust WebAssembly target and `wasm-bindgen-cli` on first use, builds both artifacts, and restarts the release server. [start-with-wasm.sh](./start-with-wasm.sh) remains as a compatibility alias for the same build-and-restart flow.
 
 ```js
 import init, { chat, game_turn } from '/assets/wasm/ollama_game_client.js';
@@ -457,20 +457,21 @@ const { response: reply } = await response.json();
 cargo run
 ```
 
-For the TLS production server, build and start the release binary:
+To build the browser WebAssembly client and TLS release server, then start or restart the server:
 
 ```bash
-cargo build --release
 ./start.sh
 ```
 
-To build and serve the browser WebAssembly client with the server instead:
+The compatibility command runs the same build-and-restart flow:
 
 ```bash
 ./start-with-wasm.sh
 ```
 
-Use `./stop-server.sh` to send the managed process `SIGTERM`.
+Both commands finish building before stopping the existing server, so a failed build leaves it running. They launch the replacement in the background, record its PID in `server.pid`, and append output to `server.log`. An immediate startup failure returns an error.
+
+Use [stop.sh](./stop.sh) (or [stop-server.sh](./stop-server.sh)) to stop the managed server. Shutdown sends `SIGTERM`, waits up to 10 seconds, and then uses `SIGKILL` if needed. Restart waits for shutdown to complete before launching the new process.
 
 ## Verify
 

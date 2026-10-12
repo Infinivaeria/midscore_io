@@ -108,11 +108,11 @@ For the normal project scripts:
 
 ```sh
 ./start.sh
-./stop-server.sh
+./stop.sh
 ```
 
-`start.sh` also builds and serves the browser WebAssembly client.
-`start-with-wasm.sh` is retained as a compatibility alias for `start.sh`.
+[start.sh](./start.sh) builds the browser WebAssembly client and release server, then stops the existing managed server and launches its replacement. A failed build leaves the current server running.
+[start-with-wasm.sh](./start-with-wasm.sh) runs the same flow. [stop.sh](./stop.sh) delegates to [stop-server.sh](./stop-server.sh), which waits for shutdown and sends `SIGKILL` if the server does not exit within 10 seconds.
 The exact certificate and process permissions still apply.
 
 ### Release checklist
