@@ -48408,14 +48408,38 @@
         "body": "{\"avatar_id\":\"420f7e25-528f-b3e5-7b4d-1527b3e7b944\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Japan Hiroba\",\"timestamp\":1791767898,\"x_pos\":62.283300,\"y_pos\":111.083000,\"z_pos\":24.235610}",
         "received_at": "2026-10-12T01:18:19.167943623+00:00"
       },
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
+      {
+        "body": "{\"avatar_id\":\"d7109e6a-83f3-ab72-1c2a-8932568323c7\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1791873161,\"x_pos\":73.994940,\"y_pos\":172.990900,\"z_pos\":25.912800}",
+        "received_at": "2026-10-13T06:32:41.573892514+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"5e585bd3-797d-c184-552b-42400eafa137\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1791873305,\"x_pos\":73.994820,\"y_pos\":172.990800,\"z_pos\":26.001050}",
+        "received_at": "2026-10-13T06:35:05.832238349+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"c82aa91d-915a-4c21-a587-0df7617aa42e\",\"avatar_name\":\"Aiko Toki\",\"captured_by\":\"aritywolf\",\"message\":\"kings\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1791875543,\"x_pos\":73.994850,\"y_pos\":172.990900,\"z_pos\":25.912810}",
+        "received_at": "2026-10-13T07:12:24.032590695+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"c82aa91d-915a-4c21-a587-0df7617aa42e\",\"avatar_name\":\"Aiko Toki\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"kings\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1791875543,\"x_pos\":72.263880,\"y_pos\":174.322000,\"z_pos\":25.913680}",
+        "received_at": "2026-10-13T07:12:24.373310999+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"c82aa91d-915a-4c21-a587-0df7617aa42e\",\"avatar_name\":\"Aiko Toki\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"Hello!\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1791875543,\"x_pos\":72.263880,\"y_pos\":174.322000,\"z_pos\":25.913680}",
+        "received_at": "2026-10-13T07:12:25.063592830+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"c82aa91d-915a-4c21-a587-0df7617aa42e\",\"avatar_name\":\"Aiko Toki\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"XD\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1791875544,\"x_pos\":72.263880,\"y_pos\":174.322000,\"z_pos\":25.913680}",
+        "received_at": "2026-10-13T07:12:25.674667240+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"c82aa91d-915a-4c21-a587-0df7617aa42e\",\"avatar_name\":\"Aiko Toki\",\"captured_by\":\"aritywolf\",\"message\":\"Hello!\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1791875543,\"x_pos\":73.994850,\"y_pos\":172.990900,\"z_pos\":25.912810}",
+        "received_at": "2026-10-13T07:12:26.378580558+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"c82aa91d-915a-4c21-a587-0df7617aa42e\",\"avatar_name\":\"Aiko Toki\",\"captured_by\":\"aritywolf\",\"message\":\"XD\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1791875544,\"x_pos\":73.994850,\"y_pos\":172.990900,\"z_pos\":25.912810}",
+        "received_at": "2026-10-13T07:12:26.777027890+00:00"
+      },
       {},
       {},
       {},
@@ -48510,7 +48534,7 @@
       {}
     ]
   },
-  "chatlog_revision": 9629,
+  "chatlog_revision": 9637,
   "variable_entries": {
     "db_size": 1,
     "partition_amount_and_offset": 64,
