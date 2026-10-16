@@ -1,2 +1,70 @@
     Blocking waiting for file lock on package cache
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.39s
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling libc v0.2.189
+   Compiling proc-macro2 v1.0.107
+   Compiling memchr v2.8.3
+   Compiling quote v1.0.47
+   Compiling glob v0.3.4
+   Compiling unicode-ident v1.0.24
+   Compiling regex-syntax v0.8.11
+   Compiling cfg-if v1.0.4
+   Compiling minimal-lexical v0.2.1
+   Compiling shlex v2.0.1
+   Compiling bindgen v0.72.1
+   Compiling either v1.18.0
+   Compiling libloading v0.8.9
+   Compiling find-msvc-tools v0.1.12
+   Compiling itertools v0.13.0
+   Compiling shlex v1.3.0
+   Compiling bitflags v2.13.1
+   Compiling rustc-hash v2.1.3
+   Compiling cc v1.4.5
+   Compiling shell-words v1.1.1
+   Compiling lazy_static v1.5.0
+   Compiling clang-sys v1.9.1
+    Checking zeroize v1.9.0
+   Compiling serde_core v1.0.229
+   Compiling rb-sys-env v0.2.3
+    Checking rustls-pki-types v1.15.1
+   Compiling zmij v1.0.23
+    Checking untrusted v0.9.0
+   Compiling crc32fast v1.5.1
+   Compiling httparse v1.10.1
+    Checking itoa v1.0.18
+   Compiling aho-corasick v1.1.5
+   Compiling nom v7.1.3
+   Compiling serde_json v1.0.151
+    Checking simd-adler32 v0.3.10
+   Compiling syn v2.0.119
+    Checking log v0.4.34
+    Checking bytes v1.12.1
+   Compiling rustls v0.23.44
+   Compiling serde v1.0.229
+    Checking adler2 v2.0.1
+   Compiling magnus v0.10.0 (https://github.com/matsadler/magnus?rev=5056dd0dba225b10b8303a9d8097e2d8a6349521#5056dd0d)
+    Checking miniz_oxide v0.9.1
+    Checking getrandom v0.2.17
+    Checking once_cell v1.21.4
+    Checking base64 v0.23.1
+    Checking subtle v2.6.1
+    Checking http v1.5.0
+    Checking webpki-roots v1.0.9
+   Compiling seq-macro v0.3.6
+    Checking percent-encoding v2.3.2
+    Checking utf8-zero v0.8.1
+   Compiling ring v0.17.14
+    Checking flate2 v1.1.10
+    Checking urlencoding v2.1.3
+    Checking ureq-proto v0.6.2
+   Compiling regex-automata v0.4.18
+   Compiling cexpr v0.6.0
+   Compiling regex v1.13.1
+   Compiling magnus-macros v0.9.1 (https://github.com/matsadler/magnus?rev=5056dd0dba225b10b8303a9d8097e2d8a6349521#5056dd0d)
+    Checking rustls-webpki v0.103.15
+    Checking ureq v3.4.1
+   Compiling rb-sys-build v0.9.130
+   Compiling rb-sys v0.9.130
+    Checking ollama_game_client_magnus v3.0.0 (/root/midscore_io/ollama_game_client_magnus)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 34s
