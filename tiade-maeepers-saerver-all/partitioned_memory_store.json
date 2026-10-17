@@ -63580,8 +63580,14 @@
         "body": "{\"avatar_id\":\"c48ce44e-21d2-44b3-9e3f-ad5d9e7a7876\",\"avatar_name\":\"pratkvarn Resident\",\"captured_by\":\"aritywolf\",\"message\":\"Just back at the same Natoma spot I was sitting on before\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792246435,\"x_pos\":72.743980,\"y_pos\":170.824000,\"z_pos\":25.913910}",
         "received_at": "2026-10-17T14:13:55.795290399+00:00"
       },
-      {},
-      {},
+      {
+        "body": "{\"avatar_id\":\"c48ce44e-21d2-44b3-9e3f-ad5d9e7a7876\",\"avatar_name\":\"pratkvarn Resident\",\"captured_by\":\"aritywolf\",\"message\":\"Sitting on Pumpkin now!\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792246774,\"x_pos\":72.743980,\"y_pos\":170.824000,\"z_pos\":25.913910}",
+        "received_at": "2026-10-17T14:19:34.501855877+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"c48ce44e-21d2-44b3-9e3f-ad5d9e7a7876\",\"avatar_name\":\"pratkvarn Resident\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"Sitting on Pumpkin now!\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792246774,\"x_pos\":72.515240,\"y_pos\":171.684000,\"z_pos\":25.910150}",
+        "received_at": "2026-10-17T14:19:35.021250198+00:00"
+      },
       {},
       {},
       {},
@@ -63741,7 +63747,7 @@
       {}
     ]
   },
-  "chatlog_revision": 12642,
+  "chatlog_revision": 12644,
   "variable_entries": {
     "db_size": 1,
     "partition_amount_and_offset": 64,
