@@ -1,6 +1,2 @@
     Blocking waiting for file lock on package cache
-    Blocking waiting for file lock on package cache
-    Blocking waiting for file lock on package cache
-    Blocking waiting for file lock on package cache
-    Checking midscore-wasm-client v0.1.0 (/root/midscore_io/wasm-client)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.07s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.16s
