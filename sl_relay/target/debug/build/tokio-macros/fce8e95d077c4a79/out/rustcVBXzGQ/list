@@ -1,0 +1,8 @@
+{
+  global:
+    __rustc_proc_macro_decls_5bd3909e0b352869__;
+    rust_metadata_tokio_macros_5bd3909e0b352869;
+
+  local:
+    *;
+};

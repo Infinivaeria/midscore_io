@@ -1,3 +1,46 @@
+    Blocking waiting for file lock on package cache
+    Checking icu_locale_core v2.0.0
+   Compiling curl-sys v0.4.83+curl-8.15.0
+   Compiling bindgen v0.72.1
+    Checking openssl v0.10.73
+    Checking wasm-bindgen v0.2.104
+    Checking serde_urlencoded v0.7.1
+    Checking serde_qs v0.8.5
+   Compiling num-derive v0.4.2
+    Checking futures-util v0.3.31
+    Checking fax v0.2.6
+   Compiling tokio-macros v2.5.0
+   Compiling async-trait v0.1.89
+    Checking moxcms v0.7.5
+    Checking tiff v0.10.3
+    Checking notify-types v2.0.0
+    Checking tokio v1.47.1
+    Checking icu_provider v2.0.0
+    Checking js-sys v0.3.81
+    Checking rav1e v0.7.1
+   Compiling magnus-macros v0.9.1 (https://github.com/matsadler/magnus?rev=5056dd0dba225b10b8303a9d8097e2d8a6349521#5056dd0d)
+    Checking chrono v0.4.42
+    Checking icu_properties v2.0.1
+    Checking icu_normalizer v2.0.0
+    Checking notify v8.2.0
+    Checking idna_adapter v1.2.1
+    Checking idna v1.1.0
+    Checking url v2.5.7
+    Checking http-types v2.12.0
+    Checking native-tls v0.2.14
+    Checking async-native-tls v0.5.0
+    Checking web-sys v0.3.81
+   Compiling rb-sys-build v0.9.130
+   Compiling rb-sys v0.9.130
+    Checking tokio-native-tls v0.3.1
+    Checking ravif v0.11.20
+    Checking image v0.25.8
+   Compiling magnus v0.10.0 (https://github.com/matsadler/magnus?rev=5056dd0dba225b10b8303a9d8097e2d8a6349521#5056dd0d)
+   Compiling curl v0.4.49
+   Compiling isahc v0.9.14
+    Checking http-client v6.5.3
+    Checking surf v2.3.2
+    Checking sl_relay v0.1.0 (/root/midscore_io/sl_relay)
 warning: unused dependency `async-native-tls`
  --> Cargo.toml:9:1
   |
@@ -56,4 +99,4 @@ warning: unused dependency `tokio-native-tls`
    |
 help: consider removing the dependency on `tokio-native-tls`
 warning: `sl_relay` (manifest) generated 8 warnings
-    Finished `dev` profile [optimized + debuginfo] target(s) in 0.37s
+    Finished `dev` profile [optimized + debuginfo] target(s) in 56.72s

@@ -129,23 +129,7 @@ fn load_sigil_deck_entries() -> tide::Result<Vec<SigilDeckEntry>> {
     }
 }
 
-fn render_flashcard_page(entries: &[SigilDeckEntry]) -> String {
-    let cards = entries
-        .iter()
-        .map(|entry| {
-            serde_json::json!({
-                "id": entry.id,
-                "front": entry.title,
-                "back": entry.description,
-                "image": format!("/sigil-deck/image/{}", entry.image_file),
-                "source": "Sigil deck",
-            })
-        })
-        .collect::<Vec<_>>();
-    let cards_json = serde_json::to_string(&cards)
-        .unwrap_or_else(|_| "[]".to_string())
-        .replace("</", "<\\/");
-
+fn render_flashcard_page() -> String {
     format!(
         r##"<!DOCTYPE html>
 <html lang="en">
@@ -162,38 +146,110 @@ fn render_flashcard_page(entries: &[SigilDeckEntry]) -> String {
     .main-controls, .rating-controls {{ display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }} .control {{ min-width: 44px; min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 4px; color: var(--navy); background: rgba(255,255,255,.72); font-weight: bold; }} .control:hover {{ border-color: var(--teal); color: var(--teal); }} .control.primary {{ border-color: var(--teal); color: white; background: var(--teal); }} .rate {{ min-width: 110px; min-height: 42px; padding: 0 12px; border: 0; border-radius: 4px; color: #17252d; font-weight: bold; }} .rate.again {{ background: #f4b2a7; }} .rate.hard {{ background: #f5d88c; }} .rate.got-it {{ background: #9bd8c6; }}
     .side {{ padding-top: 64px; }} .side h2 {{ margin: 0 0 11px; color: var(--navy); font-size: 1rem; }} .stat {{ display: flex; align-items: baseline; justify-content: space-between; padding: 11px 0; border-top: 1px solid var(--line); }} .stat strong {{ color: var(--teal); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.25rem; }} .side-actions {{ display: grid; gap: 9px; margin-top: 28px; }} .side-actions button {{ width: 100%; text-align: left; }}
     dialog {{ width: min(560px, calc(100% - 28px)); padding: 0; border: 0; box-shadow: var(--shadow); background: var(--card); }} dialog::backdrop {{ background: rgba(24,53,74,.5); }} .modal {{ padding: 24px; }} .modal-header {{ display: flex; align-items: center; justify-content: space-between; gap: 12px; }} .modal h2 {{ margin: 0; color: var(--navy); }} .form-grid {{ display: grid; gap: 14px; margin-top: 20px; }} label {{ display: grid; gap: 6px; color: var(--navy); font-size: .9rem; font-weight: bold; }} input, textarea {{ width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 3px; background: white; color: var(--ink); }} textarea {{ min-height: 105px; resize: vertical; }} .modal-actions {{ display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }} .empty {{ display: none; padding: 32px; border: 1px dashed var(--line); color: var(--muted); text-align: center; }}
+    .session-manager {{ display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto auto; gap: 10px; align-items: end; margin: 24px 0 0; }}
+    .session-manager label {{ display: grid; gap: 6px; color: var(--navy); font-size: .9rem; font-weight: bold; }}
+    .session-manager select, .session-manager input {{ width: 100%; min-height: 44px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 3px; background: white; color: var(--ink); }}
+    .session-message {{ grid-column: 1 / -1; min-height: 1.2em; color: var(--muted); font-size: .85rem; }}
     @media (max-width: 760px) {{ .shell {{ width: min(100% - 20px, 1100px); padding-top: 16px; }} .study {{ grid-template-columns: 1fr; gap: 25px; padding-top: 28px; }} .side {{ padding-top: 0; }} .side-actions {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} .flashcard {{ min-height: 430px; }} .face {{ padding: 22px; }} .card-content {{ grid-template-columns: 1fr; }} .card-image {{ width: min(150px, 45vw); height: min(150px, 45vw); }} }}
+    @media (max-width: 600px) {{ .session-manager {{ grid-template-columns: 1fr 1fr; }} }}
   </style>
 </head>
 <body>
   <main class="shell">
     <header class="topbar"><a class="brand" href="/flashcard"><span class="brand-mark">R</span>Recall Deck</a><a class="text-button" href="/sigil-deck">Open sigil deck</a></header>
+    <section class="session-manager" aria-label="Flashcard sessions">
+      <label for="sessionSelect">Flashcard session<select id="sessionSelect"></select></label>
+      <label for="newSessionName">Create a session<input id="newSessionName" maxlength="60" placeholder="e.g. Biology review"></label>
+      <button id="createSession" class="control primary" type="button">Create session</button>
+      <button id="deleteSession" class="control" type="button">Delete session</button>
+      <span id="sessionMessage" class="session-message" role="status" aria-live="polite"></span>
+    </section>
     <section class="study"><div><p class="eyebrow">Active recall study session</p><h1>Learn it. Hide it. Recall it.</h1><p class="subtitle">A focused digital flashcard routine: read the prompt, reveal only after your attempt, then rate how well it came back to you.</p><div id="studyArea"><div class="progress-row"><span id="position">Card 1 of 1</span><span id="deckLabel">Sigil deck</span></div><div class="progress"><div id="progressFill"></div></div><div class="scene"><article id="flashcard" class="flashcard" tabindex="0" aria-label="Flashcard. Press space to flip."><section class="face front"><div class="card-top"><span>Prompt</span><span id="frontSource"></span></div><div id="frontContent" class="card-content"><h2 id="frontText" class="card-question"></h2><img id="frontImage" class="card-image" alt=""></div><p class="hint">Try to answer before you reveal it.</p></section><section class="face back"><div class="card-top"><span>Answer</span><span>Recall Deck</span></div><div id="backContent" class="card-content"><p id="backText" class="card-answer"></p><img id="backImage" class="card-image" alt=""></div><p class="hint">How did that feel? Rate it, then move on.</p></section></article></div><div class="main-controls"><button id="previous" class="control" type="button">Previous</button><button id="flip" class="control primary" type="button">Reveal answer</button><button id="next" class="control" type="button">Next</button><button id="shuffle" class="control" type="button">Shuffle</button></div><div id="ratings" class="rating-controls" hidden><button class="rate again" data-rating="again" type="button">Again</button><button class="rate hard" data-rating="hard" type="button">Hard</button><button class="rate got-it" data-rating="got-it" type="button">Got it</button></div></div><div id="emptyState" class="empty">No cards yet. Add a card to start a study session.</div></div><aside class="side"><h2>Session</h2><div class="stat"><span>Reviewed</span><strong id="reviewed">0</strong></div><div class="stat"><span>Got it</span><strong id="mastered">0</strong></div><div class="stat"><span>In this deck</span><strong id="deckCount">0</strong></div><div class="side-actions"><button id="editCard" class="control" type="button">Edit current card</button><button id="deleteCard" class="control" type="button">Delete current card</button><button id="answerFirst" class="control" type="button">Start with answer</button><button id="addCard" class="control primary" type="button">Add personal card</button><button id="resetProgress" class="control" type="button">Reset session</button></div></aside></section>
   </main>
   <dialog id="cardDialog"><form id="cardForm" class="modal" method="dialog"><div class="modal-header"><h2 id="dialogTitle">Add a flashcard</h2><button id="closeDialog" class="control" type="button">Close</button></div><div class="form-grid"><label>Prompt<input name="front" required placeholder="Question, term, or cue"></label><label>Answer<textarea name="back" required placeholder="Definition, explanation, or answer"></textarea></label><label>Image URL (optional)<input name="imageUrl" type="url" placeholder="https://example.com/image.jpg"></label><label>Or choose an image (optional)<input name="imageFile" type="file" accept="image/*"></label></div><div class="modal-actions"><button class="control" type="button" id="cancelDialog">Cancel</button><button id="saveCard" class="control primary" type="submit">Add card</button></div></form></dialog>
-  <script id="seedCards" type="application/json">{cards_json}</script>
   <script>
     (() => {{
-      const storageKey = 'recall-deck-custom-cards', stateKey = 'recall-deck-session';
-      const seedCards = JSON.parse(document.getElementById('seedCards').textContent);
-      const getCustomCards = () => {{ try {{ return JSON.parse(localStorage.getItem(storageKey)) || []; }} catch {{ return []; }} }};
-      let cards = [...seedCards, ...getCustomCards()], index = 0, reviewed = 0, mastered = 0, answerFirst = false, editingId = null;
+      const sessionsKey = 'recall-deck-sessions-v1', activeSessionKey = 'recall-deck-active-session-v1';
+      const showMessage = message => {{ document.getElementById('sessionMessage').textContent = message; }};
+      const makeSession = (name, cards = [], reviewed = 0, mastered = 0) => ({{ id: `session-${{Date.now()}}-${{Math.random().toString(36).slice(2)}}`, name, cards, reviewed, mastered, index: 0 }});
+      const loadSessions = () => {{
+        const stored = localStorage.getItem(sessionsKey);
+        if (stored !== null) {{
+          const saved = JSON.parse(stored);
+          if (!Array.isArray(saved) || saved.some(session => !session || typeof session.id !== 'string' || typeof session.name !== 'string' || !Array.isArray(session.cards))) throw new Error('Saved flashcard sessions have an invalid format.');
+          return saved;
+        }}
+        const oldCards = localStorage.getItem('recall-deck-custom-cards');
+        const cards = oldCards ? JSON.parse(oldCards) : [];
+        if (!Array.isArray(cards)) throw new Error('Saved personal flashcards have an invalid format.');
+        const initial = [makeSession('My Flashcards', cards)];
+        localStorage.setItem(sessionsKey, JSON.stringify(initial));
+        localStorage.setItem(activeSessionKey, initial[0].id);
+        return initial;
+      }};
+      let sessions, currentSession;
+      try {{
+        sessions = loadSessions();
+        if (sessions.length === 0) sessions.push(makeSession('My Flashcards'));
+        currentSession = sessions.find(session => session.id === localStorage.getItem(activeSessionKey)) || sessions[0];
+      }} catch (error) {{
+        sessions = [];
+        showMessage(`Could not load flashcard sessions: ${{error.message}}`);
+      }}
+      let cards = currentSession ? currentSession.cards : [], index = currentSession?.index || 0, reviewed = currentSession?.reviewed || 0, mastered = currentSession?.mastered || 0, answerFirst = false, editingId = null;
       const flashcard = document.getElementById('flashcard'), frontText = document.getElementById('frontText'), backText = document.getElementById('backText'), frontImage = document.getElementById('frontImage'), backImage = document.getElementById('backImage'), ratings = document.getElementById('ratings'), dialog = document.getElementById('cardDialog');
       const updateImage = (image, url, alt) => {{ image.hidden = !url; image.src = url || ''; image.alt = alt || ''; }};
-      const saveSession = () => localStorage.setItem(stateKey, JSON.stringify({{ reviewed, mastered }}));
-      const render = () => {{ const card = cards[index]; document.getElementById('deckCount').textContent = cards.length; document.getElementById('studyArea').hidden = !card; document.getElementById('emptyState').style.display = card ? 'none' : 'block'; if (!card) return; flashcard.classList.toggle('is-flipped', answerFirst); ratings.hidden = !answerFirst; document.getElementById('flip').textContent = answerFirst ? 'Show prompt' : 'Reveal answer'; frontText.textContent = card.front; backText.textContent = card.back; document.getElementById('frontSource').textContent = card.source || 'Personal card'; updateImage(frontImage, card.image, card.front); updateImage(backImage, card.image, card.front); document.getElementById('frontContent').classList.toggle('solo', !card.image); document.getElementById('backContent').classList.toggle('solo', !card.image); document.getElementById('position').textContent = `Card ${{index + 1}} of ${{cards.length}}`; document.getElementById('progressFill').style.width = `${{((index + 1) / cards.length) * 100}}%`; document.getElementById('deckLabel').textContent = card.source || 'Personal card'; }};
+      const saveSession = () => {{
+        if (!currentSession) return false;
+        currentSession.cards = cards; currentSession.index = index; currentSession.reviewed = reviewed; currentSession.mastered = mastered;
+        try {{
+          localStorage.setItem(sessionsKey, JSON.stringify(sessions));
+          localStorage.setItem(activeSessionKey, currentSession.id);
+          showMessage('Saved in this browser.');
+          return true;
+        }} catch (error) {{
+          showMessage(`Could not save this session: ${{error.message}}`);
+          return false;
+        }}
+      }};
+      const renderSessions = () => {{
+        const select = document.getElementById('sessionSelect');
+        select.replaceChildren(...sessions.map(session => {{ const option = document.createElement('option'); option.value = session.id; option.textContent = session.name; option.selected = currentSession && session.id === currentSession.id; return option; }}));
+        document.getElementById('deleteSession').disabled = sessions.length <= 1 || !currentSession;
+        document.getElementById('createSession').disabled = !currentSession;
+        select.disabled = !currentSession;
+      }};
+      const render = () => {{ const card = cards[index]; document.getElementById('deckCount').textContent = cards.length; document.getElementById('studyArea').hidden = !card; document.getElementById('emptyState').style.display = card ? 'none' : 'block'; document.getElementById('editCard').disabled = !card; document.getElementById('deleteCard').disabled = !card; document.getElementById('deckLabel').textContent = currentSession ? currentSession.name : 'Unavailable'; if (!card) return; flashcard.classList.toggle('is-flipped', answerFirst); ratings.hidden = !answerFirst; document.getElementById('flip').textContent = answerFirst ? 'Show prompt' : 'Reveal answer'; frontText.textContent = card.front; backText.textContent = card.back; document.getElementById('frontSource').textContent = 'Flashcard session'; updateImage(frontImage, card.image, card.front); updateImage(backImage, card.image, card.front); document.getElementById('frontContent').classList.toggle('solo', !card.image); document.getElementById('backContent').classList.toggle('solo', !card.image); document.getElementById('position').textContent = `Card ${{index + 1}} of ${{cards.length}}`; document.getElementById('progressFill').style.width = `${{((index + 1) / cards.length) * 100}}%`; }};
       const flip = () => {{ if (!cards.length) return; const showingAnswer = flashcard.classList.toggle('is-flipped'); document.getElementById('flip').textContent = showingAnswer ? 'Show prompt' : 'Reveal answer'; ratings.hidden = !showingAnswer; }};
-      const move = amount => {{ if (!cards.length) return; index = (index + amount + cards.length) % cards.length; render(); document.getElementById('flip').textContent = 'Reveal answer'; }};
-      const restore = () => {{ try {{ const saved = JSON.parse(localStorage.getItem(stateKey)); reviewed = saved?.reviewed || 0; mastered = saved?.mastered || 0; }} catch {{}} document.getElementById('reviewed').textContent = reviewed; document.getElementById('mastered').textContent = mastered; }};
-      document.getElementById('flip').addEventListener('click', flip); flashcard.addEventListener('click', flip); document.getElementById('previous').addEventListener('click', () => move(-1)); document.getElementById('next').addEventListener('click', () => move(1)); document.getElementById('shuffle').addEventListener('click', () => {{ for (let cardIndex = cards.length - 1; cardIndex > 0; cardIndex--) {{ const pick = Math.floor(Math.random() * (cardIndex + 1)); [cards[cardIndex], cards[pick]] = [cards[pick], cards[cardIndex]]; }} index = 0; render(); }}); document.getElementById('answerFirst').addEventListener('click', () => {{ answerFirst = !answerFirst; document.getElementById('answerFirst').textContent = answerFirst ? 'Start with prompt' : 'Start with answer'; render(); }});
-      ratings.addEventListener('click', event => {{ const rating = event.target.dataset.rating; if (!rating) return; reviewed++; if (rating === 'got-it') mastered++; document.getElementById('reviewed').textContent = reviewed; document.getElementById('mastered').textContent = mastered; saveSession(); move(1); }}); document.getElementById('resetProgress').addEventListener('click', () => {{ reviewed = 0; mastered = 0; saveSession(); restore(); }}); document.getElementById('addCard').addEventListener('click', () => {{ editingId = null; document.getElementById('dialogTitle').textContent = 'Add a flashcard'; document.getElementById('saveCard').textContent = 'Add card'; document.getElementById('cardForm').reset(); dialog.showModal(); }}); document.getElementById('editCard').addEventListener('click', () => {{ const card = cards[index]; if (!card) return; if (card.source === 'Sigil deck') {{ window.location.href = `/sigil-deck/card/${{card.id}}`; return; }} editingId = card.id; const form = document.getElementById('cardForm'); form.elements.front.value = card.front; form.elements.back.value = card.back; form.elements.imageUrl.value = card.image || ''; document.getElementById('dialogTitle').textContent = 'Edit personal card'; document.getElementById('saveCard').textContent = 'Save changes'; dialog.showModal(); }}); document.getElementById('deleteCard').addEventListener('click', () => {{ const card = cards[index]; if (!card) return; if (card.source === 'Sigil deck') {{ window.location.href = `/sigil-deck/card/${{card.id}}`; return; }} if (!confirm('Delete this personal card?')) return; const custom = getCustomCards().filter(customCard => customCard.id !== card.id); localStorage.setItem(storageKey, JSON.stringify(custom)); cards = [...seedCards, ...custom]; index = Math.max(0, Math.min(index, cards.length - 1)); render(); }}); document.getElementById('closeDialog').addEventListener('click', () => dialog.close()); document.getElementById('cancelDialog').addEventListener('click', () => dialog.close());
-      document.getElementById('cardForm').addEventListener('submit', event => {{ event.preventDefault(); const form = new FormData(event.currentTarget), file = form.get('imageFile'); const save = image => {{ const custom = getCustomCards(), card = {{ id: editingId || `custom-${{Date.now()}}`, front: form.get('front').trim(), back: form.get('back').trim(), image, source: 'Personal card' }}; const cardIndex = custom.findIndex(customCard => customCard.id === editingId); if (cardIndex >= 0) custom[cardIndex] = card; else custom.push(card); localStorage.setItem(storageKey, JSON.stringify(custom)); cards = [...seedCards, ...custom]; index = cards.findIndex(currentCard => currentCard.id === card.id); editingId = null; dialog.close(); event.currentTarget.reset(); render(); }}; if (file?.size) {{ const reader = new FileReader(); reader.onload = () => save(reader.result); reader.readAsDataURL(file); }} else {{ save(form.get('imageUrl').trim()); }} }});
-      document.addEventListener('keydown', event => {{ if (dialog.open || event.target.matches('input, textarea')) return; if (event.key === ' ' || event.key === 'Enter') {{ event.preventDefault(); flip(); }} if (event.key === 'ArrowRight') move(1); if (event.key === 'ArrowLeft') move(-1); }}); restore(); render();
+      const move = amount => {{ if (!cards.length) return; index = (index + amount + cards.length) % cards.length; render(); saveSession(); document.getElementById('flip').textContent = 'Reveal answer'; }};
+      const restore = () => {{ document.getElementById('reviewed').textContent = reviewed; document.getElementById('mastered').textContent = mastered; }};
+      document.getElementById('sessionSelect').addEventListener('change', event => {{
+        saveSession();
+        currentSession = sessions.find(session => session.id === event.target.value);
+        cards = currentSession.cards; index = Math.min(currentSession.index || 0, Math.max(0, cards.length - 1)); reviewed = currentSession.reviewed || 0; mastered = currentSession.mastered || 0; answerFirst = false;
+        saveSession(); renderSessions(); restore(); render();
+      }});
+      document.getElementById('createSession').addEventListener('click', () => {{
+        const input = document.getElementById('newSessionName'), name = input.value.trim();
+        if (!name) {{ showMessage('Enter a name for the new session.'); input.focus(); return; }}
+        if (sessions.some(session => session.name.toLowerCase() === name.toLowerCase())) {{ showMessage('A session with that name already exists.'); input.focus(); return; }}
+        currentSession = makeSession(name); sessions.push(currentSession); cards = currentSession.cards; index = 0; reviewed = 0; mastered = 0; answerFirst = false; input.value = '';
+        renderSessions(); saveSession(); restore(); render();
+      }});
+      document.getElementById('deleteSession').addEventListener('click', () => {{
+        if (!currentSession || sessions.length <= 1 || !confirm(`Delete the "${{currentSession.name}}" session and all its cards?`)) return;
+        sessions = sessions.filter(session => session.id !== currentSession.id); currentSession = sessions[0]; cards = currentSession.cards; index = currentSession.index || 0; reviewed = currentSession.reviewed || 0; mastered = currentSession.mastered || 0; answerFirst = false;
+        renderSessions(); saveSession(); restore(); render();
+      }});
+      document.getElementById('flip').addEventListener('click', flip); flashcard.addEventListener('click', flip); document.getElementById('previous').addEventListener('click', () => move(-1)); document.getElementById('next').addEventListener('click', () => move(1)); document.getElementById('shuffle').addEventListener('click', () => {{ for (let cardIndex = cards.length - 1; cardIndex > 0; cardIndex--) {{ const pick = Math.floor(Math.random() * (cardIndex + 1)); [cards[cardIndex], cards[pick]] = [cards[pick], cards[cardIndex]]; }} index = 0; render(); saveSession(); }}); document.getElementById('answerFirst').addEventListener('click', () => {{ answerFirst = !answerFirst; document.getElementById('answerFirst').textContent = answerFirst ? 'Start with prompt' : 'Start with answer'; render(); }});
+      ratings.addEventListener('click', event => {{ const rating = event.target.dataset.rating; if (!rating) return; reviewed++; if (rating === 'got-it') mastered++; restore(); saveSession(); move(1); }}); document.getElementById('resetProgress').addEventListener('click', () => {{ reviewed = 0; mastered = 0; saveSession(); restore(); }}); document.getElementById('addCard').addEventListener('click', () => {{ editingId = null; document.getElementById('dialogTitle').textContent = 'Add a flashcard'; document.getElementById('saveCard').textContent = 'Add card'; document.getElementById('cardForm').reset(); dialog.showModal(); }}); document.getElementById('editCard').addEventListener('click', () => {{ const card = cards[index]; if (!card) return; editingId = card.id; const form = document.getElementById('cardForm'); form.elements.front.value = card.front; form.elements.back.value = card.back; form.elements.imageUrl.value = card.image || ''; document.getElementById('dialogTitle').textContent = 'Edit flashcard'; document.getElementById('saveCard').textContent = 'Save changes'; dialog.showModal(); }}); document.getElementById('deleteCard').addEventListener('click', () => {{ const card = cards[index]; if (!card || !confirm('Delete this flashcard?')) return; cards = cards.filter(currentCard => currentCard.id !== card.id); index = Math.max(0, Math.min(index, cards.length - 1)); render(); saveSession(); }}); document.getElementById('closeDialog').addEventListener('click', () => dialog.close()); document.getElementById('cancelDialog').addEventListener('click', () => dialog.close());
+      document.getElementById('cardForm').addEventListener('submit', event => {{ event.preventDefault(); const form = new FormData(event.currentTarget), file = form.get('imageFile'); const save = image => {{ const card = {{ id: editingId || `card-${{Date.now()}}-${{Math.random().toString(36).slice(2)}}`, front: String(form.get('front') || '').trim(), back: String(form.get('back') || '').trim(), image: image || '', source: 'Flashcard session' }}; const cardIndex = cards.findIndex(currentCard => currentCard.id === editingId); if (cardIndex >= 0) cards[cardIndex] = card; else cards.push(card); index = cards.findIndex(currentCard => currentCard.id === card.id); editingId = null; dialog.close(); event.currentTarget.reset(); render(); saveSession(); }}; if (file?.size) {{ const reader = new FileReader(); reader.onload = () => save(reader.result); reader.onerror = () => showMessage('Could not read the selected image.'); reader.readAsDataURL(file); }} else {{ save(String(form.get('imageUrl') || '').trim()); }} }});
+      document.addEventListener('keydown', event => {{ if (dialog.open || event.target.matches('input, textarea, select')) return; if (event.key === ' ' || event.key === 'Enter') {{ event.preventDefault(); flip(); }} if (event.key === 'ArrowRight') move(1); if (event.key === 'ArrowLeft') move(-1); }});
+      if (currentSession) {{ renderSessions(); restore(); render(); saveSession(); }} else {{ document.querySelectorAll('.side-actions button, .main-controls button').forEach(button => button.disabled = true); document.getElementById('studyArea').hidden = true; document.getElementById('emptyState').style.display = 'block'; }}
     }})();
   </script>
 </body>
 </html>"##,
-        cards_json = cards_json,
     )
 }
 
@@ -9264,9 +9320,8 @@ WERE_FORMS = [
     });
 
     app.at("/flashcard").get(|_| async move {
-      let entries = load_sigil_deck_entries()?;
       let mut res = tide::Response::new(tide::StatusCode::Ok);
-      res.set_body(render_flashcard_page(&entries));
+      res.set_body(render_flashcard_page());
       res.insert_header("Content-Type", "text/html; charset=utf-8");
       Ok(res)
     });

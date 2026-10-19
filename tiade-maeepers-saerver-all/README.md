@@ -294,6 +294,14 @@ Integration note:
 | POST | `/file/add` | `src/main.rs` | Writes `/tmp/new_file.txt` |
 | DELETE | `/file/delete` | `src/main.rs` | Deletes `/tmp/new_file.txt` |
 
+### Flashcard sessions
+
+`GET /flashcard` provides named, browser-persisted flashcard sessions. Each
+session keeps its own cards and review progress in local storage, independently
+of the Sigil Deck at `/sigil-deck`. Existing personal flashcards are migrated
+into the initial “My Flashcards” session on first use; its review counts start
+fresh because the old shared progress could include Sigil Deck cards.
+
 ### Chatlog Moderation Dashboard (main.rs)
 
 | Method | Path | Source | Notes |
