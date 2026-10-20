@@ -1,7 +1,7 @@
 // Tiade.Ollama.Ruby.lsl
 // Owner-controlled Second Life client for the Tide server.
 // This script includes the owner command and nearby-chat listeners.
-// Install only this script and Tiade.Ollama.Ruby.Help.lsl in the same prim.
+// Install this script and Tiade.Ollama.Ruby.Help.lsl in the same linked object.
 // Remove the legacy Chat and LocalInput scripts; Help owns the /7 help text.
 //
 // Server routes used:
@@ -551,12 +551,9 @@ notecard_eof()
 
 show_help(integer page)
 {
-    if (llGetInventoryType(HELP_SCRIPT) != INVENTORY_SCRIPT)
-    {
-        notify("Install " + HELP_SCRIPT + " in this prim to use /" + (string)CONTROL_CHANNEL + " help.");
-        return;
-    }
-    llMessageLinked(LINK_THIS, HELP_LINK_MESSAGE, (string)page, gOwner);
+    notify("QUICK HELP: /7 ask <question> asks Ollama; /7 status shows settings; /7 health checks the server.");
+    notify("Ruby: /7 ruby <code> (requires RUBY_TOKEN). Notecard: /7 notecard <name>. Replies are private unless /7 public on is set.");
+    llMessageLinked(LINK_SET, HELP_LINK_MESSAGE, (string)page, gOwner);
 }
 
 show_status()
@@ -675,7 +672,7 @@ default
         llListen(CONTROL_CHANNEL, "", gOwner, "");
         llListen(0, "", NULL_KEY, "");
         update_timer();
-        notify("Ready on /" + (string)CONTROL_CHANNEL + ". Commands and local capture are built in. For commands, install " + HELP_SCRIPT + " and say /"
+        notify("Ready on /" + (string)CONTROL_CHANNEL + ". Commands and local capture are built in. For detailed help, add " + HELP_SCRIPT + " to this linked object and say /"
             + (string)CONTROL_CHANNEL + " help");
     }
 

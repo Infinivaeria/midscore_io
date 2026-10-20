@@ -4,10 +4,25 @@
 
 integer CONTROL_CHANNEL = 7;       // must match Tiade.Ollama.Ruby.lsl
 integer HELP_LINK_MESSAGE = -708641;
+integer gCollectingHelp;
+string gHelpOutput;
 
 notify(string text)
 {
-    llOwnerSay("[tiade] " + text);
+    if (gCollectingHelp) gHelpOutput += "[tiade] " + text + "\n";
+    else llOwnerSay("[tiade] " + text);
+}
+
+flush_help()
+{
+    integer length = llStringLength(gHelpOutput);
+    integer start = 0;
+    while (start < length)
+    {
+        llOwnerSay(llGetSubString(gHelpOutput, start, start + 899));
+        start += 900;
+    }
+    gHelpOutput = "";
 }
 
 command_list()
@@ -27,8 +42,13 @@ command_list()
 help(integer page)
 {
     string c = "/" + (string)CONTROL_CHANNEL + " ";
+    gHelpOutput = "";
+    gCollectingHelp = TRUE;
     if (page == 0)
     {
+        notify("START HERE: Type these in Nearby Chat as the bracelet owner: " + c + "status checks settings; " + c + "health checks the server; " + c + "ask Hello, what can you do? sends a test question.");
+        notify("Replies are private to you by default. " + c + "public on makes Ollama/Ruby replies visible nearby; " + c + "public off makes them private again.");
+        notify("To try Ruby (if enabled on the server): " + c + "ruby puts 'Hello from Ruby'. Use " + c + "help 1 for setup, or " + c + "help 2-8 for a topic.");
         command_list();
         notify("HELP: " + c + "help <1-8> shows one page. " + c + "help all lists every command. " + c + "status shows current settings.");
         notify("1 Setup | 2 Ollama | 3 Public replies | 4 Ruby | 5 Variables | 6 Files/matrices | 7 Command cards | 8 Ruby cards/troubleshooting");
@@ -36,7 +56,8 @@ help(integer page)
     else if (page == 1)
     {
         notify("HELP 1/8 - SETUP (only the object owner can use /" + (string)CONTROL_CHANNEL + ")");
-        notify("Install only Tiade.Ollama.Ruby.lsl and Tiade.Ollama.Ruby.Help.lsl in the same prim, using these exact names. Remove the old Chat and LocalInput scripts. Set BASE_URL and RUBY_TOKEN in the main script; CONTROL_CHANNEL must match in both scripts.");
+        notify("If /7 help says the helper is missing: open this prim's Contents, add Tiade.Ollama.Ruby.Help.lsl beside Tiade.Ollama.Ruby.lsl, and ensure both scripts are running. Then reset the main script and say /7 help again. Keep the exact script names; remove old Chat and LocalInput scripts.");
+        notify("Set BASE_URL and RUBY_TOKEN in the main script. CONTROL_CHANNEL must match in both scripts.");
         notify("The combined main script owns both listeners. It captures channel-0 chat from nearby speakers and stores only the latest message in gLastLocalChat. It does not send chat to the server or run it as a command.");
         notify(c + "health checks server/Ollama; " + c + "status shows server, team, session, Ruby enabled, replies, notecard progress and a preview of the latest local input. " + c + "local-input shows the complete stored local-input value to the owner. Touch the object for status and the help index.");
         notify("Ruby executes on your server with its privileges. Only use a trusted server and keep the token private; changing a script requires recompiling it in-world.");
@@ -103,15 +124,23 @@ help(integer page)
         notify("If Ruby says set RUBY_TOKEN, configure it in the main script; HTTP 401 means it does not match the server. HTTP 503 means the server Ruby route is disabled. Check " + c + "status and " + c + "health for setup.");
         notify("If a notecard cannot be found, check its exact case-sensitive inventory name. If local-input, local-input-ruby or ruby-begin reaches Ruby, the command card was run with ruby-notecard instead of notecard.");
     }
+    else if (page == 9) command_list();
+    gCollectingHelp = FALSE;
+    flush_help();
 }
 
 default
 {
+    state_entry()
+    {
+        notify("Help ready. Type /" + (string)CONTROL_CHANNEL + " help in Nearby Chat.");
+    }
+
     link_message(integer sender_num, integer num, string message, key id)
     {
         if (num != HELP_LINK_MESSAGE || id != llGetOwner()) return;
         if (message == "0") help(0);
-        else if (message == "9") command_list();
+        else if (message == "9") help(9);
         else if (llStringLength(message) == 1 && llSubStringIndex("12345678", message) != -1)
             help((integer)message);
     }

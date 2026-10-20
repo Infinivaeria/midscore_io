@@ -75,10 +75,10 @@ pub static FEATURES_LOWERCASE: [&str; 1] = ["threading"];
 pub static FEATURES_LOWERCASE_STR: &str = "threading";
 #[doc=r#"The output of `/root/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/rustc -V`"#]
 #[allow(dead_code)]
-pub static RUSTC_VERSION: &str = "rustc 1.101.0-nightly (b6eeb93c9 2026-10-18)";
+pub static RUSTC_VERSION: &str = "rustc 1.101.0-nightly (07e526db9 2026-10-19)";
 #[doc=r#"The output of `/root/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/rustdoc -V`; empty string if `/root/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/rustdoc -V` failed to execute"#]
 #[allow(dead_code)]
-pub static RUSTDOC_VERSION: &str = "rustdoc 1.101.0-nightly (b6eeb93c9 2026-10-18)";
+pub static RUSTDOC_VERSION: &str = "rustdoc 1.101.0-nightly (07e526db9 2026-10-19)";
 #[doc=r#"The target architecture, given by `CARGO_CFG_TARGET_ARCH`."#]
 #[allow(dead_code)]
 pub static CFG_TARGET_ARCH: &str = "x86_64";

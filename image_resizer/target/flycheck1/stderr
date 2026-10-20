@@ -1,24 +1,3 @@
-    Blocking waiting for file lock on package cache
-    Blocking waiting for file lock on package cache
-    Blocking waiting for file lock on package cache
-   Compiling curl-sys v0.4.83+curl-8.15.0
-   Compiling rb-sys v0.9.130
-    Checking rav1e v0.7.1
-    Checking tokio v1.47.1
-    Checking exr v1.73.0
-    Checking rkyv v0.7.45
-    Checking moxcms v0.7.5
-    Checking pure-rust-locales v0.8.1
-    Checking chrono v0.4.42
-    Checking ravif v0.11.20
-    Checking image v0.25.8
-   Compiling magnus v0.10.0 (https://github.com/matsadler/magnus?rev=5056dd0dba225b10b8303a9d8097e2d8a6349521#5056dd0d)
-    Checking tokio-native-tls v0.3.1
-   Compiling curl v0.4.49
-   Compiling isahc v0.9.14
-    Checking http-client v6.5.3
-    Checking surf v2.3.2
-    Checking image_resizer v0.1.0 (/root/midscore_io/image_resizer)
 warning: unused dependency `async-native-tls`
  --> Cargo.toml:8:1
   |
@@ -77,4 +56,4 @@ warning: unused dependency `tokio-native-tls`
    |
 help: consider removing the dependency on `tokio-native-tls`
 warning: `image_resizer` (manifest) generated 8 warnings
-    Finished `dev` profile [optimized + debuginfo] target(s) in 57.44s
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.37s
