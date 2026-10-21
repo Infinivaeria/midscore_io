@@ -71132,18 +71132,54 @@
         "body": "{\"avatar_id\":\"a443ca66-8234-4063-8f7f-ea520cf0fc9a\",\"avatar_name\":\"Ashleyfluttershy Resident\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"WHAT THE FUCK WAS THAT SHIT?!?!\",\"sim_name\":\"The Mystic Whisker Club\",\"timestamp\":1792471960,\"x_pos\":217.979700,\"y_pos\":213.712100,\"z_pos\":3897.060000}",
         "received_at": "2026-10-20T04:52:40.807416335+00:00"
       },
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
+      {
+        "body": "{\"avatar_id\":\"3396025f-d355-5a5c-da09-e04c3a852964\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792497469,\"x_pos\":72.463200,\"y_pos\":172.065400,\"z_pos\":25.909800}",
+        "received_at": "2026-10-20T11:57:50.047010197+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"1da53c8b-4ba7-0a63-9322-cc97fafe4141\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792505841,\"x_pos\":67.670390,\"y_pos\":172.447600,\"z_pos\":26.491800}",
+        "received_at": "2026-10-20T14:17:21.470846562+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"b22d0ce4-735f-9027-ca9d-d0a89ae10b92\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792522373,\"x_pos\":67.676180,\"y_pos\":172.502400,\"z_pos\":26.532510}",
+        "received_at": "2026-10-20T18:52:53.816106138+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"18662c63-e448-e5a3-7873-f4b6bd6aa2ad\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792522448,\"x_pos\":67.676180,\"y_pos\":172.502400,\"z_pos\":26.532510}",
+        "received_at": "2026-10-20T18:54:08.461959091+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"57f5c21b-1a4b-43d3-adb2-025b985e3ad6\",\"avatar_name\":\"Caligula Yowahoshi\",\"captured_by\":\"aritywolf\",\"message\":\"hello foxes\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792522582,\"x_pos\":67.676180,\"y_pos\":172.502400,\"z_pos\":26.532510}",
+        "received_at": "2026-10-20T18:56:23.137528371+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"57f5c21b-1a4b-43d3-adb2-025b985e3ad6\",\"avatar_name\":\"Caligula Yowahoshi\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"hello foxes\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792522582,\"x_pos\":69.852710,\"y_pos\":172.456300,\"z_pos\":26.537890}",
+        "received_at": "2026-10-20T18:56:23.915340642+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"956c4059-d953-5b1e-3679-f90da424c8d6\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792522681,\"x_pos\":67.673410,\"y_pos\":172.501600,\"z_pos\":26.532420}",
+        "received_at": "2026-10-20T18:58:02.082043988+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"459d9f91-6427-4c5c-9f0b-dea4ab15cd53\",\"avatar_name\":\"Zasui Resident\",\"captured_by\":\"aritywolf\",\"message\":\"I lost a shoe\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792522829,\"x_pos\":67.673410,\"y_pos\":172.501600,\"z_pos\":26.532420}",
+        "received_at": "2026-10-20T19:00:29.781147119+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"459d9f91-6427-4c5c-9f0b-dea4ab15cd53\",\"avatar_name\":\"Zasui Resident\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"I lost a shoe\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792522829,\"x_pos\":69.850070,\"y_pos\":172.456000,\"z_pos\":26.537610}",
+        "received_at": "2026-10-20T19:00:30.162590170+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"4661b637-b6eb-40d8-925a-d1b78c2ce414\",\"avatar_name\":\"KintariusPyromancer Resident\",\"captured_by\":\"aritywolf\",\"message\":\"lol\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792522837,\"x_pos\":67.673410,\"y_pos\":172.501600,\"z_pos\":26.532420}",
+        "received_at": "2026-10-20T19:00:38.303654089+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"4661b637-b6eb-40d8-925a-d1b78c2ce414\",\"avatar_name\":\"KintariusPyromancer Resident\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"lol\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792522837,\"x_pos\":69.850070,\"y_pos\":172.456000,\"z_pos\":26.537610}",
+        "received_at": "2026-10-20T19:00:38.661795230+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"614eaf4f-4cac-235b-2ce1-7b87950d0997\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792562313,\"x_pos\":67.652400,\"y_pos\":172.473200,\"z_pos\":26.531310}",
+        "received_at": "2026-10-21T05:58:34.366142723+00:00"
+      },
       {},
       {},
       {},
@@ -71331,7 +71367,7 @@
       {}
     ]
   },
-  "chatlog_revision": 14140,
+  "chatlog_revision": 14152,
   "variable_entries": {
     "db_size": 1,
     "partition_amount_and_offset": 64,
