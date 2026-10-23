@@ -4,6 +4,7 @@
 mod ruby_vm;
 mod sl_ruby;
 mod organizer;
+mod palm_sessions;
 mod persistent_snapshot;
 
 use std::io::{self, BufRead};
@@ -3881,6 +3882,7 @@ impl Clone for AppState {
 
     app.with(LogRoute);
     organizer::mount(&mut app)?;
+    palm_sessions::mount(&mut app)?;
     app.at("/palmorganizer").get(|_| async {
         let mut response = tide::Response::new(tide::StatusCode::Ok);
         response.set_content_type(tide::http::mime::HTML);
@@ -3903,9 +3905,10 @@ impl Clone for AppState {
 </style>
 </head>
 <body>
-<main class="shell">
+<main class="shell" inert>
 <header><div class="brand"><span class="mark"><i data-lucide="calendar-check" aria-hidden="true"></i></span><div><h1>Palm Organizer</h1><p class="muted">A little order, every day.</p></div></div><button class="icon" id="settings-button" aria-label="Settings and backup" title="Settings and backup"><i data-lucide="settings" aria-hidden="true">&#9881;</i></button></header>
-<div id="status" class="status" role="status" aria-live="polite">Saved on this device.</div>
+<div class="actions" style="margin-top:16px"><label class="field" style="flex:1;min-width:120px;max-width:360px;margin:0">Session<select id="session-picker" style="width:100%;min-width:0"></select></label><button class="icon" id="session-new" aria-label="New session" title="New session"><i data-lucide="plus">+</i></button><button class="icon" id="session-rename" aria-label="Rename session" title="Rename session"><i data-lucide="pencil">Edit</i></button><button class="icon danger" id="session-delete" aria-label="Delete session" title="Delete session"><i data-lucide="trash-2">X</i></button></div>
+<div id="status" class="status" role="status" aria-live="polite">Loading sessions...</div>
 <aside id="ring" class="ring" role="alert" hidden><strong id="ring-title"></strong><div class="actions"><button id="dismiss-ring" class="primary">Dismiss</button><button id="snooze-ring">Snooze 5 min</button></div></aside>
 <section id="view-today" aria-label="Today">
 <div class="greeting"><div><span class="eyebrow" id="today-date"></span><h2>A fresh view of your day.</h2><div class="live-clock" id="pacific-clock"></div><p class="muted small" id="zone-label">Pacific time</p></div><img class="landscape" src="https://images.unsplash.com/photo-1472396961693-142e6e269027?w=300&auto=format&fit=crop&q=80" alt="Sunlit green forest" width="118" height="100"></div>
@@ -3914,11 +3917,12 @@ impl Clone for AppState {
 <section id="view-calendar" aria-label="Calendar" hidden><div class="columns"><div><div class="calendar-toolbar"><button class="icon" id="prev-month" aria-label="Previous month" title="Previous month"><i data-lucide="chevron-left">&lt;</i></button><h2 id="month-label"></h2><button class="icon" id="next-month" aria-label="Next month" title="Next month"><i data-lucide="chevron-right">&gt;</i></button><button id="calendar-today">Today</button></div><div class="month-grid" id="calendar-grid" aria-label="Choose a date"></div><p class="small muted">America/Los_Angeles &middot; PST / PDT</p></div><section><div class="heading"><h2 id="selected-label"></h2><button class="icon" data-add="event" aria-label="Add event on selected day" title="Add event"><i data-lucide="plus">+</i></button></div><div id="selected-events"></div></section></div></section>
 <section id="view-clocks" aria-label="Clocks" hidden><div class="tabs" role="tablist" aria-label="Clock tools"><button role="tab" id="tab-alarm" data-clock="alarm" aria-controls="clock-alarm" aria-selected="true">Alarms</button><button role="tab" id="tab-stopwatch" data-clock="stopwatch" aria-controls="clock-stopwatch" aria-selected="false">Stopwatch</button><button role="tab" id="tab-timer" data-clock="timer" aria-controls="clock-timer" aria-selected="false">Timer</button></div><div class="clock-panel"><p class="notice">Alarms and timers need this page open and your device awake. Sound requires a tap first. Sleeping phones may delay alerts.</p><section id="clock-alarm" role="tabpanel" aria-labelledby="tab-alarm"><div class="heading"><h2>Pacific alarms</h2><button class="icon" data-add="alarm" aria-label="Add alarm" title="Add alarm"><i data-lucide="plus">+</i></button></div><div id="alarms"></div></section><section id="clock-stopwatch" role="tabpanel" aria-labelledby="tab-stopwatch" hidden><div id="stopwatch-readout" class="readout" role="timer">00:00.0</div><div class="actions center"><button id="stopwatch-toggle" class="primary">Start</button><button id="stopwatch-lap">Lap</button><button id="stopwatch-reset" aria-label="Reset stopwatch" title="Reset stopwatch" class="icon"><i data-lucide="rotate-ccw">R</i></button></div><ol id="laps" class="lap-list"></ol></section><section id="clock-timer" role="tabpanel" aria-labelledby="tab-timer" hidden><div id="timer-readout" class="readout" role="timer">25:00</div><div class="timer-inputs"><label class="field">Minutes<input id="timer-minutes" type="number" min="0" max="999" value="25" inputmode="numeric"></label><label class="field">Seconds<input id="timer-seconds" type="number" min="0" max="59" value="0" inputmode="numeric"></label></div><div class="actions center"><button data-preset="5">5 min</button><button data-preset="25">25 min</button><button data-preset="45">45 min</button></div><div class="actions center" style="margin-top:20px"><button id="timer-toggle" class="primary">Start</button><button id="timer-reset" class="icon" aria-label="Reset timer" title="Reset timer"><i data-lucide="rotate-ccw">R</i></button></div></section></div></section>
 <section id="view-switches" aria-label="Custom switches" hidden><div class="heading"><div><span class="eyebrow">Your routines</span><h2>My switches</h2></div><button class="icon" data-add="switch" aria-label="Add custom switch" title="Add custom switch"><i data-lucide="plus">+</i></button></div><div id="all-switches"></div><footer>Switch states stay as you leave them until you change them.</footer></section>
-<footer>Pacific time &middot; Private to this browser &middot; <span id="footer-date"></span></footer>
+<footer>Pacific time &middot; <span id="footer-date"></span></footer>
 </main>
 <nav aria-label="Main navigation"><button data-view="today" aria-current="page"><i data-lucide="sun">T</i>Today</button><button data-view="calendar"><i data-lucide="calendar-days">C</i>Calendar</button><button data-view="clocks"><i data-lucide="clock-3">A</i>Clocks</button><button data-view="switches"><i data-lucide="toggle-right">S</i>Switches</button></nav>
+<dialog id="session-dialog" aria-labelledby="session-title"><div class="dialog-head"><h2 id="session-title">New session</h2><button class="icon" data-close="session-dialog" aria-label="Close session dialog" title="Close"><i data-lucide="x">X</i></button></div><form id="session-form"><label class="field" id="session-name-field">Session name<input id="session-name" maxlength="80" required autocomplete="off"></label><p id="session-delete-warning" hidden></p><div class="form-actions"><button type="button" data-close="session-dialog">Cancel</button><button type="submit" id="session-submit" class="primary">Create</button></div></form></dialog>
 <dialog id="entry-dialog"><div class="dialog-head"><h2 id="entry-title"></h2><button class="icon" data-close="entry-dialog" aria-label="Close" title="Close"><i data-lucide="x">X</i></button></div><form id="entry-form"><label class="field">Name<input name="title" maxlength="160" required autocomplete="off"></label><label class="field" id="date-field">Date (Pacific)<input name="date" type="date" min="1900-01-01" max="9999-12-31"></label><label class="field" id="time-field">Time (Pacific)<input name="time" type="time"></label><label class="field" id="repeat-field">Repeat<select name="repeat"><option value="once">Once</option><option value="daily">Every day</option></select></label><label class="field" id="color-field">Color<input name="color" type="color" value="#176b53"></label><div class="form-actions"><button type="button" id="delete-entry" class="danger" hidden>Delete</button><button type="submit" class="primary">Save</button></div></form></dialog>
-<dialog id="settings-dialog"><div class="dialog-head"><h2>Settings &amp; backup</h2><button class="icon" data-close="settings-dialog" aria-label="Close settings" title="Close"><i data-lucide="x">X</i></button></div><div class="backup"><label class="switch-label"><span>Alert sound</span><input id="sound-setting" class="switch" type="checkbox" role="switch"></label><button id="notification-button">Enable browser notifications</button><p class="small muted">Pacific time follows Los Angeles: PST in winter, PDT in summer. Data stays in this browser, not on the server. Export a backup before clearing browser data.</p><div class="actions"><button id="export-button">Export backup</button><label class="file-label">Import backup<input type="file" id="import-file" accept="application/json,.json" hidden></label></div><p class="notice">Import replaces this browser's organizer after confirmation. Browser notifications do not make alarms work when this page is closed.</p></div></dialog>
+<dialog id="settings-dialog"><div class="dialog-head"><h2>Settings &amp; backup</h2><button class="icon" data-close="settings-dialog" aria-label="Close settings" title="Close"><i data-lucide="x">X</i></button></div><div class="backup"><label class="switch-label"><span>Alert sound</span><input id="sound-setting" class="switch" type="checkbox" role="switch"></label><button id="notification-button">Enable browser notifications</button><div class="actions"><button id="export-button">Export backup</button><label class="file-label">Import backup<input type="file" id="import-file" accept="application/json,.json" hidden></label></div></div></dialog>
 <dialog id="automation-dialog"><div class="dialog-head"><h2>Automation console</h2><button class="icon" data-close="automation-dialog" aria-label="Close automation console" title="Close"><i data-lucide="x">X</i></button></div><label class="field automation-options">Example<select id="automation-example"><option value="">Choose an example</option><option value="routine">Morning routine</option><option value="fibonacci">Fibonacci</option><option value="loop">Infinite loop</option></select></label><label class="field">JavaScript<textarea id="automation-code" class="automation-editor" maxlength="20000" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea></label><div class="automation-controls"><button id="automation-run" class="primary"><i data-lucide="play">&gt;</i>Run</button><button id="automation-stop" disabled><i data-lucide="square">[]</i>Stop</button><button id="automation-apply" disabled><i data-lucide="check">+</i>Apply changes</button></div><p class="small muted">Run limit: 3 seconds. Changes require approval. Run only code you trust; workers are not a security sandbox and can access the network.</p><p id="automation-status" role="status" class="small muted">Ready</p><pre id="automation-output" class="automation-output" aria-label="Program output" tabindex="0"></pre></dialog>
 <script>
 (() => {
@@ -4012,18 +4016,43 @@ impl Clone for AppState {
     }
     return validate(updated);
   };
-  if (typeof module !== 'undefined' && module.exports) module.exports = {pacificDay,nextAlarm,elapsed,remaining,fresh,validate,automationWorkerSource,applyAutomation};
+  const sessionWriter = (request, changed) => {
+    let session = null, revision = 0, generation = 0, saved = 0, pending = null, blocked = false;
+    const flush = async snapshot => {
+      if (pending) { await pending; return flush(snapshot); }
+      if (blocked) throw new Error('Session changed in another tab. Export your changes, then reload.');
+      if (!session || generation === saved) return;
+      const writing = generation;
+      pending = request({action:'save',id:session,revision,data:JSON.parse(JSON.stringify(snapshot()))});
+      try { const result = await pending; revision = result.revision; saved = writing; changed(generation !== saved); }
+      catch (error) { if (error.status === 409 || error.status === 404) blocked = true; throw error; }
+      finally { pending = null; }
+    };
+    return {
+      open: record => { session = record.id; revision = record.revision; generation = saved = 0; blocked = false; },
+      dirty: () => { generation++; changed(true); }, flush,
+      unsaved: () => generation !== saved
+    };
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = {pacificDay,nextAlarm,elapsed,remaining,fresh,validate,automationWorkerSource,applyAutomation,sessionWriter};
   if (typeof document === 'undefined') return;
   const $ = id => document.getElementById(id);
   const key = 'palmorganizer-v1';
   const message = text => { $('status').textContent = text; };
-  let data = fresh(), loadFailed = false, storageConflict = false;
-  try { const saved = localStorage.getItem(key); if (saved) data = validate(JSON.parse(saved)); }
-  catch (error) { loadFailed = true; message('Saved data could not be loaded. Existing storage has not been overwritten. Import a valid backup to restore saving.'); }
+  let data = fresh(), loadFailed = true, storageConflict = false, ready = false, switching = false, activeSession = null;
+  const requestSession = async command => {
+    const response = await fetch('/palmorganizer/sessions',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(command),keepalive:JSON.stringify(command).length < 60000});
+    if (!response.ok) { const error = new Error(await response.text() || 'Session request failed.'); error.status = response.status; throw error; }
+    return response.json();
+  };
+  const writer = sessionWriter(requestSession,dirty => message(dirty ? 'Unsaved changes' : 'Saved to disk.'));
+  const flush = async () => {
+    try { await writer.flush(() => data); }
+    catch (error) { if (error.status === 409 || error.status === 404) storageConflict = true; message('Not saved: '+error.message); throw error; }
+  };
   const save = () => {
-    if (loadFailed || storageConflict) { message(storageConflict ? 'Another tab changed the organizer. Reload before making changes.' : 'Saving blocked to protect unreadable data. Import a valid backup to restore saving.'); return; }
-    try { localStorage.setItem(key, JSON.stringify(data)); message('Saved on this device.'); }
-    catch (error) { message('Could not save: browser storage is unavailable or full. Export a backup.'); }
+    if (loadFailed || storageConflict) { message('Saving blocked. Export your changes, then reload.'); return; }
+    writer.dirty();
   };
   let today = pacificDay(Date.now()), selected = today, month = today.slice(0,7), view = 'today', editing = null, ringItems = [], audio = null, soundLoop = null;
   const icons = () => { if (window.lucide) window.lucide.createIcons(); };
@@ -4152,6 +4181,7 @@ impl Clone for AppState {
   const liveFormatter = new Intl.DateTimeFormat('en-US',{timeZone:ZONE,hour:'numeric',minute:'2-digit',second:'2-digit'});
   const zoneFormatter = new Intl.DateTimeFormat('en-US',{timeZone:ZONE,timeZoneName:'short'});
   const tick = () => {
+    if (!ready || switching) return;
     const now = Date.now(), day = pacificDay(now);
     if (day !== today) { today = day; render(); }
     $('today-date').textContent = dateLabel(today); $('footer-date').textContent = today;
@@ -4170,7 +4200,7 @@ impl Clone for AppState {
   $('sound-setting').onchange = event => { data.sound = event.target.checked; save(); if (data.sound) beep(); };
   $('notification-button').onclick = async () => { if (!('Notification' in window)) { message('Notifications are not supported in this browser.'); return; } try { const permission = await Notification.requestPermission(); $('notification-button').textContent = permission === 'granted' ? 'Notifications enabled' : 'Notifications blocked or not enabled'; } catch (error) { message('Notifications require a supported browser and a secure connection.'); } };
   $('export-button').onclick = () => { const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'}), url = URL.createObjectURL(blob), link = make('a'); link.href = url; link.download = `palmorganizer-${today}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url),1000); };
-  $('import-file').onchange = async event => { const file = event.target.files[0]; if (!file) return; try { if (file.size > 5*1024*1024) throw new Error('Backup is too large (5 MB maximum).'); const imported = validate(JSON.parse(await file.text())); if (confirm('Replace this browser\'s organizer with this backup?')) { data = imported; loadFailed = false; storageConflict = false; stopRing(); save(); render(); renderLaps(); syncTimerInputs(); tick(); } } catch (error) { message('Import failed: '+error.message); } finally { event.target.value = ''; } };
+  $('import-file').onchange = async event => { const file = event.target.files[0]; if (!file) return; try { if (storageConflict) throw new Error('Reload before importing into a changed session.'); if (file.size > 5*1024*1024) throw new Error('Backup is too large (5 MB maximum).'); const imported = validate(JSON.parse(await file.text())); if (confirm('Replace the current session with this backup?')) { data = imported; stopRing(); save(); render(); renderLaps(); syncTimerInputs(); tick(); await flush(); } } catch (error) { message('Import failed: '+error.message); } finally { event.target.value = ''; } };
   const syncTimerInputs = () => { $('timer-minutes').value = Math.floor(data.timer.duration/60000); $('timer-seconds').value = Math.floor(data.timer.duration/1000)%60; };
   let automationWorker = null, automationTimeout = null, stagedAutomation = null;
   const automationStatus = text => { $('automation-status').textContent = text; };
@@ -4226,9 +4256,86 @@ impl Clone for AppState {
       save(); render(); syncTimerInputs(); tick(); discardAutomation(); automationStatus('Changes applied.');
     } catch (error) { discardAutomation(); automationStatus('Error: '+error.message); }
   };
-  window.addEventListener('storage',event => { if (event.key === key) { storageConflict = true; message('Organizer changed in another tab. Reload before making changes.'); } });
-  document.addEventListener('visibilitychange',() => { if (!document.hidden) tick(); });
-  render(); renderLaps(); syncTimerInputs(); tick(); setInterval(tick,200);
+  const refreshSessions = async () => {
+    const result = await requestSession({action:'list'});
+    $('session-picker').replaceChildren(...result.sessions.map(session => {
+      const option = make('option','',session.name); option.value = session.id; return option;
+    }));
+    return result.sessions;
+  };
+  const openSession = record => {
+    const restored = validate(record.data);
+    endAutomation(); discardAutomation(); stopRing();
+    data = restored; activeSession = record; writer.open(record); loadFailed = storageConflict = false;
+    $('session-picker').value = record.id;
+    try { sessionStorage.setItem('palm-active-session',record.id); } catch (error) {}
+    render(); renderLaps(); syncTimerInputs(); message('Saved to disk.');
+  };
+  const sessionAction = async action => {
+    if (switching) return;
+    switching = true; document.querySelector('main.shell').inert = true;
+    try { await flush(); await action(); }
+    catch (error) { message(error.message); if (activeSession) $('session-picker').value = activeSession.id; }
+    finally { switching = false; document.querySelector('main.shell').inert = false; tick(); }
+  };
+  $('session-picker').onchange = event => {
+    const id = event.target.value;
+    sessionAction(async () => openSession(await requestSession({action:'read',id})));
+  };
+  let sessionMode = 'create';
+  const sessionDialog = mode => {
+    sessionMode = mode;
+    $('session-title').textContent = {create:'New session',rename:'Rename session',delete:'Delete session'}[mode];
+    $('session-name').value = mode === 'rename' ? activeSession.name : '';
+    $('session-name').required = mode !== 'delete';
+    $('session-name-field').hidden = mode === 'delete';
+    $('session-delete-warning').hidden = mode !== 'delete';
+    $('session-delete-warning').textContent = `Delete "${activeSession.name}" and all its data? This cannot be undone.`;
+    $('session-submit').textContent = {create:'Create',rename:'Save',delete:'Delete'}[mode];
+    $('session-submit').className = mode === 'delete' ? 'danger' : 'primary';
+    $('session-dialog').showModal();
+  };
+  $('session-new').onclick = () => sessionDialog('create');
+  $('session-rename').onclick = () => sessionDialog('rename');
+  $('session-delete').onclick = () => sessionDialog('delete');
+  $('session-form').onsubmit = event => {
+    event.preventDefault(); const name = $('session-name').value.trim();
+    if (sessionMode !== 'delete' && !name) return;
+    $('session-dialog').close();
+    sessionAction(async () => {
+      if (sessionMode === 'create') {
+        const record = await requestSession({action:'create',name,data:fresh()});
+        await refreshSessions(); openSession(record); return;
+      }
+      if (sessionMode === 'rename') {
+        activeSession = await requestSession({action:'rename',id:activeSession.id,name});
+        await refreshSessions(); $('session-picker').value = activeSession.id; return;
+      }
+      await requestSession({action:'delete',id:activeSession.id});
+      const sessions = await refreshSessions();
+      const record = sessions.length ? await requestSession({action:'read',id:sessions[0].id}) : await requestSession({action:'create',name:'My session',data:fresh()});
+      await refreshSessions(); openSession(record);
+    });
+  };
+  const initializeSessions = async () => {
+    const sessions = await refreshSessions();
+    let record;
+    if (sessions.length) {
+      let remembered; try { remembered = sessionStorage.getItem('palm-active-session'); } catch (error) {}
+      record = await requestSession({action:'read',id:sessions.find(session => session.id === remembered)?.id || sessions[0].id});
+    } else {
+      const saved = localStorage.getItem(key);
+      record = await requestSession({action:'create',name:'My session',data:saved ? validate(JSON.parse(saved)) : fresh()});
+      if (saved) localStorage.removeItem(key);
+      await refreshSessions();
+    }
+    openSession(record); ready = true; document.querySelector('main.shell').inert = false; tick();
+  };
+  document.addEventListener('visibilitychange',() => { if (document.hidden && ready) flush().catch(() => {}); else tick(); });
+  window.addEventListener('beforeunload',event => { if (writer.unsaved()) { flush().catch(() => {}); event.preventDefault(); event.returnValue = ''; } });
+  initializeSessions().catch(error => message('Could not load sessions: '+error.message+' Reload to retry.'));
+  setInterval(() => { if (ready && !switching) flush().catch(() => {}); },5000);
+  setInterval(tick,200);
 })();
 </script>
 </body>

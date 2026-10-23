@@ -1,5 +1,47 @@
 # Organizer
 
+## Palm Organizer Sessions
+
+`/palmorganizer` has independent named sessions. Create, switch, rename, or delete
+them with the session controls. Each session stores its calendar, checklist,
+switches, notes, alarms, stopwatch, timer, sound setting, and automation code.
+A persistent HttpOnly browser cookie scopes the session list to that browser;
+it is not an account system. Clearing the cookie loses access to its sessions.
+
+The Rust server holds sessions as entries in `partitioned_array_rust`, restored
+from `palmorganizer_data/sessions.json` at startup. Set `PALMORGANIZER_DATA_PATH`
+to override that path. The file is an atomic snapshot of the entire partitioned
+array, including its entries and allocation metadata. Back it up as a whole;
+only one server process may write to it. Invalid snapshots fail startup.
+
+While the page is open, changed data is sent every five seconds. Each accepted
+write atomically saves the partitioned array to disk before reporting success.
+Switching sessions and importing backups also flush pending changes. Hiding
+or leaving the page attempts a final save, but browser shutdown/network failure
+can prevent it. Changes since the last successful save can be lost; check the
+save status before closing. No writes are needed when nothing changed.
+Revision checks prevent stale tabs overwriting newer saves; export unsaved work
+before reloading a tab with a conflict. A failed disk write leaves both the
+previous file and server memory unchanged.
+
+The previous `palmorganizer-v1` browser data migrates into the first session when
+no server sessions exist. Its old browser copy is removed only after a successful
+disk save. Export/import backups apply to the selected session.
+
+An isolated local preview uses the same HTML and Rust storage implementation:
+
+```sh
+PALMORGANIZER_DATA_PATH=/tmp/palmorganizer-preview/sessions.json \
+RUSTFLAGS='--cfg rustix_use_libc' CARGO_PROFILE_DEV_OPT_LEVEL=0 \
+cargo run --example palmorganizer_preview
+```
+
+Open `http://127.0.0.1:8767/palmorganizer`. Set `PALMORGANIZER_PREVIEW_ADDR` to use
+a different local port. Run `cargo test palm_sessions::tests` and
+`node --test tests/palmorganizer_tests.cjs` for session storage and browser logic.
+
+## Tag Organizer
+
 Open `/organizer` on the Rust Tide server after rebuilding and restarting it.
 The page uses plain HTML, CSS, and JavaScript, with no frontend build step.
 The implementation is in [organizer.rs](src/organizer.rs) and

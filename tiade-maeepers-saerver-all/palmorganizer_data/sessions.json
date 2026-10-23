@@ -1,0 +1,171 @@
+{
+  "db_size": 1,
+  "partition_amount_and_offset": 32,
+  "partition_addition_amount": 1,
+  "dynamically_allocates": true,
+  "allocated": true,
+  "range_arr": [
+    [
+      0,
+      32
+    ]
+  ],
+  "rel_arr": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32
+  ],
+  "data_arr": [
+    {
+      "data": {
+        "alarms": [],
+        "events": [],
+        "notes": {
+          "2026-10-22": ""
+        },
+        "sound": true,
+        "switches": [
+          {
+            "color": "#176b53",
+            "id": "8944099b-6867-48d8-8584-b100265055d5",
+            "on": true,
+            "title": "gut out nths backwards sigil"
+          },
+          {
+            "color": "#176b53",
+            "id": "b0f93788-2ecd-4397-af72-0fa7fbc8df8e",
+            "on": true,
+            "title": "grid out the nths forward sigil"
+          }
+        ],
+        "tasks": [],
+        "timer": {
+          "duration": 5400000,
+          "end": 1792741452103,
+          "remaining": 5400000
+        },
+        "version": 1,
+        "watch": {
+          "elapsed": 0,
+          "laps": [],
+          "since": null
+        }
+      },
+      "id": "ac716fd1-0d9b-4040-84fa-8905d2fef041",
+      "name": "My session",
+      "owner": "333d3826-ddda-4458-87ed-846dca9daf2a",
+      "revision": 0
+    },
+    {
+      "data": {
+        "alarms": [],
+        "events": [],
+        "notes": {},
+        "sound": true,
+        "switches": [
+          {
+            "color": "#5fad47",
+            "id": "46e1d886-9b61-4a33-849f-50217c5a9f28",
+            "on": false,
+            "title": "grid'out/grid'in organelle to Nths forward sigil"
+          },
+          {
+            "color": "#ffffff",
+            "id": "f47cc089-de6a-4816-ac45-eec1d3655940",
+            "on": true,
+            "title": "gut'in/gut out Nthe backwards sigil (furries/kemono/fandoms)"
+          },
+          {
+            "color": "#102457",
+            "id": "eb77f5a2-55fe-41f1-b1de-8b9f1f255123",
+            "on": false,
+            "title": "keep second life gutted'in/gutted'out"
+          },
+          {
+            "color": "#5b2067",
+            "id": "5930c315-abae-44da-838b-2a2884706a25",
+            "on": true,
+            "title": "Inverse Parasite neutri chemical generation gridded'out/gridded'in"
+          }
+        ],
+        "tasks": [],
+        "timer": {
+          "duration": 1500000,
+          "end": null,
+          "remaining": 1500000
+        },
+        "version": 1,
+        "watch": {
+          "elapsed": 0,
+          "laps": [],
+          "since": null
+        }
+      },
+      "id": "e52e37fe-0c13-4fd4-a9a9-001d09e3bc15",
+      "name": "Nths forwards and Nths backwards Sigil",
+      "owner": "333d3826-ddda-4458-87ed-846dca9daf2a",
+      "revision": 9
+    },
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+  ]
+}

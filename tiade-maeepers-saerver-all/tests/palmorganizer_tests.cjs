@@ -7,7 +7,37 @@ const page = rust.split('app.at("/palmorganizer")')[1].split('r###"')[1].split('
 const source = page.match(/<script>\s*([\s\S]*?)<\/script>/)[1];
 const context = {module:{exports:{}},Intl,Date};
 runInNewContext(source,context);
-const {pacificDay,nextAlarm,elapsed,remaining,fresh,validate,automationWorkerSource,applyAutomation} = context.module.exports;
+const {pacificDay,nextAlarm,elapsed,remaining,fresh,validate,automationWorkerSource,applyAutomation,sessionWriter} = context.module.exports;
+
+test('session autosaves serialize revisions and preserve edits made during a save',async () => {
+  const writes = [], pending = [];
+  const writer = sessionWriter(command => { writes.push(command); return new Promise(resolve => pending.push(resolve)); },() => {});
+  let data = fresh(); writer.open({id:'work',revision:3}); writer.dirty();
+  const first = writer.flush(() => data);
+  data.notes['2026-10-23'] = 'Changed during save'; writer.dirty();
+  assert.equal(writes[0].data.notes['2026-10-23'],undefined);
+  pending.shift()({revision:4}); await first;
+  assert.equal(writer.unsaved(),true);
+  const second = writer.flush(() => data);
+  assert.equal(writes[1].revision,4);
+  assert.equal(writes[1].data.notes['2026-10-23'],'Changed during save');
+  pending.shift()({revision:5}); await second;
+  assert.equal(writer.unsaved(),false);
+  writer.open({id:'home',revision:0}); writer.dirty();
+  const third = writer.flush(() => fresh());
+  assert.equal(writes[2].id,'home'); assert.equal(writes[2].revision,0);
+  pending.shift()({revision:1}); await third;
+});
+
+test('session autosave retains unsaved edits after failures and blocks conflict retries',async () => {
+  let calls = 0;
+  const writer = sessionWriter(async () => { calls++; const error = new Error('Conflict'); error.status = 409; throw error; },() => {});
+  writer.open({id:'work',revision:0}); writer.dirty();
+  await assert.rejects(writer.flush(() => fresh()));
+  assert.equal(writer.unsaved(),true);
+  await assert.rejects(writer.flush(() => fresh()));
+  assert.equal(calls,1);
+});
 
 test('Pacific calendar day differs from UTC and follows DST',() => {
   assert.equal(pacificDay(Date.parse('2026-01-01T07:59:00Z')),'2025-12-31');
