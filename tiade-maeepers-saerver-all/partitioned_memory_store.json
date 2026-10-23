@@ -1,7 +1,7 @@
 {
   "version": 1,
   "chatlog_entries": {
-    "db_size": 59,
+    "db_size": 60,
     "partition_amount_and_offset": 256,
     "partition_addition_amount": 1,
     "dynamically_allocates": true,
@@ -242,6 +242,10 @@
       [
         14849,
         15104
+      ],
+      [
+        15105,
+        15360
       ]
     ],
     "rel_arr": [
@@ -15349,7 +15353,263 @@
       15101,
       15102,
       15103,
-      15104
+      15104,
+      15105,
+      15106,
+      15107,
+      15108,
+      15109,
+      15110,
+      15111,
+      15112,
+      15113,
+      15114,
+      15115,
+      15116,
+      15117,
+      15118,
+      15119,
+      15120,
+      15121,
+      15122,
+      15123,
+      15124,
+      15125,
+      15126,
+      15127,
+      15128,
+      15129,
+      15130,
+      15131,
+      15132,
+      15133,
+      15134,
+      15135,
+      15136,
+      15137,
+      15138,
+      15139,
+      15140,
+      15141,
+      15142,
+      15143,
+      15144,
+      15145,
+      15146,
+      15147,
+      15148,
+      15149,
+      15150,
+      15151,
+      15152,
+      15153,
+      15154,
+      15155,
+      15156,
+      15157,
+      15158,
+      15159,
+      15160,
+      15161,
+      15162,
+      15163,
+      15164,
+      15165,
+      15166,
+      15167,
+      15168,
+      15169,
+      15170,
+      15171,
+      15172,
+      15173,
+      15174,
+      15175,
+      15176,
+      15177,
+      15178,
+      15179,
+      15180,
+      15181,
+      15182,
+      15183,
+      15184,
+      15185,
+      15186,
+      15187,
+      15188,
+      15189,
+      15190,
+      15191,
+      15192,
+      15193,
+      15194,
+      15195,
+      15196,
+      15197,
+      15198,
+      15199,
+      15200,
+      15201,
+      15202,
+      15203,
+      15204,
+      15205,
+      15206,
+      15207,
+      15208,
+      15209,
+      15210,
+      15211,
+      15212,
+      15213,
+      15214,
+      15215,
+      15216,
+      15217,
+      15218,
+      15219,
+      15220,
+      15221,
+      15222,
+      15223,
+      15224,
+      15225,
+      15226,
+      15227,
+      15228,
+      15229,
+      15230,
+      15231,
+      15232,
+      15233,
+      15234,
+      15235,
+      15236,
+      15237,
+      15238,
+      15239,
+      15240,
+      15241,
+      15242,
+      15243,
+      15244,
+      15245,
+      15246,
+      15247,
+      15248,
+      15249,
+      15250,
+      15251,
+      15252,
+      15253,
+      15254,
+      15255,
+      15256,
+      15257,
+      15258,
+      15259,
+      15260,
+      15261,
+      15262,
+      15263,
+      15264,
+      15265,
+      15266,
+      15267,
+      15268,
+      15269,
+      15270,
+      15271,
+      15272,
+      15273,
+      15274,
+      15275,
+      15276,
+      15277,
+      15278,
+      15279,
+      15280,
+      15281,
+      15282,
+      15283,
+      15284,
+      15285,
+      15286,
+      15287,
+      15288,
+      15289,
+      15290,
+      15291,
+      15292,
+      15293,
+      15294,
+      15295,
+      15296,
+      15297,
+      15298,
+      15299,
+      15300,
+      15301,
+      15302,
+      15303,
+      15304,
+      15305,
+      15306,
+      15307,
+      15308,
+      15309,
+      15310,
+      15311,
+      15312,
+      15313,
+      15314,
+      15315,
+      15316,
+      15317,
+      15318,
+      15319,
+      15320,
+      15321,
+      15322,
+      15323,
+      15324,
+      15325,
+      15326,
+      15327,
+      15328,
+      15329,
+      15330,
+      15331,
+      15332,
+      15333,
+      15334,
+      15335,
+      15336,
+      15337,
+      15338,
+      15339,
+      15340,
+      15341,
+      15342,
+      15343,
+      15344,
+      15345,
+      15346,
+      15347,
+      15348,
+      15349,
+      15350,
+      15351,
+      15352,
+      15353,
+      15354,
+      15355,
+      15356,
+      15357,
+      15358,
+      15359,
+      15360
     ],
     "data_arr": [
       {
@@ -75336,6 +75596,601 @@
         "body": "{\"avatar_id\":\"9b15fa7b-3cd1-4949-87db-954fb2f4da38\",\"avatar_name\":\"snaibi Meili\",\"captured_by\":\"aritywolf\",\"message\":\"lulu~~\\\\:LULULULULOOOO\\\\:~~\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792627793,\"x_pos\":72.056720,\"y_pos\":171.004800,\"z_pos\":25.912400}",
         "received_at": "2026-10-22T00:09:54.359926807+00:00"
       },
+      {
+        "body": "{\"avatar_id\":\"9bd34fc0-58e5-2539-f411-54b746421f5a\",\"avatar_name\":\"Object\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"Thank you for completing the puzzle! The creator has been notified\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792638644,\"x_pos\":69.796270,\"y_pos\":172.484400,\"z_pos\":26.537350}",
+        "received_at": "2026-10-22T03:10:44.702356215+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"9bd34fc0-58e5-2539-f411-54b746421f5a\",\"avatar_name\":\"\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"Thank you for completing the puzzle! The creator has been notified\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792638644,\"x_pos\":78.008350,\"y_pos\":172.846300,\"z_pos\":29.665770}",
+        "received_at": "2026-10-22T03:10:45.395284846+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"9bd34fc0-58e5-2539-f411-54b746421f5a\",\"avatar_name\":\"Object\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"Thank you for completing the puzzle! The creator has been notified\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792638646,\"x_pos\":69.796270,\"y_pos\":172.484400,\"z_pos\":26.537350}",
+        "received_at": "2026-10-22T03:10:47.244906896+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"9bd34fc0-58e5-2539-f411-54b746421f5a\",\"avatar_name\":\"\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"Thank you for completing the puzzle! The creator has been notified\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792638646,\"x_pos\":78.008350,\"y_pos\":172.846300,\"z_pos\":29.665770}",
+        "received_at": "2026-10-22T03:10:47.952421900+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"5d171e7d-ce70-3810-935f-39cadf110d9d\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792648276,\"x_pos\":69.796270,\"y_pos\":172.484400,\"z_pos\":26.537350}",
+        "received_at": "2026-10-22T05:51:17.232505195+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"21631fc5-6766-4ef6-aca7-6d87c8952309\",\"avatar_name\":\"sarajanelopez Resident\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"Yay yay yay ivory tower halloween\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792656003,\"x_pos\":69.796270,\"y_pos\":172.484400,\"z_pos\":26.537350}",
+        "received_at": "2026-10-22T08:00:04.308856099+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"21631fc5-6766-4ef6-aca7-6d87c8952309\",\"avatar_name\":\"sarajanelopez Resident\",\"captured_by\":\"aritywolf\",\"message\":\"Yay yay yay ivory tower halloween\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792656003,\"x_pos\":72.023280,\"y_pos\":170.957700,\"z_pos\":25.912570}",
+        "received_at": "2026-10-22T08:00:05.223615654+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"21631fc5-6766-4ef6-aca7-6d87c8952309\",\"avatar_name\":\"sarajanelopez Resident\",\"captured_by\":\"aritywolf\",\"message\":\"Yay yay yay ivory decorated for halloween 👻\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792656957,\"x_pos\":72.023300,\"y_pos\":170.957700,\"z_pos\":25.912570}",
+        "received_at": "2026-10-22T08:15:58.050002697+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"21631fc5-6766-4ef6-aca7-6d87c8952309\",\"avatar_name\":\"sarajanelopez Resident\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"Yay yay yay ivory decorated for halloween 👻\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792656957,\"x_pos\":69.796270,\"y_pos\":172.484400,\"z_pos\":26.537350}",
+        "received_at": "2026-10-22T08:15:58.461793341+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"3313705d-bad2-ea47-0fbe-12379f3e5d86\",\"avatar_name\":\"~MR~PIGGYBACK~AO for COUPLE (woman)\",\"captured_by\":\"aritywolf\",\"message\":\"Ruby HUGS хJιɴхх ƝΦғᴜx!\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792660870,\"x_pos\":83.275920,\"y_pos\":200.442700,\"z_pos\":23.291290}",
+        "received_at": "2026-10-22T09:21:10.496538774+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"d0e1c54b-f6a2-4583-bf67-6c170546982e\",\"avatar_name\":\"Dawnna Lane\",\"captured_by\":\"aritywolf\",\"message\":\"^^\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792661044,\"x_pos\":83.252120,\"y_pos\":200.462600,\"z_pos\":23.293050}",
+        "received_at": "2026-10-22T09:24:04.382588614+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\/me Hawk Tuah  💦\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792661376,\"x_pos\":83.266010,\"y_pos\":200.466900,\"z_pos\":23.290850}",
+        "received_at": "2026-10-22T09:29:36.815359905+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792661376,\"x_pos\":83.266010,\"y_pos\":200.466900,\"z_pos\":23.290850}",
+        "received_at": "2026-10-22T09:29:37.270788402+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792661376,\"x_pos\":83.266010,\"y_pos\":200.466900,\"z_pos\":23.290850}",
+        "received_at": "2026-10-22T09:29:37.625280511+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"d0e1c54b-f6a2-4583-bf67-6c170546982e\",\"avatar_name\":\"Dawnna Lane\",\"captured_by\":\"aritywolf\",\"message\":\"spit on that thang\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792661405,\"x_pos\":83.266010,\"y_pos\":200.466900,\"z_pos\":23.290850}",
+        "received_at": "2026-10-22T09:30:05.776094009+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2358 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792661838,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:37:18.643393311+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2359 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792661844,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:37:25.180580734+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"night! <33\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792661968,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:39:28.621491983+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"yeah dealing <333\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792661999,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:39:59.524174315+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"nooo\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662016,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:40:16.898683393+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"thankies <333\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662025,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:40:26.413488022+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"ofc!\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662030,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:40:31.330664527+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"byeee night!\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662042,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:40:42.749998028+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2360 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662082,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:41:22.793566555+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2361 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662085,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:41:25.399236769+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2362 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662087,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:41:27.879532444+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2363 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662089,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:41:30.162217163+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2364 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662091,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:41:32.027411673+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"9eb7449f-3d61-0912-1e63-2b0c428beceb\",\"avatar_name\":\"[Theatre] :: Fluffy Petter 1.07\",\"captured_by\":\"aritywolf\",\"message\":\"xJinxx has gained total fluffiness level ~ 910!\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662091,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:41:32.412467423+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2365 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662094,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:41:34.749516795+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"brb <33\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662116,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:41:56.917227454+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662178,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:42:58.904607079+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"𝚕𝚘𝚗𝚐 𝚍𝚒𝚌𝚔 𝚑𝚎𝚛 𝚕𝚒𝚔𝚎 𝚞𝚐𝚑, 𝚞𝚐𝚑, 𝚞𝚐𝚑\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662178,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:42:59.245150658+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"d0e1c54b-f6a2-4583-bf67-6c170546982e\",\"avatar_name\":\"Dawnna Lane\",\"captured_by\":\"aritywolf\",\"message\":\"lövë ÿöür përfümë!\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662194,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:43:14.498133932+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"d0e1c54b-f6a2-4583-bf67-6c170546982e\",\"avatar_name\":\"Dawnna Lane\",\"captured_by\":\"aritywolf\",\"message\":\"whät ïs thät, thë stënċh öf dëäth?\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662195,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:43:15.425849079+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"49395180-d185-9380-81a7-c791250ba1ab\",\"avatar_name\":[Good Moaning],\"captured_by\":\"aritywolf\",\"message\":\"xVoid is spanking Dawn Lane\\\\'s curvy ass!\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662332,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:45:32.798906617+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"5e7cabfa-3daf-4ac8-ed83-09cf9af60bc4\",\"avatar_name\":[Good Moaning],\"captured_by\":\"aritywolf\",\"message\":\"xVoid is spanking Dawn Lane\\\\'s ass!\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662332,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:45:33.255328105+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662378,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:46:19.183500870+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"𝚕𝚘𝚗𝚐 𝚍𝚒𝚌𝚔 𝚑𝚎𝚛 𝚕𝚒𝚔𝚎 𝚞𝚐𝚑, 𝚞𝚐𝚑, 𝚞𝚐𝚑\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662379,\"x_pos\":83.265370,\"y_pos\":200.519200,\"z_pos\":23.289500}",
+        "received_at": "2026-10-22T09:46:19.561526901+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\/me Hawk Tuah  💦\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662455,\"x_pos\":83.276980,\"y_pos\":200.572900,\"z_pos\":23.288970}",
+        "received_at": "2026-10-22T09:47:36.221533135+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662455,\"x_pos\":83.276980,\"y_pos\":200.572900,\"z_pos\":23.288970}",
+        "received_at": "2026-10-22T09:47:36.578607351+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662456,\"x_pos\":83.276980,\"y_pos\":200.572900,\"z_pos\":23.288970}",
+        "received_at": "2026-10-22T09:47:37.023492145+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662523,\"x_pos\":83.276980,\"y_pos\":200.572900,\"z_pos\":23.288970}",
+        "received_at": "2026-10-22T09:48:44.223585479+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"𝚕𝚘𝚗𝚐 𝚍𝚒𝚌𝚔 𝚑𝚎𝚛 𝚕𝚒𝚔𝚎 𝚞𝚐𝚑, 𝚞𝚐𝚑, 𝚞𝚐𝚑\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662524,\"x_pos\":83.276980,\"y_pos\":200.572900,\"z_pos\":23.288970}",
+        "received_at": "2026-10-22T09:48:44.588383973+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"b3b2f986-463b-443a-a77f-3a3022fa1d07\",\"avatar_name\":\"CrispyA Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662534,\"x_pos\":83.276980,\"y_pos\":200.572900,\"z_pos\":23.288970}",
+        "received_at": "2026-10-22T09:48:54.694624079+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"b3b2f986-463b-443a-a77f-3a3022fa1d07\",\"avatar_name\":\"CrispyA Resident\",\"captured_by\":\"aritywolf\",\"message\":\"𝚕𝚘𝚗𝚐 𝚍𝚒𝚌𝚔 𝚑𝚎𝚛 𝚕𝚒𝚔𝚎 𝚞𝚐𝚑, 𝚞𝚐𝚑, 𝚞𝚐𝚑\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792662534,\"x_pos\":83.276980,\"y_pos\":200.572900,\"z_pos\":23.288970}",
+        "received_at": "2026-10-22T09:48:55.166584934+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2366 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792663202,\"x_pos\":83.278200,\"y_pos\":200.574200,\"z_pos\":23.381880}",
+        "received_at": "2026-10-22T10:00:03.347325594+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"6cf9b256-9910-b4c1-74a5-0029047973d1\",\"avatar_name\":\"Soho Park Bin\",\"captured_by\":\"aritywolf\",\"message\":\"MaxToublePowers Resident cannot resist the urge to rummage in the bin and finds a discarded \\\\'Joey Deacon Mask <add me>\\\\'\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792663219,\"x_pos\":83.278200,\"y_pos\":200.574200,\"z_pos\":23.381880}",
+        "received_at": "2026-10-22T10:00:19.367308247+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"6cf9b256-9910-b4c1-74a5-0029047973d1\",\"avatar_name\":\"\",\"captured_by\":\"aritywolf\",\"message\":\"MaxToublePowers Resident cannot resist the urge to rummage in the bin and finds a discarded \\\\'Joey Deacon Mask <add me>\\\\'\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792663219,\"x_pos\":90.459490,\"y_pos\":200.434200,\"z_pos\":22.414410}",
+        "received_at": "2026-10-22T10:00:19.769938217+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2367 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792663324,\"x_pos\":83.278200,\"y_pos\":200.574200,\"z_pos\":23.381880}",
+        "received_at": "2026-10-22T10:02:04.635709621+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you Bcreative Wilde Heart for headpat #2368 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792663462,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:04:23.277262144+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2369 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792663478,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:04:38.804900232+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"d0e1c54b-f6a2-4583-bf67-6c170546982e\",\"avatar_name\":\"Dawnna Lane\",\"captured_by\":\"aritywolf\",\"message\":\"♥·\\\\.¸·´¯`·\\\\.¸\\\\.♬ Mmmm tune ♬ ·\\\\.¸·´¯`·\\\\.¸\\\\.♥\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664001,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:13:22.035844913+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2370 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664154,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:15:54.977907370+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2371 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664567,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:22:48.397832888+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"9eb7449f-3d61-0912-1e63-2b0c428beceb\",\"avatar_name\":\"[Theatre] :: Fluffy Petter 1.07\",\"captured_by\":\"aritywolf\",\"message\":\"xJinxx has gained total fluffiness level ~ 920!\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664580,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:23:00.403440790+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you Dawn Lane for headpat #2372 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664588,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:23:09.266952921+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664747,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:25:48.249977593+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"𝚕𝚘𝚗𝚐 𝚍𝚒𝚌𝚔 𝚑𝚎𝚛 𝚕𝚒𝚔𝚎 𝚞𝚐𝚑, 𝚞𝚐𝚑, 𝚞𝚐𝚑\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664748,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:25:48.780574616+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"𝚕𝚘𝚗𝚐 𝚍𝚒𝚌𝚔 𝚑𝚎𝚛 𝚕𝚒𝚔𝚎 𝚞𝚐𝚑, 𝚞𝚐𝚑, 𝚞𝚐𝚑\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664748,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:25:49.282759078+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"𝚕𝚘𝚗𝚐 𝚍𝚒𝚌𝚔 𝚑𝚎𝚛 𝚕𝚒𝚔𝚎 𝚞𝚐𝚑, 𝚞𝚐𝚑, 𝚞𝚐𝚑\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664748,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:25:49.796835513+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664748,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:25:50.154886388+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664748,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:25:50.908083977+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"𝚕𝚘𝚗𝚐 𝚍𝚒𝚌𝚔 𝚑𝚎𝚛 𝚕𝚒𝚔𝚎 𝚞𝚐𝚑, 𝚞𝚐𝚑, 𝚞𝚐𝚑\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664748,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:25:51.689052533+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"𝚕𝚘𝚗𝚐 𝚍𝚒𝚌𝚔 𝚑𝚎𝚛 𝚕𝚒𝚔𝚎 𝚞𝚐𝚑, 𝚞𝚐𝚑, 𝚞𝚐𝚑\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664748,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:25:52.088984766+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"𝚕𝚘𝚗𝚐 𝚍𝚒𝚌𝚔 𝚑𝚎𝚛 𝚕𝚒𝚔𝚎 𝚞𝚐𝚑, 𝚞𝚐𝚑, 𝚞𝚐𝚑\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664748,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:25:52.561295673+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664748,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:25:53.372702773+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"𝚕𝚘𝚗𝚐 𝚍𝚒𝚌𝚔 𝚑𝚎𝚛 𝚕𝚒𝚔𝚎 𝚞𝚐𝚑, 𝚞𝚐𝚑, 𝚞𝚐𝚑\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664751,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:25:54.092548156+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664748,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:25:54.474585571+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664748,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:25:54.857275903+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664751,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:25:55.234886897+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"4a95293c-aa78-cc95-f55c-1593fb213211\",\"avatar_name\":\"\",\"captured_by\":\"aritywolf\",\"message\":\"★ 𝐏𝐫𝐞𝐭𝐭𝐲 𝐋𝐢𝐚𝐫𝐬 ★ Ruby 𝐬𝐩𝐚𝐧𝐤𝐬 хJιɴхх ƝΦғᴜx\\\\'s 𝐚𝐬𝐬\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664831,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:27:11.857048724+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2373 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792664897,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:28:17.540886912+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you Ruby for headpat #2374 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792665062,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:31:02.531214038+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"4a95293c-aa78-cc95-f55c-1593fb213211\",\"avatar_name\":\"\",\"captured_by\":\"aritywolf\",\"message\":\"★ 𝐏𝐫𝐞𝐭𝐭𝐲 𝐋𝐢𝐚𝐫𝐬 ★ Ruby 𝐬𝐩𝐚𝐧𝐤𝐬 хJιɴхх ƝΦғᴜx\\\\'s 𝐚𝐬𝐬\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792665075,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:31:16.200389362+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"9fe171cf-43e4-47e7-ac95-7d5d8c17c6e6\",\"avatar_name\":\"RACER Short\",\"captured_by\":\"aritywolf\",\"message\":\"🐺\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792665092,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:31:33.184435372+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"6cf9b256-9910-b4c1-74a5-0029047973d1\",\"avatar_name\":\"Soho Park Bin\",\"captured_by\":\"aritywolf\",\"message\":\"SuperSaiyan4Goku1000 Resident cannot resist the urge to rummage in the bin and finds a discarded \\\\'boyberry Garrison Cap 04 (add me)\\\\'\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792665108,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:31:48.398277551+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"6cf9b256-9910-b4c1-74a5-0029047973d1\",\"avatar_name\":\"\",\"captured_by\":\"aritywolf\",\"message\":\"SuperSaiyan4Goku1000 Resident cannot resist the urge to rummage in the bin and finds a discarded \\\\'boyberry Garrison Cap 04 (add me)\\\\'\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792665108,\"x_pos\":90.459490,\"y_pos\":200.434200,\"z_pos\":22.414410}",
+        "received_at": "2026-10-22T10:31:48.744996072+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2375 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792665451,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:37:32.356153190+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2376 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792665552,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:39:12.955818436+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you Rem for headpat #2377 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792665572,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:39:32.451328443+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"532bed9a-519b-492a-a92d-738922d39257\",\"avatar_name\":\"IsabellaHendalson Resident\",\"captured_by\":\"aritywolf\",\"message\":\"Just slap her ass\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792665655,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:40:55.896945910+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"532bed9a-519b-492a-a92d-738922d39257\",\"avatar_name\":\"IsabellaHendalson Resident\",\"captured_by\":\"aritywolf\",\"message\":\"hahaha\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792665673,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:41:13.713073851+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"532bed9a-519b-492a-a92d-738922d39257\",\"avatar_name\":\"IsabellaHendalson Resident\",\"captured_by\":\"aritywolf\",\"message\":\"If you know eachother long enough anythings possible Giggle\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792665761,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:42:42.319361562+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"532bed9a-519b-492a-a92d-738922d39257\",\"avatar_name\":\"IsabellaHendalson Resident\",\"captured_by\":\"aritywolf\",\"message\":\"If you make her laugh that helps too\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792665822,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:43:42.510727820+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"46f2bc34-d716-0645-193c-2fb93be47150\",\"avatar_name\":\"~MR~PIGGYBACK~AO for COUPLE (woman)\",\"captured_by\":\"aritywolf\",\"message\":\"Ruby HUGS хJιɴхх ƝΦғᴜx!\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792665832,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:43:52.386371754+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2378 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792665869,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:44:30.033740055+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"532bed9a-519b-492a-a92d-738922d39257\",\"avatar_name\":\"IsabellaHendalson Resident\",\"captured_by\":\"aritywolf\",\"message\":\"Inception day\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792665967,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:46:08.048277804+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"532bed9a-519b-492a-a92d-738922d39257\",\"avatar_name\":\"IsabellaHendalson Resident\",\"captured_by\":\"aritywolf\",\"message\":\"tomorrow for the kids\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792665983,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:46:23.936090425+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"532bed9a-519b-492a-a92d-738922d39257\",\"avatar_name\":\"IsabellaHendalson Resident\",\"captured_by\":\"aritywolf\",\"message\":\"They have a day off\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792666001,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:46:41.592494624+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"b5648afe-d8bf-4bef-a451-c11cea81f6d0\",\"avatar_name\":\"Movado Resident\",\"captured_by\":\"aritywolf\",\"message\":\"she will cut you\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792666386,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:53:07.210378852+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0d22d85c-ff8a-4f26-09d0-5f2d046fffca\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2379 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792666433,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:53:54.302461203+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"b5648afe-d8bf-4bef-a451-c11cea81f6d0\",\"avatar_name\":\"Movado Resident\",\"captured_by\":\"aritywolf\",\"message\":\"what happened to me i went to her crib and was trying to prop her booty i n the air and holder her face down and she cut me open\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792666456,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:54:17.236780077+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"b5648afe-d8bf-4bef-a451-c11cea81f6d0\",\"avatar_name\":\"Movado Resident\",\"captured_by\":\"aritywolf\",\"message\":\"🤣\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792666468,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:54:28.432104416+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792666635,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:57:16.055162642+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"𝚕𝚘𝚗𝚐 𝚍𝚒𝚌𝚔 𝚑𝚎𝚛 𝚕𝚒𝚔𝚎 𝚞𝚐𝚑, 𝚞𝚐𝚑, 𝚞𝚐𝚑\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792666635,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:57:16.417486647+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792666655,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:57:36.100626571+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"𝚕𝚘𝚗𝚐 𝚍𝚒𝚌𝚔 𝚑𝚎𝚛 𝚕𝚒𝚔𝚎 𝚞𝚐𝚑, 𝚞𝚐𝚑, 𝚞𝚐𝚑\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792666655,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:57:36.445198064+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792666667,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:57:47.609472429+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"𝚕𝚘𝚗𝚐 𝚍𝚒𝚌𝚔 𝚑𝚎𝚛 𝚕𝚒𝚔𝚎 𝚞𝚐𝚑, 𝚞𝚐𝚑, 𝚞𝚐𝚑\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792666667,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T10:57:47.963986782+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"532bed9a-519b-492a-a92d-738922d39257\",\"avatar_name\":\"IsabellaHendalson Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\\\.\\\\.\\\\.*meow*\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792667042,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T11:04:03.026605184+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"532bed9a-519b-492a-a92d-738922d39257\",\"avatar_name\":\"IsabellaHendalson Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\\\.\\\\.\\\\.*meow*\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792667043,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T11:04:03.428542047+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"532bed9a-519b-492a-a92d-738922d39257\",\"avatar_name\":\"IsabellaHendalson Resident\",\"captured_by\":\"aritywolf\",\"message\":\"Get the ring out\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792667050,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T11:04:11.342823966+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"0fa796a1-3b7d-5706-7707-a74ea34d2ace\",\"avatar_name\":\"{minuit} Bite Me System [Reborn] [ADD]\",\"captured_by\":\"aritywolf\",\"message\":\"CaineTheFirst Resident 𝚓𝚞𝚜𝚝 𝚋𝚒𝚝 warslugz Resident 𝚘𝚗 𝚝𝚑𝚎 𝚛𝚒𝚐𝚑𝚝 𝚜𝚑𝚘𝚞𝚕𝚍𝚎𝚛\\\\.ᐟ\\\\.ᐟ\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792667265,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T11:07:45.726321231+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\/me passes out\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792667469,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T11:11:10.207016654+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"*dead*\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792667471,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T11:11:12.132410283+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"6cf9b256-9910-b4c1-74a5-0029047973d1\",\"avatar_name\":\"Soho Park Bin\",\"captured_by\":\"aritywolf\",\"message\":\"Shogun Mysterious cannot resist the urge to rummage in the bin and finds a discarded \\\\'CAT_moon_plane2\\\\'\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792667989,\"x_pos\":83.278210,\"y_pos\":200.572700,\"z_pos\":23.289300}",
+        "received_at": "2026-10-22T11:19:50.111657949+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"6cf9b256-9910-b4c1-74a5-0029047973d1\",\"avatar_name\":\"\",\"captured_by\":\"aritywolf\",\"message\":\"Shogun Mysterious cannot resist the urge to rummage in the bin and finds a discarded \\\\'CAT_moon_plane2\\\\'\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792667989,\"x_pos\":90.459490,\"y_pos\":200.434200,\"z_pos\":22.414410}",
+        "received_at": "2026-10-22T11:19:50.564312550+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"b4bc0e0f-c306-8fdb-a328-dd0c34675519\",\"avatar_name\":\"Musical Mesh Eiffel Tower\",\"captured_by\":\"aritywolf\",\"message\":\"Playing\\\\.\\\\.\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1792673401,\"x_pos\":83.232250,\"y_pos\":200.529700,\"z_pos\":23.263520}",
+        "received_at": "2026-10-22T12:50:02.083284847+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"29621b2e-2101-aabb-355e-b37cd51e7c9a\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792676213,\"x_pos\":74.464900,\"y_pos\":172.778800,\"z_pos\":26.000280}",
+        "received_at": "2026-10-22T13:36:54.104756770+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"1d8d2190-7b42-ea5b-7fbb-8dffdd20b44e\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792723870,\"x_pos\":74.533230,\"y_pos\":172.769800,\"z_pos\":25.999760}",
+        "received_at": "2026-10-23T02:51:10.950935378+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"9bc85013-eac2-4c22-9ab4-46b70561a140\",\"avatar_name\":\"Francesca Oppental\",\"captured_by\":\"aritywolf\",\"message\":\"Good Evening and night Aylo and Arlo\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792725683,\"x_pos\":74.533210,\"y_pos\":172.769800,\"z_pos\":25.912940}",
+        "received_at": "2026-10-23T03:21:24.172156641+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"9bc85013-eac2-4c22-9ab4-46b70561a140\",\"avatar_name\":\"Francesca Oppental\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"Good Evening and night Aylo and Arlo\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792725683,\"x_pos\":69.793900,\"y_pos\":172.484000,\"z_pos\":26.537350}",
+        "received_at": "2026-10-23T03:21:24.580512705+00:00"
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
       {},
       {},
       {},
@@ -75447,7 +76302,7 @@
       {}
     ]
   },
-  "chatlog_revision": 14996,
+  "chatlog_revision": 15109,
   "variable_entries": {
     "db_size": 1,
     "partition_amount_and_offset": 64,

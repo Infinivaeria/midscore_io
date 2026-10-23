@@ -3881,6 +3881,360 @@ impl Clone for AppState {
 
     app.with(LogRoute);
     organizer::mount(&mut app)?;
+    app.at("/palmorganizer").get(|_| async {
+        let mut response = tide::Response::new(tide::StatusCode::Ok);
+        response.set_content_type(tide::http::mime::HTML);
+        response.set_body(r###"<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#176b53">
+<title>Palm Organizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<script defer src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+<style>
+:root{--ink:#202c29;--muted:#63716c;--green:#176b53;--mint:#e4f1e9;--paper:#f7f9f7;--line:#dce4de;--white:#fff;--red:#a32f42}
+*{box-sizing:border-box;letter-spacing:0}body{margin:0;background:var(--paper);color:var(--ink);font:15px 'DM Sans',sans-serif;background-image:linear-gradient(120deg,#edf4ef88,transparent 60%)}button,input,textarea,select{font:inherit}button{cursor:pointer}button,a,input,select,textarea{touch-action:manipulation}button{min-height:44px;border:1px solid var(--line);border-radius:6px;background:var(--white);color:var(--ink);padding:10px 14px;font-weight:600}button:hover{border-color:var(--green)}button:disabled{opacity:.45;cursor:default}button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid #dbac36;outline-offset:3px}button.primary{background:var(--green);color:white;border-color:var(--green)}button.danger{color:var(--red)}.icon{width:44px;height:44px;display:inline-grid;place-items:center;padding:10px;flex-shrink:0}.icon svg,nav svg,.brand svg{width:20px;height:20px}h1,h2,h3{font-family:Manrope,sans-serif;margin:0}h1{font-size:25px}h2{font-size:20px}p{line-height:1.5}.muted{color:var(--muted)}.small{font-size:12px}.shell{max-width:1040px;margin:auto;padding:24px 24px 110px}header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:22px;border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:12px}.mark{background:var(--green);color:white;width:42px;height:42px;display:grid;place-items:center;border-radius:8px}.brand p{margin:3px 0 0}.status{font-size:12px;min-height:20px;margin:12px 0;color:var(--muted);overflow-wrap:anywhere}.heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:24px 0 16px}.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.greeting{display:grid;grid-template-columns:1fr auto;align-items:center;gap:20px;padding:24px 0;border-bottom:1px solid var(--line)}.greeting h2{font-size:28px;margin:6px 0}.greeting p{margin:5px 0}.landscape{width:118px;height:100px;object-fit:cover;border-radius:6px}.eyebrow{text-transform:uppercase;font-size:11px;font-weight:700;color:var(--green)}.live-clock{font-family:Manrope,sans-serif;font-size:28px;font-variant-numeric:tabular-nums}.columns{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:36px}.section{border-bottom:1px solid var(--line);padding-bottom:22px}.empty{color:var(--muted);padding:20px 0;font-size:14px}.item{display:flex;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid var(--line)}.item:last-child{border-bottom:0}.item-main{flex:1;min-width:0;overflow-wrap:anywhere}.item p{margin:3px 0;color:var(--muted);font-size:13px;overflow-wrap:anywhere}.time-tag{min-width:64px;font-size:12px;color:var(--green);font-weight:700}.task-check{width:24px;height:24px;flex-shrink:0;accent-color:var(--green)}.done{text-decoration:line-through;color:var(--muted)}.switch{appearance:none;width:48px;height:28px;background:#aab8b0;border-radius:20px;position:relative;border:0;cursor:pointer;flex-shrink:0;margin:8px 0}.switch:before{content:'';position:absolute;width:22px;height:22px;border-radius:50%;background:white;left:3px;top:3px;transition:transform .16s}.switch:checked{background:var(--green)}.switch:checked:before{transform:translateX(20px)}.switch-label{display:flex;gap:12px;align-items:center;flex:1;min-height:44px;min-width:0;overflow-wrap:anywhere}.switch-label>span:not(.swatch){flex:1;min-width:0}.note{width:100%;min-height:150px;resize:vertical;border:1px solid var(--line);border-radius:6px;padding:14px;background:#fffdf3;color:var(--ink);line-height:1.6}.progress{height:5px;background:var(--line);margin-top:12px;border-radius:3px;overflow:hidden}.progress div{height:100%;background:var(--green)}nav{position:fixed;z-index:5;bottom:0;left:0;right:0;display:flex;justify-content:center;background:#fffffff5;border-top:1px solid var(--line);padding:8px 12px calc(8px + env(safe-area-inset-bottom));backdrop-filter:blur(12px)}nav button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:130px;border:0;background:transparent;color:var(--muted);font-size:11px;min-height:54px}nav button[aria-current=page]{background:var(--mint);color:var(--green)}[hidden]{display:none!important}.month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}.weekday{text-align:center;font-size:11px;color:var(--muted);padding:12px 0}.day{min-height:60px;padding:8px 2px;position:relative;border-color:transparent;background:transparent;font-variant-numeric:tabular-nums}.day.today{box-shadow:inset 0 0 0 1px var(--green)}.day.selected{background:var(--green);color:white}.day .dot{display:block;width:4px;height:4px;background:currentColor;border-radius:50%;margin:4px auto 0}.calendar-toolbar{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:20px 0}.calendar-toolbar h2{font-size:18px}.tabs{display:flex;gap:4px;background:#e9eeea;padding:4px;border-radius:6px;margin:24px 0}.tabs button{flex:1;border:0;background:transparent;min-width:0;padding:10px 5px;font-size:13px}.tabs button[aria-selected=true]{background:white;box-shadow:0 1px 3px #0001}.clock-panel{max-width:580px;margin:0 auto}.readout{font-family:Manrope,sans-serif;font-size:56px;font-weight:600;font-variant-numeric:tabular-nums;text-align:center;margin:40px 0 30px;line-height:1.2;overflow-wrap:anywhere}.center{justify-content:center}.timer-inputs{display:flex;justify-content:center;gap:12px;margin:30px 0}.timer-inputs label{width:100px;text-align:center}.timer-inputs input{font-size:25px;text-align:center}.lap-list{max-height:260px;overflow:auto}.lap-list li{padding:12px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}dialog{width:min(480px,calc(100% - 28px));max-height:90dvh;overflow:auto;border:0;border-radius:8px;padding:24px;box-shadow:0 20px 80px #14392c33}dialog::backdrop{background:#122e2677}dialog h2{font-size:21px}form{display:grid;gap:16px}label.field{display:grid;gap:7px;color:var(--muted);font-size:13px}input:not([type=checkbox]),textarea,select{width:100%;min-width:0;border:1px solid #bdcbc2;border-radius:5px;padding:12px;background:white;color:var(--ink);min-height:46px}input[type=color]{padding:4px}.dialog-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:20px}.form-actions{display:flex;justify-content:flex-end;gap:8px}.notice{background:#fff5cf;border-left:3px solid #c29119;padding:12px;font-size:13px;line-height:1.5}.ring{position:sticky;top:8px;z-index:6;background:#fff0bc;border:1px solid #c29119;border-radius:6px;padding:16px;margin:12px 0}.ring strong{display:block;margin-bottom:12px;overflow-wrap:anywhere}.swatch{width:10px;height:10px;border-radius:50%;flex:0 0 10px}.backup{display:grid;gap:16px}.backup .actions>*{flex:1}.file-label{cursor:pointer;min-height:44px;padding:12px;border:1px solid var(--line);border-radius:6px;text-align:center;font-weight:600;font-size:15px}footer{margin-top:24px;font-size:12px;color:var(--muted)}@media(max-width:640px){.shell{padding:16px 18px 105px}.columns{grid-template-columns:1fr;gap:0}h1{font-size:21px}.brand{gap:9px}.brand p{font-size:11px}.mark{width:36px;height:36px}.greeting h2{font-size:23px}.greeting{gap:12px}.landscape{width:82px;height:90px}.live-clock{font-size:24px}.heading{margin-top:22px}.readout{font-size:46px}.day{min-height:47px}nav button{width:25%}.time-tag{min-width:57px}.item{gap:8px}dialog{padding:20px}}@media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+<style>
+#automation-dialog{width:min(760px,calc(100% - 28px))}.automation-editor{font:14px/1.6 ui-monospace,monospace;min-height:260px;resize:vertical;tab-size:2;white-space:pre;overflow:auto}.automation-output{font:13px/1.6 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;background:#edf3ef;min-height:90px;max-height:220px;overflow:auto;padding:14px;border-radius:5px}.automation-controls{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.automation-controls button{display:inline-flex;align-items:center;gap:8px}.automation-controls svg{width:18px;height:18px}.automation-options{margin-bottom:14px}
+</style>
+</head>
+<body>
+<main class="shell">
+<header><div class="brand"><span class="mark"><i data-lucide="calendar-check" aria-hidden="true"></i></span><div><h1>Palm Organizer</h1><p class="muted">A little order, every day.</p></div></div><button class="icon" id="settings-button" aria-label="Settings and backup" title="Settings and backup"><i data-lucide="settings" aria-hidden="true">&#9881;</i></button></header>
+<div id="status" class="status" role="status" aria-live="polite">Saved on this device.</div>
+<aside id="ring" class="ring" role="alert" hidden><strong id="ring-title"></strong><div class="actions"><button id="dismiss-ring" class="primary">Dismiss</button><button id="snooze-ring">Snooze 5 min</button></div></aside>
+<section id="view-today" aria-label="Today">
+<div class="greeting"><div><span class="eyebrow" id="today-date"></span><h2>A fresh view of your day.</h2><div class="live-clock" id="pacific-clock"></div><p class="muted small" id="zone-label">Pacific time</p></div><img class="landscape" src="https://images.unsplash.com/photo-1472396961693-142e6e269027?w=300&auto=format&fit=crop&q=80" alt="Sunlit green forest" width="118" height="100"></div>
+<div class="columns"><div><section class="section"><div class="heading"><h2>Today's agenda</h2><button class="icon" data-add="event" aria-label="Add event" title="Add event"><i data-lucide="plus">+</i></button></div><div id="today-events"></div></section><section class="section"><div class="heading"><h2>Daily checklist</h2><button class="icon" data-add="task" aria-label="Add task" title="Add task"><i data-lucide="plus">+</i></button></div><div id="tasks"></div><div class="progress" aria-hidden="true"><div id="task-progress"></div></div><p id="task-count" class="small muted"></p></section></div><div><section class="section"><div class="heading"><h2>My switches</h2><button class="icon" data-add="switch" aria-label="Add switch" title="Add switch"><i data-lucide="plus">+</i></button></div><div id="today-switches"></div></section><section class="section"><div class="heading"><h2>Scratchpad</h2><span class="small muted">Autosaved</span></div><label for="note" class="small muted">Notes for today</label><textarea id="note" class="note" maxlength="20000" placeholder="What's on your mind?"></textarea></section></div></div>
+</section>
+<section id="view-calendar" aria-label="Calendar" hidden><div class="columns"><div><div class="calendar-toolbar"><button class="icon" id="prev-month" aria-label="Previous month" title="Previous month"><i data-lucide="chevron-left">&lt;</i></button><h2 id="month-label"></h2><button class="icon" id="next-month" aria-label="Next month" title="Next month"><i data-lucide="chevron-right">&gt;</i></button><button id="calendar-today">Today</button></div><div class="month-grid" id="calendar-grid" aria-label="Choose a date"></div><p class="small muted">America/Los_Angeles &middot; PST / PDT</p></div><section><div class="heading"><h2 id="selected-label"></h2><button class="icon" data-add="event" aria-label="Add event on selected day" title="Add event"><i data-lucide="plus">+</i></button></div><div id="selected-events"></div></section></div></section>
+<section id="view-clocks" aria-label="Clocks" hidden><div class="tabs" role="tablist" aria-label="Clock tools"><button role="tab" id="tab-alarm" data-clock="alarm" aria-controls="clock-alarm" aria-selected="true">Alarms</button><button role="tab" id="tab-stopwatch" data-clock="stopwatch" aria-controls="clock-stopwatch" aria-selected="false">Stopwatch</button><button role="tab" id="tab-timer" data-clock="timer" aria-controls="clock-timer" aria-selected="false">Timer</button></div><div class="clock-panel"><p class="notice">Alarms and timers need this page open and your device awake. Sound requires a tap first. Sleeping phones may delay alerts.</p><section id="clock-alarm" role="tabpanel" aria-labelledby="tab-alarm"><div class="heading"><h2>Pacific alarms</h2><button class="icon" data-add="alarm" aria-label="Add alarm" title="Add alarm"><i data-lucide="plus">+</i></button></div><div id="alarms"></div></section><section id="clock-stopwatch" role="tabpanel" aria-labelledby="tab-stopwatch" hidden><div id="stopwatch-readout" class="readout" role="timer">00:00.0</div><div class="actions center"><button id="stopwatch-toggle" class="primary">Start</button><button id="stopwatch-lap">Lap</button><button id="stopwatch-reset" aria-label="Reset stopwatch" title="Reset stopwatch" class="icon"><i data-lucide="rotate-ccw">R</i></button></div><ol id="laps" class="lap-list"></ol></section><section id="clock-timer" role="tabpanel" aria-labelledby="tab-timer" hidden><div id="timer-readout" class="readout" role="timer">25:00</div><div class="timer-inputs"><label class="field">Minutes<input id="timer-minutes" type="number" min="0" max="999" value="25" inputmode="numeric"></label><label class="field">Seconds<input id="timer-seconds" type="number" min="0" max="59" value="0" inputmode="numeric"></label></div><div class="actions center"><button data-preset="5">5 min</button><button data-preset="25">25 min</button><button data-preset="45">45 min</button></div><div class="actions center" style="margin-top:20px"><button id="timer-toggle" class="primary">Start</button><button id="timer-reset" class="icon" aria-label="Reset timer" title="Reset timer"><i data-lucide="rotate-ccw">R</i></button></div></section></div></section>
+<section id="view-switches" aria-label="Custom switches" hidden><div class="heading"><div><span class="eyebrow">Your routines</span><h2>My switches</h2></div><button class="icon" data-add="switch" aria-label="Add custom switch" title="Add custom switch"><i data-lucide="plus">+</i></button></div><div id="all-switches"></div><footer>Switch states stay as you leave them until you change them.</footer></section>
+<footer>Pacific time &middot; Private to this browser &middot; <span id="footer-date"></span></footer>
+</main>
+<nav aria-label="Main navigation"><button data-view="today" aria-current="page"><i data-lucide="sun">T</i>Today</button><button data-view="calendar"><i data-lucide="calendar-days">C</i>Calendar</button><button data-view="clocks"><i data-lucide="clock-3">A</i>Clocks</button><button data-view="switches"><i data-lucide="toggle-right">S</i>Switches</button></nav>
+<dialog id="entry-dialog"><div class="dialog-head"><h2 id="entry-title"></h2><button class="icon" data-close="entry-dialog" aria-label="Close" title="Close"><i data-lucide="x">X</i></button></div><form id="entry-form"><label class="field">Name<input name="title" maxlength="160" required autocomplete="off"></label><label class="field" id="date-field">Date (Pacific)<input name="date" type="date" min="1900-01-01" max="9999-12-31"></label><label class="field" id="time-field">Time (Pacific)<input name="time" type="time"></label><label class="field" id="repeat-field">Repeat<select name="repeat"><option value="once">Once</option><option value="daily">Every day</option></select></label><label class="field" id="color-field">Color<input name="color" type="color" value="#176b53"></label><div class="form-actions"><button type="button" id="delete-entry" class="danger" hidden>Delete</button><button type="submit" class="primary">Save</button></div></form></dialog>
+<dialog id="settings-dialog"><div class="dialog-head"><h2>Settings &amp; backup</h2><button class="icon" data-close="settings-dialog" aria-label="Close settings" title="Close"><i data-lucide="x">X</i></button></div><div class="backup"><label class="switch-label"><span>Alert sound</span><input id="sound-setting" class="switch" type="checkbox" role="switch"></label><button id="notification-button">Enable browser notifications</button><p class="small muted">Pacific time follows Los Angeles: PST in winter, PDT in summer. Data stays in this browser, not on the server. Export a backup before clearing browser data.</p><div class="actions"><button id="export-button">Export backup</button><label class="file-label">Import backup<input type="file" id="import-file" accept="application/json,.json" hidden></label></div><p class="notice">Import replaces this browser's organizer after confirmation. Browser notifications do not make alarms work when this page is closed.</p></div></dialog>
+<dialog id="automation-dialog"><div class="dialog-head"><h2>Automation console</h2><button class="icon" data-close="automation-dialog" aria-label="Close automation console" title="Close"><i data-lucide="x">X</i></button></div><label class="field automation-options">Example<select id="automation-example"><option value="">Choose an example</option><option value="routine">Morning routine</option><option value="fibonacci">Fibonacci</option><option value="loop">Infinite loop</option></select></label><label class="field">JavaScript<textarea id="automation-code" class="automation-editor" maxlength="20000" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea></label><div class="automation-controls"><button id="automation-run" class="primary"><i data-lucide="play">&gt;</i>Run</button><button id="automation-stop" disabled><i data-lucide="square">[]</i>Stop</button><button id="automation-apply" disabled><i data-lucide="check">+</i>Apply changes</button></div><p class="small muted">Run limit: 3 seconds. Changes require approval. Run only code you trust; workers are not a security sandbox and can access the network.</p><p id="automation-status" role="status" class="small muted">Ready</p><pre id="automation-output" class="automation-output" aria-label="Program output" tabindex="0"></pre></dialog>
+<script>
+(() => {
+  'use strict';
+  const ZONE = 'America/Los_Angeles';
+  const partsFormatter = new Intl.DateTimeFormat('en-CA', {timeZone:ZONE,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+  const pacificParts = timestamp => Object.fromEntries(partsFormatter.formatToParts(new Date(timestamp)).filter(part => part.type !== 'literal').map(part => [part.type,part.value]));
+  const pacificDay = timestamp => { const part = pacificParts(timestamp); return `${part.year}-${part.month}-${part.day}`; };
+  const nextAlarm = (time, now, skipDay = null) => {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error('Invalid alarm time.');
+    const start = Math.floor(now / 60000) * 60000 + 60000;
+    for (let candidate = start; candidate < start + 49 * 3600000; candidate += 60000) {
+      const part = pacificParts(candidate);
+      if (`${part.hour}:${part.minute}` === time && pacificDay(candidate) !== skipDay) return candidate;
+    }
+    throw new Error('Could not schedule this alarm.');
+  };
+  const elapsed = (watch, now) => watch.elapsed + (watch.since === null ? 0 : Math.max(0, now - watch.since));
+  const remaining = (timer, now) => timer.end === null ? timer.remaining : Math.max(0, timer.end - now);
+  const fresh = () => ({version:1,events:[],tasks:[],switches:[],alarms:[],notes:{},sound:true,timer:{duration:1500000,remaining:1500000,end:null},watch:{elapsed:0,since:null,laps:[]}});
+  const isTime = value => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+  const isDay = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && value.slice(0,4) >= '1900' && Number.isFinite(Date.parse(value+'T12:00:00Z')) && new Date(value+'T12:00:00Z').toISOString().slice(0,10) === value;
+  const validNumber = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER;
+  const nullableNumber = value => value === null || validNumber(value);
+  const validate = data => {
+    if (!data || data.version !== 1 || typeof data.sound !== 'boolean') throw new Error('Invalid organizer backup.');
+    if (data.automationCode !== undefined && (typeof data.automationCode !== 'string' || data.automationCode.length > 20000)) throw new Error('Invalid saved program.');
+    for (const key of ['events','tasks','switches','alarms']) {
+      if (!Array.isArray(data[key]) || data[key].length > 10000) throw new Error('Invalid list.');
+      const ids = new Set();
+      for (const item of data[key]) {
+        if (!item || typeof item.id !== 'string' || ids.has(item.id) || typeof item.title !== 'string' || !item.title.trim() || item.title.length > 160) throw new Error('Invalid entry.');
+        ids.add(item.id);
+        if ((key === 'events' || key === 'tasks') && !isDay(item.date)) throw new Error('Invalid date.');
+        if (key === 'events' && item.time !== '' && !isTime(item.time)) throw new Error('Invalid event time.');
+        if (key === 'tasks' && typeof item.done !== 'boolean') throw new Error('Invalid checklist.');
+        if (key === 'switches' && (typeof item.on !== 'boolean' || !/^#[0-9a-f]{6}$/i.test(item.color))) throw new Error('Invalid switch.');
+        if (key === 'alarms' && (!isTime(item.time) || !['once','daily'].includes(item.repeat) || typeof item.on !== 'boolean' || !validNumber(item.next) || item.next > 8640000000000000)) throw new Error('Invalid alarm.');
+      }
+    }
+    if (!data.notes || typeof data.notes !== 'object' || Array.isArray(data.notes) || Object.entries(data.notes).some(([day,note]) => !isDay(day) || typeof note !== 'string' || note.length > 20000)) throw new Error('Invalid notes.');
+    if (!data.timer || !validNumber(data.timer.duration) || data.timer.duration <= 0 || data.timer.duration > 59999000 || !validNumber(data.timer.remaining) || data.timer.remaining > data.timer.duration || !nullableNumber(data.timer.end)) throw new Error('Invalid timer.');
+    if (!data.watch || !validNumber(data.watch.elapsed) || !nullableNumber(data.watch.since) || !Array.isArray(data.watch.laps) || data.watch.laps.length > 1000 || data.watch.laps.some(lap => !validNumber(lap))) throw new Error('Invalid stopwatch.');
+    return data;
+  };
+  const automationExamples = {
+    routine: '// Organizer API: snapshot, setSwitch(id, on), addTask(title),\n// setNote(text), startTimer(seconds). Changes are staged.\nprint("Pacific date: " + organizer.snapshot.today);\nfor (const item of organizer.snapshot.switches) {\n  organizer.setSwitch(item.id, false);\n}\norganizer.addTask("Choose three priorities");\norganizer.startTimer(25 * 60);\nprint("Morning routine prepared.");',
+    fibonacci: 'let previous = 0n, current = 1n;\nfor (let index = 0; index < 50; index++) {\n  print(previous.toString());\n  [previous, current] = [current, previous + current];\n}',
+    loop: 'while (true) {\n  // Stop manually or let the run limit stop this program.\n}'
+  };
+  const automationWorkerSource = `
+    self.onmessage = async ({data}) => {
+      const commands = [], output = [];
+      const stage = command => { if (commands.length >= 100) throw new Error('Action limit: 100 per run.'); commands.push(command); };
+      const organizer = {
+        snapshot: data.snapshot,
+        setSwitch: (id, on) => stage({kind:'switch',id,on}),
+        addTask: title => stage({kind:'task',title}),
+        setNote: text => stage({kind:'note',text}),
+        startTimer: seconds => stage({kind:'timer',seconds})
+      };
+      const print = (...values) => { if (output.length >= 100) throw new Error('Output limit: 100 lines.'); output.push(values.map(value => String(value).slice(0,1000)).join(' ').slice(0,1000)); };
+      try {
+        const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+        await new AsyncFunction('organizer','print','"use strict";\\n'+data.code)(organizer,print);
+        self.postMessage({ok:true,output,commands});
+      } catch (error) { self.postMessage({ok:false,output,error:String(error.message || error).slice(0,1000)}); }
+    };
+  `;
+  const applyAutomation = (original, commands, today, makeId, now) => {
+    if (!Array.isArray(commands) || commands.length > 100) throw new Error('Invalid automation actions.');
+    const updated = JSON.parse(JSON.stringify(original));
+    const titleValid = title => typeof title === 'string' && title.trim().length > 0 && title.length <= 160;
+    for (const command of commands) {
+      if (!command || typeof command !== 'object') throw new Error('Invalid action.');
+      if (command.kind === 'switch') {
+        const item = updated.switches.find(item => item.id === command.id);
+        if (!item || typeof command.on !== 'boolean') throw new Error('Invalid switch action.');
+        item.on = command.on;
+      } else if (command.kind === 'task') {
+        if (!titleValid(command.title)) throw new Error('Task names need 1 to 160 characters.');
+        updated.tasks.push({id:makeId(),title:command.title.trim(),date:today,done:false});
+      } else if (command.kind === 'note') {
+        if (typeof command.text !== 'string' || command.text.length > 20000) throw new Error('Notes must be at most 20,000 characters.');
+        updated.notes[today] = command.text;
+      } else if (command.kind === 'timer') {
+        if (!Number.isInteger(command.seconds) || command.seconds <= 0 || command.seconds > 59999) throw new Error('Timer must be 1 to 59,999 seconds.');
+        const duration = command.seconds * 1000;
+        updated.timer = {duration,remaining:duration,end:now+duration};
+      } else throw new Error('Unknown automation action.');
+    }
+    return validate(updated);
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = {pacificDay,nextAlarm,elapsed,remaining,fresh,validate,automationWorkerSource,applyAutomation};
+  if (typeof document === 'undefined') return;
+  const $ = id => document.getElementById(id);
+  const key = 'palmorganizer-v1';
+  const message = text => { $('status').textContent = text; };
+  let data = fresh(), loadFailed = false, storageConflict = false;
+  try { const saved = localStorage.getItem(key); if (saved) data = validate(JSON.parse(saved)); }
+  catch (error) { loadFailed = true; message('Saved data could not be loaded. Existing storage has not been overwritten. Import a valid backup to restore saving.'); }
+  const save = () => {
+    if (loadFailed || storageConflict) { message(storageConflict ? 'Another tab changed the organizer. Reload before making changes.' : 'Saving blocked to protect unreadable data. Import a valid backup to restore saving.'); return; }
+    try { localStorage.setItem(key, JSON.stringify(data)); message('Saved on this device.'); }
+    catch (error) { message('Could not save: browser storage is unavailable or full. Export a backup.'); }
+  };
+  let today = pacificDay(Date.now()), selected = today, month = today.slice(0,7), view = 'today', editing = null, ringItems = [], audio = null, soundLoop = null;
+  const icons = () => { if (window.lucide) window.lucide.createIcons(); };
+  window.addEventListener('load', icons);
+  const make = (tag, className, text) => { const element = document.createElement(tag); if (className) element.className = className; if (text !== undefined) element.textContent = text; return element; };
+  const identifier = () => window.crypto?.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
+  const iconButton = (icon, label, action) => {
+    const button = make('button','icon'); button.type = 'button'; button.title = label; button.setAttribute('aria-label',label);
+    const image = make('i','',icon === 'pencil' ? 'Edit' : 'X'); image.dataset.lucide = icon; image.setAttribute('aria-hidden','true'); button.append(image); button.onclick = action; return button;
+  };
+  const dateLabel = day => new Intl.DateTimeFormat('en-US',{timeZone:'UTC',month:'long',day:'numeric',weekday:'short'}).format(new Date(day+'T12:00:00Z'));
+  const timeLabel = time => time ? new Intl.DateTimeFormat('en-US',{timeZone:'UTC',hour:'numeric',minute:'2-digit'}).format(new Date('2000-01-01T'+time+':00Z')) : 'All day';
+  const listEmpty = (container,text) => container.append(make('p','empty',text));
+  const renderEvents = (id,day) => {
+    const container = $(id); container.replaceChildren();
+    const events = data.events.filter(event => event.date === day).sort((left,right) => left.time.localeCompare(right.time));
+    events.forEach(event => { const row = make('div','item'); row.append(make('span','time-tag',timeLabel(event.time)),make('strong','item-main',event.title),iconButton('pencil','Edit event',() => openEntry('event',event))); container.append(row); });
+    if (!events.length) listEmpty(container,'Nothing scheduled. A little breathing room.');
+  };
+  const renderSwitches = id => {
+    const container = $(id); container.replaceChildren();
+    data.switches.forEach(item => {
+      const row = make('div','item'), label = make('label','switch-label'), dot = make('span','swatch'), title = make('span','',item.title), input = make('input','switch');
+      dot.style.backgroundColor = item.color; input.type = 'checkbox'; input.setAttribute('role','switch'); input.checked = item.on;
+      input.onchange = () => { item.on = input.checked; save(); renderSwitches(id === 'today-switches' ? 'all-switches' : 'today-switches'); icons(); };
+      label.append(dot,title,input); row.append(label,iconButton('pencil','Edit switch',() => openEntry('switch',item))); container.append(row);
+    });
+    if (!data.switches.length) listEmpty(container,'Add a switch for a habit, reminder, or daily ritual.');
+  };
+  const renderTasks = () => {
+    const container = $('tasks'); container.replaceChildren(); const tasks = data.tasks.filter(task => task.date === today);
+    tasks.forEach(task => { const row = make('div','item'), label = make('label','switch-label'), check = make('input','task-check'); check.type = 'checkbox'; check.checked = task.done;
+      check.onchange = () => { task.done = check.checked; save(); renderTasks(); icons(); }; label.append(check,make('span',task.done ? 'done' : '',task.title)); row.append(label,iconButton('pencil','Edit task',() => openEntry('task',task))); container.append(row); });
+    if (!tasks.length) listEmpty(container,'What matters today? Add your first task.');
+    const completed = tasks.filter(task => task.done).length; $('task-count').textContent = `${completed} of ${tasks.length} complete`; $('task-progress').style.width = (tasks.length ? completed/tasks.length*100 : 0)+'%';
+  };
+  const renderCalendar = () => {
+    const [year,number] = month.split('-').map(Number), date = new Date(Date.UTC(year,number-1,1)), count = new Date(Date.UTC(year,number,0)).getUTCDate();
+    $('month-label').textContent = new Intl.DateTimeFormat('en-US',{timeZone:'UTC',month:'long',year:'numeric'}).format(date);
+    $('prev-month').disabled = month === '1900-01'; $('next-month').disabled = month === '9999-12';
+    const grid = $('calendar-grid'); grid.replaceChildren();
+    ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(day => grid.append(make('div','weekday',day)));
+    for (let blank = 0; blank < date.getUTCDay(); blank++) grid.append(make('span'));
+    for (let day = 1; day <= count; day++) {
+      const value = `${month}-${String(day).padStart(2,'0')}`, button = make('button','day'+(value === today ? ' today' : '')+(value === selected ? ' selected' : ''),String(day));
+      button.setAttribute('aria-label',dateLabel(value)); button.setAttribute('aria-pressed',String(value === selected)); if (value === today) button.setAttribute('aria-current','date');
+      if (data.events.some(event => event.date === value)) button.append(make('span','dot'));
+      button.onclick = () => { selected = value; renderCalendar(); icons(); }; grid.append(button);
+    }
+    $('selected-label').textContent = dateLabel(selected); renderEvents('selected-events',selected);
+  };
+  const renderAlarms = () => {
+    const container = $('alarms'); container.replaceChildren();
+    data.alarms.forEach(alarm => {
+      const row = make('div','item'), label = make('label','switch-label'), info = make('span'), input = make('input','switch');
+      info.append(make('strong','',timeLabel(alarm.time)),make('p','',`${alarm.title} · ${alarm.repeat === 'daily' ? 'Every day' : 'Once'}`));
+      if (alarm.on) info.append(make('p','small',new Intl.DateTimeFormat('en-US',{timeZone:ZONE,weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}).format(alarm.next)));
+      input.type = 'checkbox'; input.setAttribute('role','switch'); input.setAttribute('aria-label',alarm.title); input.checked = alarm.on;
+      input.onchange = () => { alarm.on = input.checked; if (alarm.on) alarm.next = nextAlarm(alarm.time,Date.now()); save(); renderAlarms(); icons(); };
+      label.append(info,input); row.append(label,iconButton('pencil','Edit alarm',() => openEntry('alarm',alarm))); container.append(row);
+    });
+    if (!data.alarms.length) listEmpty(container,'No alarms set.');
+  };
+  const render = () => { renderEvents('today-events',today); renderTasks(); renderSwitches('today-switches'); renderSwitches('all-switches'); renderCalendar(); renderAlarms(); $('note').value = data.notes[today] || ''; icons(); };
+  const listKey = kind => ({event:'events',task:'tasks',switch:'switches',alarm:'alarms'})[kind];
+  const field = name => $('entry-form').elements.namedItem(name);
+  const openEntry = (kind,item = null) => {
+    editing = {kind,id:item?.id}; $('entry-form').reset(); field('title').setCustomValidity('');
+    $('entry-title').textContent = `${item ? 'Edit' : 'Add'} ${kind}`;
+    field('title').value = item?.title || ''; field('date').value = item?.date || (view === 'calendar' ? selected : today); field('time').value = item?.time || (kind === 'alarm' ? '08:00' : ''); field('repeat').value = item?.repeat || 'once'; field('color').value = item?.color || '#176b53';
+    $('date-field').hidden = !['event','task'].includes(kind); field('date').required = ['event','task'].includes(kind);
+    $('time-field').hidden = !['event','alarm'].includes(kind); field('time').required = kind === 'alarm';
+    $('repeat-field').hidden = kind !== 'alarm'; $('color-field').hidden = kind !== 'switch'; $('delete-entry').hidden = !item; $('entry-dialog').showModal();
+  };
+  $('entry-form').onsubmit = event => {
+    event.preventDefault(); const {kind,id} = editing, list = data[listKey(kind)], existing = list.find(item => item.id === id), title = field('title').value.trim();
+    if (!title) { field('title').setCustomValidity('Enter a name.'); field('title').reportValidity(); return; }
+    const item = {id:id || identifier(),title};
+    if (kind === 'event' || kind === 'task') { item.date = field('date').value; if (!isDay(item.date)) { message('Choose a valid date.'); return; } }
+    if (kind === 'event') item.time = field('time').value;
+    if (kind === 'task') item.done = existing?.done || false;
+    if (kind === 'switch') { item.color = field('color').value; item.on = existing?.on || false; }
+    if (kind === 'alarm') { item.time = field('time').value; item.repeat = field('repeat').value; item.on = existing?.on ?? true; item.next = nextAlarm(item.time,Date.now()); }
+    if (existing) Object.assign(existing,item); else list.push(item);
+    save(); $('entry-dialog').close(); render();
+  };
+  field('title').oninput = event => event.target.setCustomValidity('');
+  $('delete-entry').onclick = () => { if (!confirm('Delete this entry?')) return; data[listKey(editing.kind)] = data[listKey(editing.kind)].filter(item => item.id !== editing.id); save(); $('entry-dialog').close(); render(); };
+  document.querySelectorAll('[data-add]').forEach(button => button.onclick = () => openEntry(button.dataset.add));
+  document.querySelectorAll('[data-close]').forEach(button => button.onclick = () => $(button.dataset.close).close());
+  document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => {
+    view = button.dataset.view; document.querySelectorAll('[id^="view-"]').forEach(section => section.hidden = section.id !== 'view-'+view);
+    document.querySelectorAll('[data-view]').forEach(tab => { if (tab === button) tab.setAttribute('aria-current','page'); else tab.removeAttribute('aria-current'); }); window.scrollTo(0,0);
+  });
+  document.querySelectorAll('[data-clock]').forEach(button => {
+    button.onclick = () => { document.querySelectorAll('[data-clock]').forEach(tab => { const active = tab === button; tab.setAttribute('aria-selected',String(active)); tab.tabIndex = active ? 0 : -1; $('clock-'+tab.dataset.clock).hidden = !active; }); };
+    button.onkeydown = event => { if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return; event.preventDefault(); const tabs = [...document.querySelectorAll('[data-clock]')], index = tabs.indexOf(button), next = event.key === 'Home' ? 0 : event.key === 'End' ? 2 : (index+(event.key === 'ArrowRight' ? 1 : 2))%3; tabs[next].click(); tabs[next].focus(); };
+  });
+  $('tab-alarm').click();
+  const moveMonth = delta => { const [year,number] = month.split('-').map(Number), date = new Date(Date.UTC(year,number-1+delta,1)); month = date.toISOString().slice(0,7); renderCalendar(); icons(); };
+  $('prev-month').onclick = () => moveMonth(-1); $('next-month').onclick = () => moveMonth(1);
+  $('calendar-today').onclick = () => { selected = today; month = today.slice(0,7); renderCalendar(); icons(); };
+  $('note').oninput = () => { data.notes[today] = $('note').value; save(); };
+  const formatDuration = (milliseconds,tenths = false) => { const seconds = Math.floor(milliseconds/1000), hours = Math.floor(seconds/3600), minutes = Math.floor(seconds/60)%60; return (hours ? String(hours).padStart(2,'0')+':' : '')+String(minutes).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0')+(tenths ? '.'+Math.floor(milliseconds%1000/100) : ''); };
+  const renderLaps = () => { $('laps').replaceChildren(...data.watch.laps.map((lap,index) => make('li','',`Lap ${index+1} · ${formatDuration(lap,true)}`)).reverse()); };
+  $('stopwatch-toggle').onclick = () => { const watch = data.watch; if (watch.since === null) watch.since = Date.now(); else { watch.elapsed = elapsed(watch,Date.now()); watch.since = null; } save(); tick(); };
+  $('stopwatch-lap').onclick = () => { if (data.watch.since === null) return; if (data.watch.laps.length >= 1000) { message('Lap limit reached. Reset the stopwatch to start a new session.'); return; } data.watch.laps.push(elapsed(data.watch,Date.now())); save(); renderLaps(); };
+  $('stopwatch-reset').onclick = () => { data.watch = fresh().watch; save(); renderLaps(); tick(); };
+  const setTimer = seconds => { if (!Number.isInteger(seconds) || seconds <= 0 || seconds > 59999) { message('Use a duration from 1 second to 999 minutes, 59 seconds.'); return false; } data.timer = {duration:seconds*1000,remaining:seconds*1000,end:null}; save(); tick(); return true; };
+  $('timer-toggle').onclick = () => { const timer = data.timer; if (timer.end !== null) { timer.remaining = remaining(timer,Date.now()); timer.end = null; } else { if (timer.remaining <= 0) timer.remaining = timer.duration; timer.end = Date.now()+timer.remaining; } save(); tick(); };
+  $('timer-reset').onclick = () => { data.timer.remaining = data.timer.duration; data.timer.end = null; save(); tick(); };
+  const timerInput = () => { if (!$('timer-minutes').checkValidity() || !$('timer-seconds').checkValidity()) { message('Enter whole minutes (0-999) and seconds (0-59).'); return; } setTimer(Number($('timer-minutes').value)*60+Number($('timer-seconds').value)); };
+  $('timer-minutes').onchange = timerInput; $('timer-seconds').onchange = timerInput;
+  document.querySelectorAll('[data-preset]').forEach(button => button.onclick = () => { const minutes = Number(button.dataset.preset); if (setTimer(minutes*60)) { $('timer-minutes').value = minutes; $('timer-seconds').value = 0; } });
+  const unlockAudio = () => { try { if (!audio) { const AudioClass = window.AudioContext || window.webkitAudioContext; if (AudioClass) audio = new AudioClass(); } if (audio?.state === 'suspended') audio.resume().catch(() => {}); } catch (error) { message('Sound unavailable. Visual alerts remain enabled.'); } };
+  document.addEventListener('click',unlockAudio);
+  const beep = () => { if (!data.sound || !audio || audio.state !== 'running') return; const oscillator = audio.createOscillator(), gain = audio.createGain(); oscillator.connect(gain); gain.connect(audio.destination); oscillator.frequency.value = 740; gain.gain.setValueAtTime(.12,audio.currentTime); gain.gain.exponentialRampToValueAtTime(.001,audio.currentTime+.7); oscillator.start(); oscillator.stop(audio.currentTime+.7); };
+  const showRing = () => { $('ring').hidden = !ringItems.length; $('ring-title').textContent = ringItems.map(item => item.title).join(' · '); $('snooze-ring').hidden = !ringItems.some(item => item.kind === 'alarm'); };
+  const alertUser = (title,kind) => {
+    ringItems.push({title,kind}); showRing(); beep(); if (!soundLoop) soundLoop = setInterval(beep,2500);
+    if ('Notification' in window && Notification.permission === 'granted') { try { new Notification('Palm Organizer',{body:title,tag:'palmorganizer-alert'}); } catch (error) { message('Browser notification unavailable; alert is shown here.'); } }
+  };
+  const stopRing = () => { ringItems = []; clearInterval(soundLoop); soundLoop = null; showRing(); };
+  $('dismiss-ring').onclick = stopRing;
+  $('snooze-ring').onclick = () => { const next = Date.now()+300000, part = pacificParts(next); ringItems.filter(item => item.kind === 'alarm').forEach(item => data.alarms.push({id:identifier(),title:item.title.slice(0,160),time:part.hour+':'+part.minute,repeat:'once',on:true,next})); save(); stopRing(); renderAlarms(); icons(); };
+  const liveFormatter = new Intl.DateTimeFormat('en-US',{timeZone:ZONE,hour:'numeric',minute:'2-digit',second:'2-digit'});
+  const zoneFormatter = new Intl.DateTimeFormat('en-US',{timeZone:ZONE,timeZoneName:'short'});
+  const tick = () => {
+    const now = Date.now(), day = pacificDay(now);
+    if (day !== today) { today = day; render(); }
+    $('today-date').textContent = dateLabel(today); $('footer-date').textContent = today;
+    $('pacific-clock').textContent = liveFormatter.format(now);
+    $('zone-label').textContent = zoneFormatter.formatToParts(now).find(part => part.type === 'timeZoneName').value+' · Los Angeles';
+    $('stopwatch-readout').textContent = formatDuration(elapsed(data.watch,now),true); $('stopwatch-toggle').textContent = data.watch.since === null ? 'Start' : 'Pause'; $('stopwatch-lap').disabled = data.watch.since === null;
+    const timer = data.timer;
+    if (timer.end !== null && timer.end <= now) { timer.end = null; timer.remaining = 0; save(); alertUser('Timer finished','timer'); }
+    $('timer-readout').textContent = formatDuration(Math.ceil(remaining(timer,now)/1000)*1000); $('timer-toggle').textContent = timer.end !== null ? 'Pause' : timer.remaining < timer.duration && timer.remaining > 0 ? 'Resume' : 'Start';
+    $('timer-minutes').disabled = timer.end !== null; $('timer-seconds').disabled = timer.end !== null; document.querySelectorAll('[data-preset]').forEach(button => button.disabled = timer.end !== null);
+    let changed = false;
+    data.alarms.forEach(alarm => { if (alarm.on && alarm.next <= now) { alertUser(alarm.title+(now-alarm.next > 60000 ? ' (missed while away)' : ''),'alarm'); if (alarm.repeat === 'daily') alarm.next = nextAlarm(alarm.time,now,today); else alarm.on = false; changed = true; } });
+    if (changed) { save(); renderAlarms(); icons(); }
+  };
+  $('settings-button').onclick = () => { $('sound-setting').checked = data.sound; $('settings-dialog').showModal(); };
+  $('sound-setting').onchange = event => { data.sound = event.target.checked; save(); if (data.sound) beep(); };
+  $('notification-button').onclick = async () => { if (!('Notification' in window)) { message('Notifications are not supported in this browser.'); return; } try { const permission = await Notification.requestPermission(); $('notification-button').textContent = permission === 'granted' ? 'Notifications enabled' : 'Notifications blocked or not enabled'; } catch (error) { message('Notifications require a supported browser and a secure connection.'); } };
+  $('export-button').onclick = () => { const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'}), url = URL.createObjectURL(blob), link = make('a'); link.href = url; link.download = `palmorganizer-${today}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url),1000); };
+  $('import-file').onchange = async event => { const file = event.target.files[0]; if (!file) return; try { if (file.size > 5*1024*1024) throw new Error('Backup is too large (5 MB maximum).'); const imported = validate(JSON.parse(await file.text())); if (confirm('Replace this browser\'s organizer with this backup?')) { data = imported; loadFailed = false; storageConflict = false; stopRing(); save(); render(); renderLaps(); syncTimerInputs(); tick(); } } catch (error) { message('Import failed: '+error.message); } finally { event.target.value = ''; } };
+  const syncTimerInputs = () => { $('timer-minutes').value = Math.floor(data.timer.duration/60000); $('timer-seconds').value = Math.floor(data.timer.duration/1000)%60; };
+  let automationWorker = null, automationTimeout = null, stagedAutomation = null;
+  const automationStatus = text => { $('automation-status').textContent = text; };
+  const endAutomation = () => {
+    if (automationWorker) automationWorker.terminate();
+    automationWorker = null; clearTimeout(automationTimeout); automationTimeout = null;
+    $('automation-run').disabled = false; $('automation-stop').disabled = true;
+  };
+  const discardAutomation = () => { stagedAutomation = null; $('automation-apply').disabled = true; };
+  const automationButton = make('button','','Automation console');
+  automationButton.type = 'button'; $('notification-button').after(automationButton);
+  automationButton.onclick = () => { $('settings-dialog').close(); $('automation-code').value = data.automationCode ?? automationExamples.routine; $('automation-dialog').showModal(); };
+  $('automation-code').oninput = () => { data.automationCode = $('automation-code').value; save(); discardAutomation(); };
+  $('automation-example').onchange = event => { const example = automationExamples[event.target.value]; if (!example) return; $('automation-code').value = example; data.automationCode = example; save(); discardAutomation(); event.target.value = ''; };
+  $('automation-run').onclick = () => {
+    endAutomation(); discardAutomation(); $('automation-output').textContent = '';
+    if (loadFailed || storageConflict) { automationStatus('Resolve the storage warning before running automation.'); return; }
+    data.automationCode = $('automation-code').value; save();
+    const baseline = JSON.stringify(data), runDay = today;
+    const snapshot = {today:runDay,switches:data.switches,tasks:data.tasks.filter(task => task.date === runDay),note:data.notes[runDay] || ''};
+    let workerUrl;
+    try {
+      workerUrl = URL.createObjectURL(new Blob([automationWorkerSource],{type:'text/javascript'}));
+      const worker = new Worker(workerUrl); automationWorker = worker;
+      worker.onmessage = event => {
+        if (automationWorker !== worker) return;
+        endAutomation();
+        try {
+          const result = event.data;
+          if (!result || !Array.isArray(result.output) || result.output.length > 100 || result.output.some(line => typeof line !== 'string' || line.length > 1000)) throw new Error('Invalid program output.');
+          $('automation-output').textContent = result.output.join('\n');
+          if (!result.ok) throw new Error(typeof result.error === 'string' ? result.error.slice(0,1000) : 'Program failed.');
+          applyAutomation(data,result.commands,runDay,identifier,Date.now());
+          stagedAutomation = {commands:result.commands,baseline,day:runDay};
+          $('automation-apply').disabled = !result.commands.length;
+          automationStatus(`Finished. ${result.commands.length} changes awaiting approval.`);
+        } catch (error) { discardAutomation(); automationStatus('Error: '+error.message); }
+      };
+      worker.onerror = event => { event.preventDefault(); if (automationWorker !== worker) return; endAutomation(); discardAutomation(); automationStatus('Program error: '+event.message); };
+      $('automation-run').disabled = true; $('automation-stop').disabled = false; automationStatus('Running...');
+      automationTimeout = setTimeout(() => { endAutomation(); discardAutomation(); automationStatus('Stopped: 3-second run limit. No changes applied.'); },3000);
+      worker.postMessage({code:data.automationCode,snapshot});
+    } catch (error) { endAutomation(); automationStatus('Could not start: '+error.message); }
+    finally { if (workerUrl) URL.revokeObjectURL(workerUrl); }
+  };
+  $('automation-stop').onclick = () => { endAutomation(); discardAutomation(); automationStatus('Stopped. No changes applied.'); };
+  $('automation-dialog').addEventListener('close',() => { endAutomation(); discardAutomation(); automationStatus('Ready'); });
+  $('automation-apply').onclick = () => {
+    if (!stagedAutomation) return;
+    try {
+      if (loadFailed || storageConflict || stagedAutomation.baseline !== JSON.stringify(data) || stagedAutomation.day !== today) throw new Error('Organizer changed. Run the program again before applying.');
+      data = applyAutomation(data,stagedAutomation.commands,today,identifier,Date.now());
+      save(); render(); syncTimerInputs(); tick(); discardAutomation(); automationStatus('Changes applied.');
+    } catch (error) { discardAutomation(); automationStatus('Error: '+error.message); }
+  };
+  window.addEventListener('storage',event => { if (event.key === key) { storageConflict = true; message('Organizer changed in another tab. Reload before making changes.'); } });
+  document.addEventListener('visibilitychange',() => { if (!document.hidden) tick(); });
+  render(); renderLaps(); syncTimerInputs(); tick(); setInterval(tick,200);
+})();
+</script>
+</body>
+</html>"###);
+        Ok(response)
+    });
     mount_ollama_routes(&mut app, OllamaRelayConfig::default())?;
     let ruby_state = state.clone();
     let ruby_store: sl_ruby::StoreCall = Arc::new(move |session, operation, args| {
