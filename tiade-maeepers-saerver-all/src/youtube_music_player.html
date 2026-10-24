@@ -198,8 +198,9 @@ input[type="range"] { min-height: 24px; padding: 0; accent-color: var(--red); }
 	function applyAudioSettings() {
 		player.setVolume(Number(element('volume').value));
 		if (element('mute').getAttribute('aria-pressed') === 'true') player.mute(); else player.unMute();
-		player.setLoop(element('repeat').value === 'queue'); player.setShuffle(shuffled);
+		applyPlaylistLoop(); player.setShuffle(shuffled);
 	}
+	function applyPlaylistLoop() { player.setLoop(element('repeat').value === 'queue' && !queue[queueIndex]?.list); }
 	function sourceUrl(item) { return item.list ? `https://music.youtube.com/playlist?list=${item.list}` : `https://music.youtube.com/watch?v=${item.videoId}`; }
 	function listButton(label, handler, icon) {
 		const button = document.createElement('button');
@@ -268,14 +269,21 @@ input[type="range"] { min-height: 24px; padding: 0; accent-color: var(--red); }
 		queueIndex = index; blocked = false; stopping = false; loaded = true; element('error').textContent = ''; element('empty').hidden = true;
 		element('source').value = sourceUrl(item);
 		if (item.list) player.loadPlaylist({ listType: 'playlist', list: item.list }); else player.loadVideoById(item.videoId);
-		player.setLoop(element('repeat').value === 'queue'); player.setShuffle(shuffled); storeList(); renderLists();
+		applyPlaylistLoop(); player.setShuffle(shuffled); storeList(); renderLists();
 	}
 	function advance(delta, automatic = false) {
 		if (!player) return;
-		if (queueIndex < 0 || queue[queueIndex]?.list) {
+		if (queueIndex < 0) {
 			if (delta > 0) player.nextVideo(); else player.previousVideo(); return;
 		}
 		if (delta < 0 && player.getCurrentTime() > 3) { player.seekTo(0, true); return; }
+		if (queue[queueIndex]?.list) {
+			const playlist = player.getPlaylist() || [], playlistIndex = player.getPlaylistIndex();
+			if (!playlist.length || playlistIndex < 0 || (delta > 0 ? playlistIndex < playlist.length - 1 : playlistIndex > 0)) {
+				if (!automatic) { if (delta > 0) player.nextVideo(); else player.previousVideo(); }
+				return;
+			}
+		}
 		let next = queueIndex + delta;
 		if (shuffled && delta > 0 && queue.length > 1) next = (queueIndex + 1 + Math.floor(Math.random() * (queue.length - 1))) % queue.length;
 		if (element('repeat').value === 'queue' && queue.length) next = (next + queue.length) % queue.length;
@@ -476,7 +484,7 @@ input[type="range"] { min-height: 24px; padding: 0; accent-color: var(--red); }
 		element('shuffle').setAttribute('aria-pressed', String(shuffled));
 		storeList();
 	});
-	element('repeat').addEventListener('change', () => { if (player) { player.setLoop(element('repeat').value === 'queue'); storeList(); } });
+	element('repeat').addEventListener('change', () => { if (player) { applyPlaylistLoop(); storeList(); } });
 	window.onYouTubeIframeAPIReady = () => {
 		player = new YT.Player('player', {
 			width: '960', height: '540', host: 'https://www.youtube.com',
@@ -487,7 +495,7 @@ input[type="range"] { min-height: 24px; padding: 0; accent-color: var(--red); }
 					blocked = false;
 					if (event.data === 1 && resumePosition > 0 && !queue[queueIndex]?.list) { player.seekTo(resumePosition, true); resumePosition = 0; }
 					if (event.data === 0 && !stopping && element('repeat').value === 'track') { player.seekTo(0, true); player.playVideo(); }
-					else if (event.data === 0 && !stopping && queueIndex >= 0 && !queue[queueIndex]?.list) advance(1, true);
+					else if (event.data === 0 && !stopping && queueIndex >= 0) advance(1, true);
 					updateProgress(); publish();
 				},
 				onError(event) {

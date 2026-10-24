@@ -14,7 +14,8 @@ function hostedPlayer({ metadataFails = false, lists = new Map(), records = new 
     const requests = [];
     const saved = new Map();
     const loads = [];
-    const embed = { videoId: '', state: -1, volume: 70, muted: false, currentTime: 0, duration: 240 };
+    const embed = { videoId: '', state: -1, volume: 70, muted: false, currentTime: 0, duration: 240,
+        playlist: ['abcdefghijk', 'lmnopqrstuv'], playlistIndex: 0 };
     const makeElement = value => ({ value: value || '', textContent: '', disabled: false, children: [],
         attributes: {}, events: {}, setAttribute(name, value) { this.attributes[name] = value; },
         getAttribute(name) { return this.attributes[name]; },
@@ -58,6 +59,8 @@ function hostedPlayer({ metadataFails = false, lists = new Map(), records = new 
             return {
                 getVideoUrl: () => `https://www.youtube.com/watch?v=${embed.videoId}`,
                 getPlayerState: () => embed.state,
+                getPlaylist: () => embed.playlist,
+                getPlaylistIndex: () => embed.playlistIndex,
                 getDuration: () => embed.duration,
                 getCurrentTime: () => embed.currentTime,
                 setVolume: value => { embed.volume = value; },
@@ -353,6 +356,59 @@ test('hosted player accepts public playlists and rejects non-YouTube URLs', asyn
         assert.notEqual(client.element('error').textContent, '');
     }
     assert.equal(client.loads.length, 1);
+});
+
+test('playlist boundaries advance between queued playlists and preserve internal playback', async () => {
+    const client = hostedPlayer();
+    client.element('username').value = 'music'; client.element('token').value = 'test-token';
+    await client.submit('connectionForm');
+    const first = 'PLfirstplaylist', second = 'PLsecondplaylist';
+    client.element('source').value = `https://music.youtube.com/playlist?list=${first}`;
+    client.submit('sourceForm');
+    client.element('source').value = `https://music.youtube.com/playlist?list=${second}`;
+    client.element('enqueue').events.click();
+    client.stateChange(0);
+    assert.equal(client.loads.length, 1);
+    assert.equal(client.embed.next, undefined);
+    client.element('next').events.click();
+    assert.equal(client.embed.next, true);
+    assert.equal(client.loads.length, 1);
+    client.embed.playlistIndex = 1;
+    client.stateChange(0);
+    assert.equal(client.loads.at(-1).list, second);
+    client.embed.playlistIndex = 0;
+    client.element('previous').events.click();
+    assert.equal(client.loads.at(-1).list, first);
+    client.embed.playlistIndex = 1;
+    client.element('next').events.click();
+    assert.equal(client.loads.at(-1).list, second);
+    client.stateChange(0);
+    assert.equal(client.loads.length, 4);
+    await client.flush();
+    assert.equal(client.records.get('music').library.settings.queue_index, 1);
+});
+
+test('playlist completion respects Stop, repeat track, and repeat queue', async () => {
+    const client = hostedPlayer();
+    client.element('username').value = 'music'; client.element('token').value = 'test-token';
+    await client.submit('connectionForm');
+    for (const list of ['PLfirstplaylist', 'PLsecondplaylist']) {
+        client.element('source').value = `https://music.youtube.com/playlist?list=${list}`;
+        client.submit('sourceForm');
+    }
+    client.element('repeat').value = 'queue'; client.element('repeat').events.change();
+    assert.equal(client.embed.loop, false);
+    client.embed.playlistIndex = 1;
+    client.element('stop').events.click(); client.stateChange(0);
+    assert.equal(client.loads.length, 2);
+    client.element('play').events.click(); client.stateChange(0);
+    assert.equal(client.loads.at(-1).list, 'PLfirstplaylist');
+    assert.equal(client.embed.loop, false);
+    client.element('repeat').value = 'track'; client.element('repeat').events.change();
+    client.stateChange(0);
+    assert.equal(client.loads.length, 3);
+    assert.equal(client.embed.currentTime, 0);
+    assert.equal(client.embed.state, 1);
 });
 
 test('hosted player shows rejected tokens and metadata failures without claiming success', async () => {
