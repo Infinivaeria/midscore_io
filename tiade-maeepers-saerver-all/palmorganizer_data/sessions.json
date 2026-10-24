@@ -46,59 +46,21 @@
     32
   ],
   "data_arr": [
+    {},
     {
       "data": {
         "alarms": [],
-        "events": [],
-        "notes": {
-          "2026-10-22": ""
-        },
-        "sound": true,
-        "switches": [
+        "events": [
           {
-            "color": "#176b53",
-            "id": "8944099b-6867-48d8-8584-b100265055d5",
-            "on": true,
-            "title": "gut out nths backwards sigil"
-          },
-          {
-            "color": "#176b53",
-            "id": "b0f93788-2ecd-4397-af72-0fa7fbc8df8e",
-            "on": true,
-            "title": "grid out the nths forward sigil"
+            "date": "2026-10-23",
+            "id": "a42ff5f4-d8f8-43ae-b7aa-25db1431bf19",
+            "time": "11:50",
+            "title": "See Raven Shepherd"
           }
         ],
-        "tasks": [],
-        "timer": {
-          "duration": 5400000,
-          "end": 1792741452103,
-          "remaining": 5400000
-        },
-        "version": 1,
-        "watch": {
-          "elapsed": 0,
-          "laps": [],
-          "since": null
-        }
-      },
-      "id": "ac716fd1-0d9b-4040-84fa-8905d2fef041",
-      "name": "My session",
-      "owner": "333d3826-ddda-4458-87ed-846dca9daf2a",
-      "revision": 0
-    },
-    {
-      "data": {
-        "alarms": [],
-        "events": [],
         "notes": {},
         "sound": true,
         "switches": [
-          {
-            "color": "#5fad47",
-            "id": "46e1d886-9b61-4a33-849f-50217c5a9f28",
-            "on": false,
-            "title": "grid'out/grid'in organelle to Nths forward sigil"
-          },
           {
             "color": "#ffffff",
             "id": "f47cc089-de6a-4816-ac45-eec1d3655940",
@@ -116,6 +78,12 @@
             "id": "5930c315-abae-44da-838b-2a2884706a25",
             "on": true,
             "title": "Inverse Parasite neutri chemical generation gridded'out/gridded'in"
+          },
+          {
+            "color": "#21a1de",
+            "id": "a52a1c6f-b19a-4f7c-a7d3-0e5bd74766d3",
+            "on": true,
+            "title": "grid'in/grid'out organelle souls (tulpasoulspace) <snoutlock|and|muskdrip>"
           }
         ],
         "tasks": [],
@@ -134,7 +102,7 @@
       "id": "e52e37fe-0c13-4fd4-a9a9-001d09e3bc15",
       "name": "Nths forwards and Nths backwards Sigil",
       "owner": "333d3826-ddda-4458-87ed-846dca9daf2a",
-      "revision": 9
+      "revision": 29
     },
     {},
     {},
