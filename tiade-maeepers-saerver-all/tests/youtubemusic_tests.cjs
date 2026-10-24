@@ -9,7 +9,76 @@ const source = fs.readFileSync(path.join(__dirname, '../scripts/youtubemusic.use
 const playerHtml = fs.readFileSync(path.join(__dirname, '../src/youtube_music_player.html'), 'utf8');
 const playerSource = playerHtml.match(/<script id="music-player-code">([\s\S]*?)<\/script>/)[1];
 
-function hostedPlayer({ metadataFails = false, lists = new Map(), records = new Map(), failure = {} } = {}) {
+function lslPlayback() {
+    const lsl = fs.readFileSync(path.join(__dirname, '../src/youtubemusic.lsl'), 'utf8');
+    const handler = lsl.slice(lsl.indexOf('    http_response('))
+        .replace(/http_response\(key request_id, integer status, list metadata, string body\)/,
+            'function http_response(request_id, status, metadata, body)')
+        .replace(/\b(?:string|integer) (\w+) =/g, 'let $1 =')
+        .replace(/\(string\)status/g, 'String(status)')
+        .replace(/\n}\s*$/, '');
+    const messages = [];
+    let now = 100;
+    const context = {
+        pending_request: 'request', NULL_KEY: null, empty_playback_since: -1,
+        EMPTY_PLAYBACK_SECONDS: Number(lsl.match(/EMPTY_PLAYBACK_SECONDS = (\d+)/)[1]),
+        JSON_TRUE: true, JSON_FALSE: false, JSON_STRING: 'string',
+        llGetUnixTime: () => now,
+        llJsonGetValue: (body, keys) => JSON.parse(body)[keys[0]],
+        llJsonValueType: (body, keys) => typeof JSON.parse(body)[keys[0]],
+        announce(message) {
+            if (messages.at(-1) !== message) messages.push(message);
+        },
+    };
+    vm.createContext(context);
+    vm.runInContext(handler, context);
+    return { messages, send(seconds, playback = {}, status = 200) {
+        now = 100 + seconds;
+        context.pending_request = 'request';
+        context.http_response('request', status, [], JSON.stringify({
+            stale: false, is_playing: true, title: 'Song', artist: 'Artist', ...playback,
+        }));
+    } };
+}
+
+test('LSL ignores brief empty playback without reannouncing the continuing song', () => {
+    const client = lslPlayback();
+    client.send(0);
+    client.send(1, { title: '', is_playing: false });
+    client.send(2, { title: '', is_playing: false });
+    client.send(3);
+    assert.deepEqual(client.messages, ['Now playing: Song - Artist']);
+    client.send(4, { title: 'Next song' });
+    client.send(5, { title: 'Next song', is_playing: false });
+    assert.deepEqual(client.messages.slice(1), ['Now playing: Next song - Artist', 'Paused: Next song - Artist']);
+});
+
+test('LSL reports sustained empty playback and resets the grace period after recovery', () => {
+    const client = lslPlayback();
+    client.send(0);
+    client.send(1, { title: '' });
+    client.send(15, { title: '' });
+    assert.equal(client.messages.length, 1);
+    client.send(16, { title: '' });
+    assert.equal(client.messages.at(-1), 'Nothing playing on YouTube Music.');
+    client.send(17);
+    client.send(18, { title: '' });
+    client.send(19);
+    assert.equal(client.messages.length, 3);
+    assert.equal(client.messages.at(-1), 'Now playing: Song - Artist');
+});
+
+test('LSL still reports stale feeds and HTTP errors immediately', () => {
+    const client = lslPlayback();
+    client.send(0);
+    client.send(1, { title: '' });
+    client.send(2, { stale: true, title: '' });
+    assert.match(client.messages.at(-1), /No recent update/);
+    client.send(3, {}, 401);
+    assert.match(client.messages.at(-1), /token was rejected/);
+});
+
+function hostedPlayer({ metadataFails = false, lists = new Map(), records = new Map(), failure = {}, remembered = {} } = {}) {
     const elements = new Map();
     const requests = [];
     const saved = new Map();
@@ -38,6 +107,14 @@ function hostedPlayer({ metadataFails = false, lists = new Map(), records = new 
             requests.push({ url, ...options });
             let status = options.headers['X-YouTubeMusic-Token'] !== 'test-token' ? 401
                 : metadataFails && url.includes('/metadata?') ? 502 : 200;
+            if (url === '/youtubemusic/session') {
+                if (!options.method) status = 200;
+                if (status === 200 && options.method === 'POST') remembered.current = {
+                    username: options.headers['X-YouTubeMusic-Username'], token: options.headers['X-YouTubeMusic-Token'],
+                };
+                if (status === 200 && options.method === 'DELETE') remembered.current = null;
+                return { ok: status === 200, status, json: async () => remembered.current || null };
+            }
             let record;
             if (status === 200 && url === '/youtubemusic/library') {
                 const owner = options.headers['X-YouTubeMusic-Username'];
@@ -81,7 +158,7 @@ function hostedPlayer({ metadataFails = false, lists = new Map(), records = new 
     const submit = id => element(id).events.submit({ preventDefault() {} });
     return { element, requests, saved, loads, embed, submit, lists, records, tick: () => tick(),
         flush: () => element('retryLibrary').events.click(),
-        latestPlayback: () => requests.filter(request => request.method === 'POST').at(-1),
+        latestPlayback: () => requests.filter(request => request.method === 'POST' && request.url === '/youtubemusic').at(-1),
         playerError: code => playerEvents.onError({ data: code }),
         stateChange: state => { embed.state = state; playerEvents.onStateChange({ data: state }); } };
 }
@@ -426,7 +503,39 @@ test('hosted player shows rejected tokens and metadata failures without claiming
     client.submit('sourceForm');
     await client.tick();
     assert.match(client.element('publishStatus').textContent, /HTTP 502/);
-    assert.equal(client.requests.filter(request => request.method === 'POST').length, 0);
+    assert.equal(client.requests.filter(request => request.method === 'POST' && request.url === '/youtubemusic').length, 0);
+});
+
+test('hosted player restores server-saved username and key after reopening and forgets on disconnect', async () => {
+    const remembered = {};
+    const client = hostedPlayer({ remembered });
+    client.element('username').value = 'alice';
+    client.element('token').value = 'test-token';
+    await client.submit('connectionForm');
+    assert.deepEqual(remembered.current, { username: 'alice', token: 'test-token' });
+    assert.equal(client.saved.size, 0);
+    const reopened = hostedPlayer({ remembered });
+    await new Promise(setImmediate);
+    assert.equal(reopened.element('username').value, 'alice');
+    assert.equal(reopened.element('token').value, 'test-token');
+    assert.equal(reopened.element('connectionStatus').textContent, 'Connected as alice');
+    assert.equal(reopened.loads.length, 0);
+    await reopened.element('disconnect').events.click();
+    assert.equal(remembered.current, null);
+    const forgotten = hostedPlayer({ remembered });
+    await new Promise(setImmediate);
+    assert.equal(forgotten.element('token').value, '');
+    assert.notEqual(forgotten.element('connectionStatus').textContent, 'Connected as alice');
+});
+
+test('hosted player never saves rejected credentials', async () => {
+    const remembered = {};
+    const client = hostedPlayer({ remembered });
+    client.element('username').value = 'alice';
+    client.element('token').value = 'wrong-token';
+    await client.submit('connectionForm');
+    assert.equal(remembered.current, undefined);
+    assert.equal(client.requests.some(request => request.url === '/youtubemusic/session' && request.method === 'POST'), false);
 });
 
 test('hosted player transport controls operate on the embedded player', async () => {

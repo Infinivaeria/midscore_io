@@ -115,12 +115,34 @@ impl MusicLibrary {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+struct RememberedLogin {
+    id: String,
+    token: String,
+    expires_at: i64,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct MusicRecord {
     username: String,
     revision: u64,
     library: MusicLibrary,
     playback: Playback,
     updated_at: i64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    logins: Vec<RememberedLogin>,
+}
+
+impl MusicRecord {
+    fn public_response(&self) -> Response {
+        let mut response = crate::json_response(serde_json::json!({
+            "username": self.username, "revision": self.revision,
+            "library": self.library, "playback": self.playback,
+            "updated_at": self.updated_at,
+        }));
+        response.insert_header("Cache-Control", "no-store");
+        response
+    }
 }
 
 struct MusicStore {
@@ -186,7 +208,54 @@ impl MusicStore {
                 library: MusicLibrary::default(),
                 playback: Playback::default(),
                 updated_at: 0,
+                logins: Vec::new(),
             })
+    }
+
+    fn remembered_login(&self, id: &str, token: &str) -> Option<(String, String)> {
+        for row in self.rows.data_arr.iter().filter(|row| !row.is_empty()) {
+            let record: MusicRecord =
+                serde_json::from_value(serde_json::Value::Object(row.clone())).ok()?;
+            if let Some(login) = record.logins.iter().find(|login| {
+                login.id == id
+                    && login.token == token
+                    && login.expires_at > chrono::Utc::now().timestamp()
+            }) {
+                return Some((record.username, login.token.clone()));
+            }
+        }
+        None
+    }
+
+    fn remember_login(
+        &mut self,
+        username: &str,
+        token: String,
+        previous: &str,
+    ) -> tide::Result<String> {
+        let mut record = self.record(username);
+        let now = chrono::Utc::now().timestamp();
+        record
+            .logins
+            .retain(|login| login.expires_at > now && login.id != previous && login.token == token);
+        if record.logins.len() >= 20 {
+            record.logins.remove(0);
+        }
+        let id = uuid::Uuid::new_v4().to_string();
+        record.logins.push(RememberedLogin {
+            id: id.clone(),
+            token,
+            expires_at: now + 30 * 86400,
+        });
+        self.commit(record)?;
+        Ok(id)
+    }
+
+    fn forget_login(&mut self, username: &str, id: &str) -> tide::Result<()> {
+        let mut record = self.record(username);
+        record.logins.retain(|login| login.id != id);
+        self.commit(record)?;
+        Ok(())
     }
 
     fn commit(&mut self, record: MusicRecord) -> tide::Result<MusicRecord> {
@@ -385,15 +454,67 @@ fn mount_with_store<State: Clone + Send + Sync + 'static>(
     };
     let library_reader = state.clone();
     let library_writer = state.clone();
+    let session_reader = state.clone();
+    let session_writer = state.clone();
+    let session_remover = state.clone();
+    app.at("/youtubemusic/session")
+        .get(move |req: Request<State>| {
+            let state = session_reader.clone();
+            async move {
+                let cookie = req.cookie("ytm_session");
+                let login = cookie.as_ref().and_then(|cookie| {
+                    state.token.as_deref().filter(|token| !token.is_empty()).and_then(|token| {
+                        state.store.lock().unwrap().remembered_login(cookie.value(), token)
+                    })
+                });
+                let mut response = crate::json_response(login.map(|(username, token)| {
+                    serde_json::json!({"username": username, "token": token})
+                }));
+                response.insert_header("Cache-Control", "no-store");
+                response.insert_header("Vary", "Cookie");
+                Ok(response)
+            }
+        })
+        .post(move |req: Request<State>| {
+            let state = session_writer.clone();
+            async move {
+                state.authorize(&req)?;
+                let username = username(&req)?;
+                let previous = req.cookie("ytm_session").map(|cookie| cookie.value().to_owned()).unwrap_or_default();
+                let token = state.token.clone().unwrap();
+                let id = async_std::task::spawn_blocking(move || {
+                    state.store.lock().unwrap().remember_login(&username, token, &previous)
+                }).await?;
+                let mut response = crate::json_response(serde_json::json!({"remembered": true}));
+                response.insert_header("Cache-Control", "no-store");
+                response.insert_header("Set-Cookie", format!("ytm_session={id}; Path=/youtubemusic; Max-Age=2592000; Secure; HttpOnly; SameSite=Strict"));
+                Ok(response)
+            }
+        })
+        .delete(move |req: Request<State>| {
+            let state = session_remover.clone();
+            async move {
+                state.authorize(&req)?;
+                let username = username(&req)?;
+                if let Some(cookie) = req.cookie("ytm_session") {
+                    let id = cookie.value().to_owned();
+                    async_std::task::spawn_blocking(move || {
+                        state.store.lock().unwrap().forget_login(&username, &id)
+                    }).await?;
+                }
+                let mut response = crate::json_response(serde_json::json!({"remembered": false}));
+                response.insert_header("Cache-Control", "no-store");
+                response.insert_header("Set-Cookie", "ytm_session=; Path=/youtubemusic; Max-Age=0; Secure; HttpOnly; SameSite=Strict");
+                Ok(response)
+            }
+        });
     app.at("/youtubemusic/library")
         .get(move |req: Request<State>| {
             let state = library_reader.clone();
             async move {
                 state.authorize(&req)?;
                 let record = state.store.lock().unwrap().record(&username(&req)?);
-                let mut response = crate::json_response(record);
-                response.insert_header("Cache-Control", "no-store");
-                Ok(response)
+                Ok(record.public_response())
             }
         })
         .put(move |mut req: Request<State>| {
@@ -430,9 +551,7 @@ fn mount_with_store<State: Clone + Send + Sync + 'static>(
                     )
                 })
                 .await?;
-                let mut response = crate::json_response(record);
-                response.insert_header("Cache-Control", "no-store");
-                Ok(response)
+                Ok(record.public_response())
             }
         });
     app.at("/youtubemusic/player").get(|_| async {
@@ -556,6 +675,90 @@ mod tests {
                 position_seconds: 78.0,
             },
         }
+    }
+
+    #[test]
+    fn remembered_login_survives_restart_without_leaking_into_library() {
+        let directory = TestDirectory::new();
+        let path = directory.0.join("music.json");
+        let mut store = MusicStore::open(Some(path.clone())).unwrap();
+        let id = store
+            .remember_login("alice", "private-token".into(), "")
+            .unwrap();
+        let mut restored = MusicStore::open(Some(path)).unwrap();
+        assert_eq!(
+            restored.remembered_login(&id, "private-token"),
+            Some(("alice".into(), "private-token".into()))
+        );
+        assert!(restored.remembered_login(&id, "rotated-token").is_none());
+        assert!(restored
+            .remembered_login("invalid", "private-token")
+            .is_none());
+        let public: serde_json::Value = async_std::task::block_on(
+            restored
+                .record("alice")
+                .public_response()
+                .take_body()
+                .into_json(),
+        )
+        .unwrap();
+        assert!(!public.to_string().contains("private-token"));
+        assert!(public.get("logins").is_none());
+        let mut expired = restored.record("alice");
+        expired.logins[0].expires_at = 0;
+        restored.commit(expired).unwrap();
+        assert!(restored.remembered_login(&id, "private-token").is_none());
+        restored.forget_login("alice", &id).unwrap();
+        assert!(restored.remembered_login(&id, "private-token").is_none());
+    }
+
+    #[async_std::test]
+    async fn remembered_login_routes_require_credentials_and_restore_only_with_cookie() {
+        let mut app = tide::new();
+        mount_with_token(&mut app, Some("test-token".into()));
+        let url = Url::parse("https://localhost/youtubemusic/session").unwrap();
+        let request = HttpRequest::new(Method::Post, url.clone());
+        let response: Response = app.respond(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::Unauthorized);
+        let mut request = HttpRequest::new(Method::Post, url.clone());
+        request.insert_header("X-YouTubeMusic-Token", "test-token");
+        request.insert_header("X-YouTubeMusic-Username", "alice");
+        let response: Response = app.respond(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::Ok);
+        let cookie = response.header("Set-Cookie").unwrap().last().as_str();
+        for attribute in ["Secure", "HttpOnly", "SameSite=Strict", "Max-Age=2592000"] {
+            assert!(cookie.contains(attribute));
+        }
+        let cookie = cookie.split(';').next().unwrap().to_owned();
+        for value in [None, Some("ytm_session=invalid"), Some(cookie.as_str())] {
+            let mut request = HttpRequest::new(Method::Get, url.clone());
+            if let Some(value) = value {
+                request.insert_header("Cookie", value);
+            }
+            let mut response: Response = app.respond(request).await.unwrap();
+            assert_eq!(
+                response.header("Cache-Control").unwrap().last().as_str(),
+                "no-store"
+            );
+            let body: serde_json::Value = response.take_body().into_json().await.unwrap();
+            if value == Some(cookie.as_str()) {
+                assert_eq!(body["username"], "alice");
+                assert_eq!(body["token"], "test-token");
+            } else {
+                assert!(body.is_null());
+            }
+        }
+        let mut request = HttpRequest::new(Method::Delete, url.clone());
+        request.insert_header("Cookie", cookie.as_str());
+        request.insert_header("X-YouTubeMusic-Token", "test-token");
+        request.insert_header("X-YouTubeMusic-Username", "alice");
+        let response: Response = app.respond(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::Ok);
+        let mut request = HttpRequest::new(Method::Get, url);
+        request.insert_header("Cookie", cookie.as_str());
+        let mut response: Response = app.respond(request).await.unwrap();
+        let body: serde_json::Value = response.take_body().into_json().await.unwrap();
+        assert!(body.is_null());
     }
 
     #[test]

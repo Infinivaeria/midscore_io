@@ -26,8 +26,11 @@ KEY=d58685eea557d30eb41e04ffff4cb8d8f8715d0b9738325197133650293248bb
    verifies your token before connecting and displays errors directly.
 3. Paste a public YouTube or YouTube Music video/playlist URL and click
    **Load**. Use the embedded player to start playback if the browser blocks
-   autoplay. Keep this page open. Credentials are remembered only in the
-   current tab's session storage; **Disconnect** removes them and clears the
+   autoplay. Keep this page open. The username and token are saved in Rust's
+   partitioned array and restored automatically for 30 days in this browser,
+   including after closing the browser or restarting the server. A Secure,
+   HttpOnly, SameSite cookie identifies the saved login; credentials are not
+   saved in browser local storage. **Disconnect** forgets this login and clears the
    feed. Disable the old userscript so it cannot overwrite the feed.
 4. Put [src/youtubemusic.lsl](src/youtubemusic.lsl) into a Second Life object's
    script. It opens text boxes for the same music username and token; there is
@@ -41,6 +44,13 @@ The LSL route remains `https://stimky.info/youtubemusic`; no change to its
 request format is needed. Use the same username and token in the LSL object
 and the hosted player. A username is a case-insensitive feed label of 1-40
 letters, numbers, dots, underscores or hyphens, not a Google login.
+
+The LSL client keeps its current display during brief empty playback reports.
+It announces "Nothing playing" only after empty reports persist for at least
+15 seconds, on the next successful poll. A song report resets that grace
+period; song changes and pauses still appear immediately. Stale feeds and
+request errors are reported without this delay. Use only one publishing tab
+or userscript per username so an idle publisher cannot overwrite a playing one.
 
 ## Player Navigation
 
@@ -88,8 +98,18 @@ updated_at}`. `PUT /youtubemusic/library` accepts `{revision, library}` and
 returns the updated record. Both use the same token and username headers as the
 feed. A changed library increments its revision; playback updates do not.
 Library bodies are limited to 1 MB, with at most 100 queue entries, 30 saved
-queues of 100 entries each, and 50 recent entries. Tokens are never stored in
-music records; browser credentials remain in tab session storage only.
+queues of 100 entries each, and 50 recent entries. Remembered logins store the
+username and token in the same partitioned-array snapshot. Protect that file
+and its backups as secrets. Login data is excluded from library responses.
+Each username supports up to 20 remembered browser logins; the oldest is
+removed when that limit is reached. Expired logins or a changed server token
+require connecting again. Automatic restoration never starts playback.
+
+`POST /youtubemusic/session` requires the token and username headers and saves
+a 30-day login, setting a persistent HttpOnly cookie. `GET` on that endpoint
+returns the username and token only for a valid cookie (otherwise `null`).
+Authenticated `DELETE` revokes that browser login and clears its cookie.
+Session responses use `Cache-Control: no-store`.
 
 This is not full access to YouTube Music. YouTube's public embedded API does
 not expose your private library, account history, recommendations, purchases,

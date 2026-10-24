@@ -117,6 +117,7 @@ input[type="range"] { min-height: 24px; padding: 0; accent-color: var(--red); }
 	const element = id => document.getElementById(id);
 	const clip = (value, length) => Array.from(String(value || '')).slice(0, length).join('');
 	let credentials = null, player = null, playerReady = false, pending = false, blocked = false;
+	let connectionAttempt = 0;
 	let metadata = { title: '', artist: '' }, metadataId = '';
 	let shuffled = false, stopping = false;
 	let queueIndex = -1, libraryRevision = 0, libraryVersion = 0, libraryReady = false, libraryDirty = false;
@@ -361,9 +362,8 @@ input[type="range"] { min-height: 24px; padding: 0; accent-color: var(--red); }
 		} finally { pending = false; }
 	}
 
-	element('connectionForm').addEventListener('submit', async event => {
-		event.preventDefault();
-		const session = { username: element('username').value.trim().toLowerCase(), token: normalizeToken(element('token').value) };
+	async function connect(session, remember = true) {
+		connectionAttempt++;
 		if (!/^[a-z0-9_.-]{1,40}$/.test(session.username) || !/^[\x21-\x7e]{1,256}$/.test(session.token)) {
 			element('error').textContent = 'Enter a username of 1-40 letters, numbers, dots, underscores or hyphens and a token without spaces.';
 			return;
@@ -374,11 +374,12 @@ input[type="range"] { min-height: 24px; padding: 0; accent-color: var(--red); }
 			await api('/youtubemusic', {}, session);
 			if (libraryDirty) { await flushLibrary(); if (libraryDirty) throw new Error('Save or reload the current library before changing connection.'); }
 			const record = await api('/youtubemusic/library', {}, session);
+			if (remember) await api('/youtubemusic/session', { method: 'POST' }, session);
 			if (playerReady) player.pauseVideo();
 			credentials = session;
 			loaded = false;
 			applyLibrary(record);
-			try { sessionStorage.setItem('tiade-music-session', JSON.stringify(session)); } catch (error) { }
+			try { sessionStorage.removeItem('tiade-music-session'); } catch (error) { }
 			element('connectionStatus').textContent = `Connected as ${session.username}`;
 			element('disconnect').disabled = false;
 			element('load').disabled = !playerReady;
@@ -388,12 +389,21 @@ input[type="range"] { min-height: 24px; padding: 0; accent-color: var(--red); }
 			element('playbackState').textContent = 'Stopped';
 		} catch (error) { element('error').textContent = error.message; }
 		finally { element('connect').disabled = false; }
+	}
+	element('connectionForm').addEventListener('submit', event => {
+		event.preventDefault();
+		return connect({ username: element('username').value.trim().toLowerCase(), token: normalizeToken(element('token').value) });
 	});
 
 	element('disconnect').addEventListener('click', async () => {
 		await flushLibrary();
 		if (libraryDirty) { element('error').textContent = 'Library has unsaved changes. Retry saving or reload before disconnecting.'; return; }
 		const session = credentials;
+		if (session) {
+			try { await api('/youtubemusic/session', { method: 'DELETE' }, session); }
+			catch (error) { element('error').textContent = `Could not forget saved login: ${error.message}`; return; }
+		}
+		connectionAttempt++;
 		credentials = null;
 		libraryReady = false; loaded = false; libraryControls(false);
 		queue = []; savedQueues = []; history = []; queueIndex = -1; resumePosition = 0; renderLists();
@@ -507,11 +517,26 @@ input[type="range"] { min-height: 24px; padding: 0; accent-color: var(--red); }
 		});
 	};
 
-	try {
-		const saved = JSON.parse(sessionStorage.getItem('tiade-music-session') || 'null');
-		if (saved) { element('username').value = saved.username || ''; element('token').value = saved.token || ''; }
-	} catch (error) { }
+	async function restoreConnection() {
+		try {
+			const response = await fetch('/youtubemusic/session', { credentials: 'same-origin',
+				signal: AbortSignal.timeout(10000), headers: {} });
+			if (!response.ok) throw new Error('Could not restore saved music login.');
+			const saved = await response.json();
+			if (connectionAttempt) return;
+			if (saved) {
+				element('username').value = saved.username || ''; element('token').value = saved.token || '';
+				await connect(saved, false);
+			} else {
+				try {
+					const legacy = JSON.parse(sessionStorage.getItem('tiade-music-session') || 'null');
+					if (legacy) { element('username').value = legacy.username || ''; element('token').value = legacy.token || ''; }
+				} catch (error) { }
+			}
+		} catch (error) { if (!connectionAttempt) element('error').textContent = error.message; }
+	}
 	libraryControls(false); renderLists();
+	restoreConnection();
 	setInterval(updateProgress, 1000);
 	setInterval(publish, 10000);
 	document.addEventListener('visibilitychange', () => { if (!document.hidden) publish(); });

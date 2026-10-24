@@ -2,6 +2,8 @@ string ROUTE_URL = "https://stimky.info/youtubemusic";
 string music_token;
 string music_username;
 float POLL_SECONDS = 10.0;
+integer EMPTY_PLAYBACK_SECONDS = 15;
+integer empty_playback_since = -1;
 
 key pending_request = NULL_KEY;
 integer requested_at;
@@ -179,6 +181,7 @@ default
         }
         pending_request = NULL_KEY;
         last_message = "";
+        empty_playback_since = -1;
         if (music_token == "") open_dialog("token");
         else poll_song();
     }
@@ -189,6 +192,7 @@ default
         pending_request = NULL_KEY;
         if (status != 200)
         {
+            empty_playback_since = -1;
             if (status == 401) announce("Music token was rejected. Touch this object and choose Token.");
             else announce("YouTube Music route returned HTTP " + (string)status + ".");
             return;
@@ -200,11 +204,13 @@ default
             || llJsonValueType(body, ["title"]) != JSON_STRING
             || llJsonValueType(body, ["artist"]) != JSON_STRING)
         {
+            empty_playback_since = -1;
             announce("YouTube Music route returned invalid playback JSON.");
             return;
         }
         if (stale == JSON_TRUE)
         {
+            empty_playback_since = -1;
             announce("No recent update. Open stimky.info/youtubemusic/player and play a song.");
             return;
         }
@@ -212,9 +218,13 @@ default
         string artist = llJsonGetValue(body, ["artist"]);
         if (title == "")
         {
+            integer now = llGetUnixTime();
+            if (empty_playback_since == -1) empty_playback_since = now;
+            if (now - empty_playback_since < EMPTY_PLAYBACK_SECONDS) return;
             announce("Nothing playing on YouTube Music.");
             return;
         }
+        empty_playback_since = -1;
         string message = "Now playing: " + title;
         if (playing == JSON_FALSE) message = "Paused: " + title;
         if (artist != "") message += " - " + artist;
