@@ -6,6 +6,7 @@ mod sl_ruby;
 mod organizer;
 mod palm_sessions;
 mod persistent_snapshot;
+mod youtube_music;
 
 use std::io::{self, BufRead};
 use tide::utils::After;
@@ -3705,6 +3706,7 @@ let state = AppState {
   avatar_frequency: Arc::new(Mutex::new(avatar_frequency)),
 };
 let mut app = tide::with_state(state.clone());
+youtube_music::mount(&mut app)?;
     let state_for_shutdown = state.clone();
     ctrlc::set_handler(move || {
         if let Err(error) = persist_memory_stores(&state_for_shutdown) {
@@ -7674,6 +7676,7 @@ th { color: #c5c6c7; }
     <a href="/program/example">Program Example</a>
     <a href="/sigil-deck">Sigil Deck</a>
     <a href="/flashcard">Flashcards</a>
+    <a href="/youtubemusic/player">YouTube Music</a>
     <a href="/time">Time</a>
     <a href="/weather">Weather</a>
     <a href="/ae">AE Calendar</a>
@@ -10181,7 +10184,7 @@ WERE_FORMS = [
 
     app.at("/").get(|_| async {
         let mut res = tide::Response::new(tide::StatusCode::Ok);        
-        res.set_body("<!DOCTYPE html>\n<html>\n<head>\n  <title>Home</title>\n</head>\n<body>\n  <h1>Welcome</h1>\n</body>\n</html>".to_string());
+        res.set_body("<!DOCTYPE html>\n<html>\n<head>\n  <title>Home</title>\n</head>\n<body>\n  <h1>Welcome</h1>\n  <nav aria-label=\"Main navigation\"><a href=\"/youtubemusic/player\">YouTube Music</a></nav>\n</body>\n</html>".to_string());
       res.insert_header("Content-Type", "text/html; charset=utf-8");
         Ok(res)
     });

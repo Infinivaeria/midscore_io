@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YouTube Music | Tiade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root { --ink: #202124; --muted: #60656b; --line: #d6d9dc; --red: #bf2539; --green: #14734c; }
+* { box-sizing: border-box; letter-spacing: 0; }
+body { margin: 0; color: var(--ink); background: #fafafa; font: 16px Barlow, sans-serif; }
+header { border-bottom: 1px solid var(--line); background: #fff; }
+.top { max-width: 1024px; margin: auto; padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+h1 { margin: 0; font-size: 28px; font-weight: 700; } .brand { color: var(--red); font-weight: 600; }
+main { max-width: 1024px; margin: auto; padding: 24px; }
+form { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
+label { display: grid; gap: 6px; font-weight: 600; font-size: 14px; flex: 1 1 190px; min-width: 0; }
+input, button { font: inherit; min-height: 42px; border-radius: 4px; }
+input { width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid var(--line); background: #fff; color: var(--ink); }
+button { padding: 9px 18px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; font-weight: 600; }
+button.primary { color: #fff; background: var(--red); border-color: var(--red); }
+button:disabled { opacity: .5; cursor: default; }
+input:focus-visible, button:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+.connection { padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+#connectionStatus { min-height: 20px; margin: 10px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+.source { padding: 20px 0; } .source label { flex-basis: 65%; }
+.screen { aspect-ratio: 16 / 9; min-height: 200px; width: 100%; background: #171717; position: relative; }
+#player, .screen iframe { width: 100%; height: 100%; border: 0; }
+.empty { position: absolute; inset: 0; display: grid; place-items: center; color: #b8b8b8; font-size: 20px; pointer-events: none; }
+.empty[hidden] { display: none; }
+.now { display: flex; justify-content: space-between; gap: 20px; align-items: start; padding: 18px 0; border-bottom: 1px solid var(--line); }
+.now > div { min-width: 0; } h2 { margin: 4px 0 6px; font-size: 24px; overflow-wrap: anywhere; }
+.label { margin: 0; font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--green); }
+#artist, #publishStatus { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+#publishStatus { max-width: 300px; font-size: 14px; text-align: right; }
+#error { color: #a3182a; min-height: 24px; overflow-wrap: anywhere; }
+.top { max-width: 1280px; flex-wrap: wrap; } main { max-width: 1280px; }
+.site-nav { display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px; }
+a { color: var(--red); text-underline-offset: 4px; }
+.transport { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 14px 0; }
+.icon { width: 42px; height: 42px; padding: 8px; display: inline-grid; place-items: center; flex: 0 0 42px; font-size: 11px; }
+.icon svg { width: 20px; height: 20px; } .icon[aria-pressed="true"] { color: var(--red); border-color: var(--red); background: #fff2f3; }
+.transport label { flex: 0 1 auto; display: flex; align-items: center; gap: 8px; font-size: 13px; }
+select { font: inherit; min-height: 42px; padding: 8px; background: #fff; border: 1px solid var(--line); border-radius: 4px; }
+input[type="range"] { min-height: 24px; padding: 0; accent-color: var(--red); }
+#volume { width: 100px; } .timeline { display: grid; grid-template-columns: 48px minmax(0, 1fr) 48px; align-items: center; gap: 12px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.timeline output:last-child { text-align: right; }
+.search { display: flex; gap: 8px; align-items: end; padding: 0 0 18px; } .search label { flex-basis: 65%; }
+.workspace { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 24px; align-items: start; }
+.list-panel { min-width: 0; border-left: 1px solid var(--line); padding-left: 20px; }
+.views { display: flex; border-bottom: 1px solid var(--line); gap: 4px; margin-bottom: 12px; }
+.views button { padding: 8px 10px; border: 0; border-radius: 0; font-size: 14px; background: transparent; }
+.views button[aria-selected="true"] { color: var(--red); box-shadow: inset 0 -2px var(--red); }
+.list-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.list-actions button { padding: 7px 10px; font-size: 13px; }
+.music-list { list-style: none; margin: 0; padding: 0; max-height: 620px; overflow-y: auto; }
+.music-list li { border-bottom: 1px solid var(--line); padding: 10px 0; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.music-list li[aria-current="true"] { border-left: 3px solid var(--red); padding-left: 8px; }
+.track-name { flex: 1 1 100%; text-align: left; border: 0; padding: 4px 0; min-height: 32px; background: transparent; overflow-wrap: anywhere; font-size: 14px; }
+.music-list .icon { width: 32px; height: 32px; min-height: 32px; flex-basis: 32px; padding: 5px; }
+.list-empty { color: var(--muted); font-size: 14px; padding: 12px 0; }
+[hidden] { display: none !important; }
+@media (max-width: 900px) { .workspace { grid-template-columns: minmax(0, 1fr); } .list-panel { border-left: 0; border-top: 1px solid var(--line); padding: 18px 0 0; } .music-list { max-height: 420px; } }
+@media (max-width: 540px) { main { padding: 16px; } .top { padding: 16px; } h1 { font-size: 24px; } .connection label { flex-basis: 100%; } .now { flex-direction: column; gap: 12px; } #publishStatus { max-width: none; text-align: left; } .source button { width: 100%; } }
+</style>
+</head>
+<body>
+<header><div class="top"><h1>YouTube Music</h1><nav class="site-nav" aria-label="Site navigation"><a href="/">Tiade home</a><a href="/youtubemusic/player" aria-current="page">Music player</a><a href="https://music.youtube.com/" target="_blank" rel="noopener noreferrer">Browse YouTube Music</a></nav></div></header>
+<main>
+<section class="connection" aria-label="Music connection">
+<form id="connectionForm">
+<label>Music username<input id="username" maxlength="40" autocomplete="username" required placeholder="Your feed name"></label>
+<label>Music token<input id="token" type="password" autocomplete="off" required placeholder="Server token"></label>
+<button id="connect" class="primary" type="submit">Connect</button>
+<button id="disconnect" type="button" disabled>Disconnect</button>
+</form><p id="connectionStatus" role="status">Not connected</p>
+<div class="list-actions"><button id="retryLibrary" type="button" disabled>Save library</button><button id="reloadLibrary" type="button" disabled>Reload library</button><button id="importLocal" type="button" disabled>Import browser lists</button></div>
+<p id="libraryStatus" role="status">Connect to load your music library</p>
+</section>
+<form id="searchForm" class="search"><label>Find music<input id="searchQuery" type="search" placeholder="Song, artist or album" required></label><button type="submit">Search YouTube Music</button></form>
+<form id="sourceForm" class="source">
+<label>YouTube video or playlist URL<input id="source" type="text" required placeholder="https://music.youtube.com/watch?v=..."></label>
+<button id="load" class="primary" type="submit" disabled>Load</button>
+<button id="enqueue" type="button">Add to queue</button>
+</form>
+<div class="workspace"><div>
+<div class="screen"><div id="player"></div><div id="empty" class="empty">YouTube</div></div>
+<div class="transport" role="group" aria-label="Playback controls">
+<button class="icon" id="previous" type="button" title="Previous track" aria-label="Previous track" disabled><span data-lucide="skip-back">Prev</span></button>
+<button class="icon primary" id="play" type="button" title="Play" aria-label="Play" disabled><span data-lucide="play">Play</span></button>
+<button class="icon" id="pause" type="button" title="Pause" aria-label="Pause" disabled><span data-lucide="pause">Pause</span></button>
+<button class="icon" id="stop" type="button" title="Stop" aria-label="Stop" disabled><span data-lucide="square">Stop</span></button>
+<button class="icon" id="next" type="button" title="Next track" aria-label="Next track" disabled><span data-lucide="skip-forward">Next</span></button>
+<button class="icon" id="shuffle" type="button" title="Shuffle" aria-label="Shuffle" aria-pressed="false" disabled><span data-lucide="shuffle">Mix</span></button>
+<label>Repeat<select id="repeat" disabled><option value="off">Off</option><option value="track">Track</option><option value="queue">Queue</option></select></label>
+<button class="icon" id="mute" type="button" title="Mute" aria-label="Mute" aria-pressed="false" disabled><span data-lucide="volume-x">Mute</span></button>
+<label>Volume<input id="volume" type="range" min="0" max="100" value="70" disabled></label>
+</div>
+<div class="timeline"><output id="elapsed">0:00</output><input id="seek" type="range" min="0" max="0" value="0" step="1" aria-label="Playback position" disabled><output id="duration">0:00</output></div>
+<section class="now" aria-label="Current song"><div><p class="label" id="playbackState">Stopped</p><h2 id="title">No song selected</h2><p id="artist"></p></div><p id="publishStatus" role="status">No updates sent</p></section>
+<p id="error" role="alert"></p>
+</div><aside class="list-panel" aria-label="Music lists">
+<div class="views" role="tablist" aria-label="Music navigation">
+<button id="queueTab" type="button" role="tab" aria-selected="true" aria-controls="queueView">Queue</button>
+<button id="savedTab" type="button" role="tab" aria-selected="false" aria-controls="savedView">Saved</button>
+<button id="historyTab" type="button" role="tab" aria-selected="false" aria-controls="historyView">Recent</button>
+</div>
+<section id="queueView" role="tabpanel" aria-labelledby="queueTab"><div class="list-actions"><button id="saveQueue" type="button">Save queue</button><button id="clearQueue" type="button">Clear queue</button></div><ol id="queueList" class="music-list"></ol></section>
+<section id="savedView" role="tabpanel" aria-labelledby="savedTab" hidden><ul id="savedList" class="music-list"></ul></section>
+<section id="historyView" role="tabpanel" aria-labelledby="historyTab" hidden><div class="list-actions"><button id="clearHistory" type="button">Clear recent</button></div><ol id="historyList" class="music-list"></ol></section>
+</aside></div>
+</main>
+<script id="music-player-code">
+(() => {
+	'use strict';
+	const element = id => document.getElementById(id);
+	const clip = (value, length) => Array.from(String(value || '')).slice(0, length).join('');
+	let credentials = null, player = null, playerReady = false, pending = false, blocked = false;
+	let metadata = { title: '', artist: '' }, metadataId = '';
+	let shuffled = false, stopping = false;
+	let queueIndex = -1, libraryRevision = 0, libraryVersion = 0, libraryReady = false, libraryDirty = false;
+	let libraryConflict = false, saveTask = Promise.resolve(), resumePosition = 0, loaded = false;
+	function readList(key) {
+		try { const value = JSON.parse(localStorage.getItem(key) || '[]'); return Array.isArray(value) ? value.slice(0, 100) : []; }
+		catch (error) { return []; }
+	}
+	function importEntries(items) {
+		return items.filter(item => item && (validId(item.videoId) || (typeof item.list === 'string' && /^[A-Za-z0-9_-]{10,100}$/.test(item.list))))
+			.slice(0, 100).map(item => ({ ...(validId(item.videoId) ? { videoId: item.videoId } : { list: item.list }), title: clip(item.title, 160) }));
+	}
+	let queue = [], savedQueues = [], history = [];
+	const controlIds = ['previous', 'play', 'pause', 'stop', 'next', 'shuffle', 'repeat', 'mute', 'volume', 'seek'];
+	function enableControls(enabled) { controlIds.forEach(id => { element(id).disabled = !enabled; }); }
+	function timeLabel(seconds) {
+		seconds = Math.max(0, Math.floor(Number(seconds) || 0));
+		return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+	}
+	function updateProgress() {
+		if (!player) return;
+		const duration = player.getDuration(), elapsed = player.getCurrentTime();
+		element('seek').max = Math.max(0, duration);
+		element('seek').value = elapsed;
+		element('elapsed').textContent = timeLabel(elapsed);
+		element('duration').textContent = timeLabel(duration);
+	}
+	const emptyPlayback = () => ({ title: '', artist: '', video_id: '', is_playing: false });
+	const validId = value => /^[A-Za-z0-9_-]{11}$/.test(value || '');
+	function libraryData() {
+		return JSON.parse(JSON.stringify({ queue, saved: savedQueues, history, settings: {
+			volume: Number(element('volume').value), muted: element('mute').getAttribute('aria-pressed') === 'true',
+			shuffle: shuffled, repeat: element('repeat').value, queue_index: queueIndex,
+			position_seconds: resumePosition || (loaded && playerReady ? Math.max(0, player.getCurrentTime() || 0) : 0),
+		} }));
+	}
+	function flushLibrary() {
+		const session = credentials;
+		saveTask = saveTask.then(async () => {
+			if (!session || credentials !== session || !libraryReady || libraryConflict) return;
+			while (libraryDirty && credentials === session) {
+				const version = libraryVersion;
+				element('libraryStatus').textContent = 'Saving to Rust partitioned array...';
+				try {
+					const result = await api('/youtubemusic/library', { method: 'PUT',
+						body: JSON.stringify({ revision: libraryRevision, library: libraryData() }) }, session);
+					if (credentials !== session) return;
+					libraryRevision = result.revision; libraryDirty = version !== libraryVersion;
+					element('libraryStatus').textContent = `Saved on server (revision ${libraryRevision})`;
+				} catch (error) {
+					if (credentials === session) {
+						libraryConflict = error.status === 409;
+						element('libraryStatus').textContent = `Not saved: ${error.message}`;
+					}
+					return;
+				}
+			}
+		});
+		return saveTask;
+	}
+	function storeList() {
+		if (!libraryReady) return;
+		libraryVersion++; libraryDirty = true; flushLibrary();
+	}
+	function libraryControls(enabled) {
+		for (const id of ['enqueue', 'saveQueue', 'clearQueue', 'clearHistory', 'retryLibrary', 'reloadLibrary', 'importLocal']) element(id).disabled = !enabled;
+	}
+	function applyLibrary(record) {
+		const data = record.library, settings = data.settings;
+		queue = data.queue; savedQueues = data.saved; history = data.history;
+		libraryRevision = record.revision; libraryReady = true; libraryDirty = false; libraryConflict = false;
+		queueIndex = settings.queue_index; resumePosition = settings.position_seconds; shuffled = settings.shuffle;
+		element('volume').value = settings.volume; element('repeat').value = settings.repeat;
+		element('shuffle').setAttribute('aria-pressed', String(shuffled)); element('mute').setAttribute('aria-pressed', String(settings.muted));
+		if (playerReady) applyAudioSettings();
+		libraryControls(true); renderLists();
+		element('libraryStatus').textContent = `Loaded from server (revision ${libraryRevision})`;
+	}
+	function applyAudioSettings() {
+		player.setVolume(Number(element('volume').value));
+		if (element('mute').getAttribute('aria-pressed') === 'true') player.mute(); else player.unMute();
+		player.setLoop(element('repeat').value === 'queue'); player.setShuffle(shuffled);
+	}
+	function sourceUrl(item) { return item.list ? `https://music.youtube.com/playlist?list=${item.list}` : `https://music.youtube.com/watch?v=${item.videoId}`; }
+	function listButton(label, handler, icon) {
+		const button = document.createElement('button');
+		button.type = 'button'; button.title = label; button.setAttribute('aria-label', label);
+		button.disabled = !libraryReady;
+		if (icon) {
+			button.className = 'icon';
+			const mark = document.createElement('span'); mark.setAttribute('data-lucide', icon); mark.textContent = label;
+			button.appendChild(mark);
+		} else { button.className = 'track-name'; button.textContent = label; }
+		button.addEventListener('click', handler);
+		return button;
+	}
+	function emptyList(container, message) { const row = document.createElement('li'); row.className = 'list-empty'; row.textContent = message; container.appendChild(row); }
+	function renderLists() {
+		const list = element('queueList'); list.replaceChildren();
+		queue.forEach((item, index) => {
+			const row = document.createElement('li');
+			if (index === queueIndex) row.setAttribute('aria-current', 'true');
+			row.appendChild(listButton(item.title || (item.list ? `Playlist ${item.list}` : item.videoId), () => startEntry(index)));
+			for (const [label, delta, icon] of [['Move up', -1, 'arrow-up'], ['Move down', 1, 'arrow-down']]) {
+				const button = listButton(label, () => {
+					const target = index + delta, active = queue[queueIndex];
+					[queue[index], queue[target]] = [queue[target], queue[index]];
+					queueIndex = queue.indexOf(active); storeList('tiade-music-queue', queue); renderLists();
+				}, icon);
+				button.disabled = index + delta < 0 || index + delta >= queue.length; row.appendChild(button);
+			}
+			row.appendChild(listButton('Remove', () => {
+				const active = queue[queueIndex]; queue.splice(index, 1); queueIndex = queue.indexOf(active);
+				storeList('tiade-music-queue', queue); renderLists();
+			}, 'trash-2'));
+			list.appendChild(row);
+		});
+		if (!queue.length) emptyList(list, 'Queue is empty');
+		const saved = element('savedList'); saved.replaceChildren();
+		savedQueues.forEach((item, index) => {
+			const row = document.createElement('li');
+			row.appendChild(listButton(`${item.name} (${item.items.length})`, () => {
+				queue = item.items.map(entry => ({ ...entry })); queueIndex = -1;
+				storeList('tiade-music-queue', queue); renderLists(); showView('queue'); if (queue.length) startEntry(0);
+			}));
+			row.appendChild(listButton('Delete', () => { savedQueues.splice(index, 1); storeList('tiade-music-saved', savedQueues); renderLists(); }, 'trash-2'));
+			saved.appendChild(row);
+		});
+		if (!savedQueues.length) emptyList(saved, 'No saved queues');
+		const recent = element('historyList'); recent.replaceChildren();
+		history.forEach(item => {
+			const row = document.createElement('li');
+			row.appendChild(listButton(item.title || item.videoId, () => { if (queue.length >= 100) return; queue.push({ ...item }); storeList('tiade-music-queue', queue); startEntry(queue.length - 1); }));
+			recent.appendChild(row);
+		});
+		if (!history.length) emptyList(recent, 'No recent tracks');
+		if (window.lucide) window.lucide.createIcons();
+	}
+	function showView(name) {
+		for (const view of ['queue', 'saved', 'history']) {
+			element(`${view}View`).hidden = name !== view;
+			element(`${view}Tab`).setAttribute('aria-selected', String(name === view));
+		}
+	}
+	function startEntry(index) {
+		if (!credentials || !playerReady) { element('error').textContent = 'Connect and wait for the player before playing a queued track.'; return; }
+		const item = queue[index]; if (!item) return;
+		if (index !== queueIndex) resumePosition = 0;
+		queueIndex = index; blocked = false; stopping = false; loaded = true; element('error').textContent = ''; element('empty').hidden = true;
+		element('source').value = sourceUrl(item);
+		if (item.list) player.loadPlaylist({ listType: 'playlist', list: item.list }); else player.loadVideoById(item.videoId);
+		player.setLoop(element('repeat').value === 'queue'); player.setShuffle(shuffled); storeList(); renderLists();
+	}
+	function advance(delta, automatic = false) {
+		if (!player) return;
+		if (queueIndex < 0 || queue[queueIndex]?.list) {
+			if (delta > 0) player.nextVideo(); else player.previousVideo(); return;
+		}
+		if (delta < 0 && player.getCurrentTime() > 3) { player.seekTo(0, true); return; }
+		let next = queueIndex + delta;
+		if (shuffled && delta > 0 && queue.length > 1) next = (queueIndex + 1 + Math.floor(Math.random() * (queue.length - 1))) % queue.length;
+		if (element('repeat').value === 'queue' && queue.length) next = (next + queue.length) % queue.length;
+		if (next >= 0 && next < queue.length) startEntry(next);
+		else if (!automatic) element('error').textContent = 'End of queue';
+	}
+
+	function normalizeToken(value) {
+		let token = value.trim().replace(/^YOUTUBEMUSIC_TOKEN\s*=\s*/, '');
+		if ((token.startsWith('"') && token.endsWith('"')) || (token.startsWith("'") && token.endsWith("'"))) token = token.slice(1, -1);
+		return token;
+	}
+
+	function parseSource(value) {
+		value = value.trim();
+		if (validId(value)) return { videoId: value };
+		const url = new URL(value);
+		if (url.protocol !== 'https:' || !['youtube.com', 'www.youtube.com', 'music.youtube.com', 'm.youtube.com', 'youtu.be'].includes(url.hostname)) throw new Error('Enter a YouTube video or public playlist URL.');
+		const list = url.searchParams.get('list');
+		if (list && /^[A-Za-z0-9_-]{10,100}$/.test(list)) return { list };
+		const videoId = url.hostname === 'youtu.be' ? url.pathname.slice(1)
+			: url.searchParams.get('v') || url.pathname.match(/^\/(?:shorts|embed)\/([A-Za-z0-9_-]{11})$/)?.[1];
+		if (!validId(videoId)) throw new Error('No valid YouTube video or playlist was found in this URL.');
+		return { videoId };
+	}
+
+	async function api(path, options = {}, session = credentials) {
+		const response = await fetch(path, { ...options, signal: AbortSignal.timeout(10000),
+			headers: { 'Content-Type': 'application/json', 'X-YouTubeMusic-Token': session.token,
+				'X-YouTubeMusic-Username': session.username } });
+		if (!response.ok) {
+			if (response.status === 409) { const error = new Error('Library changed in another tab. Reload the library before editing.'); error.status = 409; throw error; }
+			if (response.status === 401) throw new Error('Token rejected (401). Reconnect with the complete server token.');
+			if (response.status === 503) throw new Error('The server has no music token configured.');
+			throw new Error(`Music request failed (HTTP ${response.status}).`);
+		}
+		return response.json();
+	}
+
+	async function publish() {
+		if (!credentials || pending || !loaded) return;
+		pending = true;
+		const session = credentials;
+		try {
+			let playback = emptyPlayback();
+			const videoId = player && !blocked ? new URL(player.getVideoUrl() || location.href).searchParams.get('v') : '';
+			if (validId(videoId)) {
+				if (metadataId !== videoId) {
+					const result = await api(`/youtubemusic/metadata?video_id=${encodeURIComponent(videoId)}`, {}, session);
+					if (credentials !== session) return;
+					metadata = { title: clip(result.title, 160), artist: clip(result.artist, 100) };
+					metadataId = videoId;
+				}
+				if (new URL(player.getVideoUrl()).searchParams.get('v') !== videoId) return;
+				playback = { ...metadata, video_id: videoId, is_playing: player.getPlayerState() === 1 };
+			}
+			if (credentials !== session) return;
+			await api('/youtubemusic', { method: 'POST', body: JSON.stringify(playback) }, session);
+			if (credentials !== session) return;
+			element('title').textContent = playback.title || 'No song selected';
+			element('artist').textContent = playback.artist;
+			element('playbackState').textContent = playback.is_playing ? 'Playing' : playback.title ? 'Paused / stopped' : 'Stopped';
+			element('publishStatus').textContent = `Published to ${session.username} at ${new Date().toLocaleTimeString()}`;
+			if (playback.title && playback.is_playing) {
+				if (queue[queueIndex]?.videoId === videoId) { queue[queueIndex].title = playback.title; storeList('tiade-music-queue', queue); }
+				if (history[0]?.videoId !== videoId) {
+					history = [{ videoId, title: playback.title }, ...history.filter(item => item.videoId !== videoId)].slice(0, 50);
+					storeList('tiade-music-history', history);
+				}
+				renderLists();
+			}
+			storeList();
+		} catch (error) {
+			if (credentials === session) element('publishStatus').textContent = error.message;
+		} finally { pending = false; }
+	}
+
+	element('connectionForm').addEventListener('submit', async event => {
+		event.preventDefault();
+		const session = { username: element('username').value.trim().toLowerCase(), token: normalizeToken(element('token').value) };
+		if (!/^[a-z0-9_.-]{1,40}$/.test(session.username) || !/^[\x21-\x7e]{1,256}$/.test(session.token)) {
+			element('error').textContent = 'Enter a username of 1-40 letters, numbers, dots, underscores or hyphens and a token without spaces.';
+			return;
+		}
+		element('connect').disabled = true;
+		element('error').textContent = '';
+		try {
+			await api('/youtubemusic', {}, session);
+			if (libraryDirty) { await flushLibrary(); if (libraryDirty) throw new Error('Save or reload the current library before changing connection.'); }
+			const record = await api('/youtubemusic/library', {}, session);
+			if (playerReady) player.pauseVideo();
+			credentials = session;
+			loaded = false;
+			applyLibrary(record);
+			try { sessionStorage.setItem('tiade-music-session', JSON.stringify(session)); } catch (error) { }
+			element('connectionStatus').textContent = `Connected as ${session.username}`;
+			element('disconnect').disabled = false;
+			element('load').disabled = !playerReady;
+			enableControls(playerReady);
+			element('title').textContent = record.playback?.title || 'No song selected';
+			element('artist').textContent = record.playback?.artist || '';
+			element('playbackState').textContent = 'Stopped';
+		} catch (error) { element('error').textContent = error.message; }
+		finally { element('connect').disabled = false; }
+	});
+
+	element('disconnect').addEventListener('click', async () => {
+		await flushLibrary();
+		if (libraryDirty) { element('error').textContent = 'Library has unsaved changes. Retry saving or reload before disconnecting.'; return; }
+		const session = credentials;
+		credentials = null;
+		libraryReady = false; loaded = false; libraryControls(false);
+		queue = []; savedQueues = []; history = []; queueIndex = -1; resumePosition = 0; renderLists();
+		if (playerReady) player.pauseVideo();
+		try { sessionStorage.removeItem('tiade-music-session'); } catch (error) { }
+		element('token').value = '';
+		element('disconnect').disabled = true;
+		element('load').disabled = true;
+		enableControls(false);
+		element('connectionStatus').textContent = 'Not connected';
+		element('publishStatus').textContent = 'Disconnected';
+		element('libraryStatus').textContent = 'Connect to load your music library';
+		if (session) {
+			try { await api('/youtubemusic', { method: 'POST', body: JSON.stringify(emptyPlayback()) }, session); }
+			catch (error) { element('error').textContent = `Disconnected locally. ${error.message}`; }
+		}
+	});
+
+	element('sourceForm').addEventListener('submit', event => {
+		event.preventDefault();
+		if (!credentials || !playerReady) return;
+		try {
+			const source = parseSource(element('source').value);
+			if (queue.length >= 100) throw new Error('Queue is full (100 entries). Remove an entry first.');
+			queue.push(source); storeList('tiade-music-queue', queue); startEntry(queue.length - 1);
+		} catch (error) { element('error').textContent = error.message; }
+	});
+	element('retryLibrary').addEventListener('click', () => flushLibrary());
+	element('reloadLibrary').addEventListener('click', async () => {
+		if (!credentials || (libraryDirty && !confirm('Discard unsaved changes and reload the server library?'))) return;
+		const session = credentials;
+		await saveTask;
+		try {
+			const record = await api('/youtubemusic/library', {}, session);
+			if (credentials !== session) return;
+			if (playerReady) player.pauseVideo(); loaded = false; applyLibrary(record);
+		} catch (error) { if (credentials === session) element('libraryStatus').textContent = error.message; }
+	});
+	element('importLocal').addEventListener('click', () => {
+		if (!libraryReady) return;
+		if ((queue.length || savedQueues.length || history.length) && !confirm('Replace the server library lists with this browser\'s old lists?')) return;
+		queue = importEntries(readList('tiade-music-queue'));
+		savedQueues = readList('tiade-music-saved').filter(item => item && typeof item.name === 'string' && item.name.trim() && Array.isArray(item.items))
+			.slice(0, 30).map(item => ({ name: clip(item.name.trim(), 60), items: importEntries(item.items) }));
+		history = importEntries(readList('tiade-music-history')).slice(0, 50);
+		queueIndex = -1; resumePosition = 0; storeList(); renderLists();
+	});
+	element('enqueue').addEventListener('click', () => {
+		try {
+			if (queue.length >= 100) throw new Error('Queue is full (100 entries).');
+			queue.push(parseSource(element('source').value)); storeList('tiade-music-queue', queue); renderLists(); showView('queue'); element('error').textContent = '';
+		} catch (error) { element('error').textContent = error.message; }
+	});
+	for (const view of ['queue', 'saved', 'history']) element(`${view}Tab`).addEventListener('click', () => showView(view));
+	element('saveQueue').addEventListener('click', () => {
+		if (!queue.length) { element('error').textContent = 'Add tracks before saving a queue.'; return; }
+		const value = prompt('Queue name:'); if (!value?.trim()) return;
+		const name = clip(value.trim(), 60);
+		savedQueues = [{ name, items: queue.map(item => ({ ...item })) }, ...savedQueues.filter(item => item.name !== name)].slice(0, 30);
+		storeList('tiade-music-saved', savedQueues); renderLists(); showView('saved');
+	});
+	element('clearQueue').addEventListener('click', () => { queue = []; queueIndex = -1; storeList('tiade-music-queue', queue); renderLists(); });
+	element('clearHistory').addEventListener('click', () => { history = []; storeList('tiade-music-history', history); renderLists(); });
+
+	element('searchForm').addEventListener('submit', event => {
+		event.preventDefault();
+		const query = element('searchQuery').value.trim();
+		if (query) window.open(`https://music.youtube.com/search?q=${encodeURIComponent(query)}`, '_blank', 'noopener,noreferrer');
+	});
+	element('play').addEventListener('click', () => { if (credentials && player) { stopping = false; if (!loaded && queueIndex >= 0) startEntry(queueIndex); else player.playVideo(); } });
+	element('pause').addEventListener('click', () => { if (player) player.pauseVideo(); });
+	element('stop').addEventListener('click', () => { if (player) { stopping = true; player.stopVideo(); publish(); } });
+	element('previous').addEventListener('click', () => advance(-1));
+	element('next').addEventListener('click', () => advance(1));
+	element('seek').addEventListener('change', () => { if (player) { player.seekTo(Number(element('seek').value), true); storeList(); } });
+	element('volume').addEventListener('input', () => { if (playerReady) player.setVolume(Number(element('volume').value)); });
+	element('volume').addEventListener('change', () => storeList());
+	element('mute').addEventListener('click', () => {
+		if (!player) return;
+		if (player.isMuted()) player.unMute(); else player.mute();
+		element('mute').setAttribute('aria-pressed', String(player.isMuted()));
+		storeList();
+	});
+	element('shuffle').addEventListener('click', () => {
+		if (!player) return;
+		shuffled = !shuffled;
+		player.setShuffle(shuffled);
+		element('shuffle').setAttribute('aria-pressed', String(shuffled));
+		storeList();
+	});
+	element('repeat').addEventListener('change', () => { if (player) { player.setLoop(element('repeat').value === 'queue'); storeList(); } });
+	window.onYouTubeIframeAPIReady = () => {
+		player = new YT.Player('player', {
+			width: '960', height: '540', host: 'https://www.youtube.com',
+			playerVars: { origin: location.origin, playsinline: 1 },
+			events: {
+				onReady() { playerReady = true; element('load').disabled = !credentials; enableControls(Boolean(credentials)); applyAudioSettings(); },
+				onStateChange(event) {
+					blocked = false;
+					if (event.data === 1 && resumePosition > 0 && !queue[queueIndex]?.list) { player.seekTo(resumePosition, true); resumePosition = 0; }
+					if (event.data === 0 && !stopping && element('repeat').value === 'track') { player.seekTo(0, true); player.playVideo(); }
+					else if (event.data === 0 && !stopping && queueIndex >= 0 && !queue[queueIndex]?.list) advance(1, true);
+					updateProgress(); publish();
+				},
+				onError(event) {
+					blocked = true;
+					element('error').textContent = `YouTube playback error ${event.data}. This video may be private, restricted, or unavailable for embedding. Try another public video.`;
+					publish();
+				},
+			},
+		});
+	};
+
+	try {
+		const saved = JSON.parse(sessionStorage.getItem('tiade-music-session') || 'null');
+		if (saved) { element('username').value = saved.username || ''; element('token').value = saved.token || ''; }
+	} catch (error) { }
+	libraryControls(false); renderLists();
+	setInterval(updateProgress, 1000);
+	setInterval(publish, 10000);
+	document.addEventListener('visibilitychange', () => { if (!document.hidden) publish(); });
+})();
+</script>
+<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" onload="lucide.createIcons()"></script>
+<script src="https://www.youtube.com/iframe_api" onerror="document.getElementById('error').textContent='YouTube player could not load. Check your connection or content blocker.'"></script>
+</body>
+</html>
