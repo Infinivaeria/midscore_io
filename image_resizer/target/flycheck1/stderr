@@ -1,9 +1,55 @@
     Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Checking serde v1.0.227
+    Checking icu_properties v2.0.1
+   Compiling curl-sys v0.4.83+curl-8.15.0
+   Compiling bindgen v0.72.1
+    Checking openssl v0.10.73
+    Checking rav1e v0.7.1
+    Checking futures-util v0.3.31
+    Checking js-sys v0.3.81
+    Checking rkyv v0.7.45
+    Checking inotify v0.11.0
+    Checking tokio v1.47.1
+    Checking png v0.18.0
+    Checking moxcms v0.7.5
+    Checking serde_qs v0.8.5
+    Checking serde_urlencoded v0.7.1
+    Checking notify-types v2.0.0
+   Compiling magnus-macros v0.9.1 (https://github.com/matsadler/magnus?rev=5056dd0dba225b10b8303a9d8097e2d8a6349521#5056dd0d)
+    Checking encoding_rs v0.8.35
+    Checking idna_adapter v1.2.1
+   Compiling seq-macro v0.3.6
+    Checking idna v1.1.0
+    Checking iana-time-zone v0.1.64
+    Checking url v2.5.7
+    Checking pure-rust-locales v0.8.1
+    Checking notify v8.2.0
+    Checking http-types v2.12.0
+    Checking oneshot v0.1.11
+    Checking md5 v0.8.0
+    Checking base64 v0.22.1
+    Checking native-tls v0.2.14
+    Checking async-native-tls v0.5.0
+    Checking web-sys v0.3.81
+   Compiling rb-sys-build v0.9.130
+    Checking ravif v0.11.20
+   Compiling rb-sys v0.9.130
+    Checking image v0.25.8
+    Checking chrono v0.4.42
+    Checking tokio-native-tls v0.3.1
+   Compiling magnus v0.10.0 (https://github.com/matsadler/magnus?rev=5056dd0dba225b10b8303a9d8097e2d8a6349521#5056dd0d)
+   Compiling curl v0.4.49
+   Compiling isahc v0.9.14
+    Checking http-client v6.5.3
+    Checking surf v2.3.2
+    Checking image_resizer v0.1.0 (/root/midscore_io/image_resizer)
 warning: unused dependency `async-native-tls`
  --> Cargo.toml:8:1
   |
 8 | async-native-tls = "0.5.0"
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  | ^^^^^^^^^^^^^^^^
   |
   = note: `cargo::unused_dependencies` is set to `warn` by default
 help: consider removing the dependency on `async-native-tls`
@@ -11,50 +57,50 @@ warning: unused dependency `base64`
   --> Cargo.toml:10:1
    |
 10 | base64 = "0.22.1"
-   | ^^^^^^^^^^^^^^^^^
+   | ^^^^^^
    |
 help: consider removing the dependency on `base64`
 warning: unused dependency `chrono`
   --> Cargo.toml:11:1
    |
 11 | chrono = { version = "0.4.40", features = ["pure-rust-locales", "rkyv-64", "rkyv-validation", "serde"] }
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   | ^^^^^^
    |
 help: consider removing the dependency on `chrono`
 warning: unused dependency `image`
   --> Cargo.toml:12:1
    |
 12 | image = { version = "0.25.6", features = ["serde", "color_quant"] }
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   | ^^^^^
    |
 help: consider removing the dependency on `image`
 warning: unused dependency `notify`
   --> Cargo.toml:16:1
    |
 16 | notify = { version = "8.0.0", features = ["kqueue", "mio", "serde"] }
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   | ^^^^^^
    |
 help: consider removing the dependency on `notify`
 warning: unused dependency `oneshot`
   --> Cargo.toml:18:1
    |
 18 | oneshot = { version = "0.1.11", features = ["loom"] }
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   | ^^^^^^^
    |
 help: consider removing the dependency on `oneshot`
 warning: unused dependency `surf`
   --> Cargo.toml:21:1
    |
 21 | surf = { version = "2.3.2", default-features = true }
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   | ^^^^
    |
 help: consider removing the dependency on `surf`
 warning: unused dependency `tokio-native-tls`
   --> Cargo.toml:24:1
    |
 24 | tokio-native-tls = "0.3.1"
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   | ^^^^^^^^^^^^^^^^
    |
 help: consider removing the dependency on `tokio-native-tls`
 warning: `image_resizer` (manifest) generated 8 warnings
-    Finished `dev` profile [optimized + debuginfo] target(s) in 0.52s
+    Finished `dev` profile [optimized + debuginfo] target(s) in 1m 09s

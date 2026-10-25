@@ -78968,9 +78968,18 @@
         "body": "{\"avatar_id\":\"949763e1-57d4-4146-4493-b7b95bcb5f0a\",\"avatar_name\":\"Actors Leg Pack v2.0 L\",\"captured_by\":\"aritywolf\",\"message\":\"Hello, Avatar!\",\"sim_name\":\"Nil Space Zone\",\"timestamp\":1792866365,\"x_pos\":235.268400,\"y_pos\":217.885300,\"z_pos\":39.121400}",
         "received_at": "2026-10-24T18:26:06.866518069+00:00"
       },
-      {},
-      {},
-      {},
+      {
+        "body": "{\"avatar_id\":\"cbcfed70-5458-fa17-eb48-3af4ced9bebd\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Nil Space Zone\",\"timestamp\":1792881338,\"x_pos\":235.165000,\"y_pos\":221.787000,\"z_pos\":38.544570}",
+        "received_at": "2026-10-24T22:35:39.081654607+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"ad2d3646-e44b-2bf6-ec91-ec0169c64fcf\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Nil Space Zone\",\"timestamp\":1792893122,\"x_pos\":235.165000,\"y_pos\":221.787000,\"z_pos\":38.563550}",
+        "received_at": "2026-10-25T01:52:02.969412624+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"343943ba-a51c-4a57-ca43-31a8b616d706\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1792894086,\"x_pos\":69.971000,\"y_pos\":175.123000,\"z_pos\":25.837120}",
+        "received_at": "2026-10-25T02:08:07.003949593+00:00"
+      },
       {},
       {},
       {},
@@ -79134,7 +79143,7 @@
       {}
     ]
   },
-  "chatlog_revision": 15709,
+  "chatlog_revision": 15712,
   "variable_entries": {
     "db_size": 1,
     "partition_amount_and_offset": 64,
