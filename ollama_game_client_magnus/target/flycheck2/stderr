@@ -1,4 +1,1 @@
-   Compiling rb-sys v0.9.130
-   Compiling magnus v0.10.0 (https://github.com/matsadler/magnus?rev=5056dd0dba225b10b8303a9d8097e2d8a6349521#5056dd0d)
-    Checking ollama_game_client_magnus v3.0.0 (/root/midscore_io/ollama_game_client_magnus)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 38.29s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.75s

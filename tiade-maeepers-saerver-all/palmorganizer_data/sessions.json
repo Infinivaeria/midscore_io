@@ -46,7 +46,31 @@
     32
   ],
   "data_arr": [
-    {},
+    {
+      "data": {
+        "alarms": [],
+        "events": [],
+        "notes": {},
+        "sound": true,
+        "switches": [],
+        "tasks": [],
+        "timer": {
+          "duration": 1500000,
+          "end": null,
+          "remaining": 1500000
+        },
+        "version": 1,
+        "watch": {
+          "elapsed": 0,
+          "laps": [],
+          "since": null
+        }
+      },
+      "id": "6eb2ef1a-f7d8-4c52-b727-da8cf4a2860e",
+      "name": "My session",
+      "owner": "1111edcf-ca23-449c-a6ed-b95068698a3f",
+      "revision": 0
+    },
     {
       "data": {
         "alarms": [],
