@@ -128,7 +128,46 @@
       "owner": "333d3826-ddda-4458-87ed-846dca9daf2a",
       "revision": 29
     },
-    {},
+    {
+      "data": {
+        "alarms": [],
+        "events": [],
+        "notes": {
+          "2026-10-26": "When we grid in, they gut in. When we gridout, they gut out."
+        },
+        "sound": true,
+        "switches": [
+          {
+            "color": "#ff0000",
+            "id": "b57f9b94-fd9c-4ebb-8084-58903a0abcb0",
+            "on": false,
+            "title": "Gut out / Gut in Second Life (TELS)"
+          },
+          {
+            "color": "#00ff00",
+            "id": "d541fb21-838b-47a4-81cd-af78dcccd4eb",
+            "on": true,
+            "title": "Gut'in / Gut'out entire fandom Nths backwards"
+          }
+        ],
+        "tasks": [],
+        "timer": {
+          "duration": 1500000,
+          "end": null,
+          "remaining": 1500000
+        },
+        "version": 1,
+        "watch": {
+          "elapsed": 0,
+          "laps": [],
+          "since": null
+        }
+      },
+      "id": "d2ca6282-0d0b-4031-b83e-8ad7d397ac7c",
+      "name": "Second Life/The Ethereal Life Sim",
+      "owner": "1111edcf-ca23-449c-a6ed-b95068698a3f",
+      "revision": 25
+    },
     {},
     {},
     {},
