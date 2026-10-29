@@ -41,6 +41,20 @@ fn validate(data: &Value) -> tide::Result<()> {
     {
         return Err(invalid("Invalid organizer data."));
     }
+    if data["switches"].as_array().unwrap().iter().any(|item| {
+        item.get("toggleCount").is_some_and(|count| {
+            count.as_u64().is_none_or(|count| count > 9_007_199_254_740_991)
+        })
+    }) {
+        return Err(invalid("Invalid switch count."));
+    }
+    if data.get("automationCode").is_some_and(|code| {
+        code.as_str().is_none_or(|code| code.chars().count() > 20_000)
+    }) || data.get("automationMemory").is_some_and(|memory| {
+        !memory.is_object() || memory.to_string().chars().count() > 100_000
+    }) {
+        return Err(invalid("Invalid saved program or program memory."));
+    }
     Ok(())
 }
 
@@ -181,6 +195,34 @@ mod tests {
         restored.apply("owner", Command::Rename { id: id.clone(), name: "Office".into() }).unwrap();
         restored.apply("owner", Command::Delete { id: id.clone() }).unwrap();
         assert!(Sessions::open(path.clone()).unwrap().apply("owner", Command::Read { id }).is_err());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn organizer_counts_schedules_and_program_memory_survive_restart() {
+        let path = std::env::temp_dir().join(format!("palm-{}.json", uuid::Uuid::new_v4()));
+        let mut store = Sessions::open(path.clone()).unwrap();
+        let mut saved = data("Persistent note");
+        saved["switches"] = json!([{"id":"water","title":"Water","on":false,"color":"#176b53","toggleCount":42}]);
+        saved["events"] = json!([{"id":"review","title":"Review","date":"2026-10-29","time":"09:00","endTime":"10:00","repeat":"weekly","until":"2027-01-01"}]);
+        saved["automationCode"] = json!("organizer.remember('counter', '12345678901234567890');");
+        saved["automationMemory"] = json!({"counter":"12345678901234567890","tape":[0,1,1,0]});
+        let created = store.apply("owner", Command::Create { name: "Organizer".into(), data: saved.clone() }).unwrap();
+        let id = created["id"].as_str().unwrap().to_owned();
+        saved["switches"][0]["toggleCount"] = json!(43);
+        store.apply("owner", Command::Save { id: id.clone(), revision: 0, data: saved.clone() }).unwrap();
+        drop(store);
+        let mut restored = Sessions::open(path.clone()).unwrap();
+        let read = restored.apply("owner", Command::Read { id: id.clone() }).unwrap();
+        assert_eq!(read["data"], saved);
+        assert_eq!(read["revision"], 1);
+        let mut invalid_count = saved.clone();
+        invalid_count["switches"][0]["toggleCount"] = json!(-1);
+        assert!(restored.apply("owner", Command::Save { id: id.clone(), revision: 1, data: invalid_count }).is_err());
+        let mut invalid_memory = saved.clone();
+        invalid_memory["automationMemory"] = json!("not an object");
+        assert!(restored.apply("owner", Command::Save { id: id.clone(), revision: 1, data: invalid_memory }).is_err());
+        assert_eq!(restored.apply("owner", Command::Read { id }).unwrap()["data"], saved);
         std::fs::remove_file(path).unwrap();
     }
 

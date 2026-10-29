@@ -7,7 +7,48 @@ const page = rust.split('app.at("/palmorganizer")')[1].split('r###"')[1].split('
 const source = page.match(/<script>\s*([\s\S]*?)<\/script>/)[1];
 const context = {module:{exports:{}},Intl,Date};
 runInNewContext(source,context);
-const {pacificDay,nextAlarm,elapsed,remaining,fresh,validate,automationWorkerSource,applyAutomation,sessionWriter} = context.module.exports;
+const {pacificDay,nextAlarm,elapsed,remaining,fresh,validate,setSwitch,occursOn,automationWorkerSource,applyAutomation,sessionWriter} = context.module.exports;
+
+test('calendar recurrence follows Pacific calendar dates across DST with inclusive end dates',() => {
+  const event = {date:'2026-03-01',repeat:'weekly',until:'2026-03-15'};
+  assert.equal(occursOn(event,'2026-02-22'),false);
+  assert.equal(occursOn(event,'2026-03-08'),true);
+  assert.equal(occursOn(event,'2026-03-09'),false);
+  assert.equal(occursOn(event,'2026-03-15'),true);
+  assert.equal(occursOn(event,'2026-03-22'),false);
+  assert.equal(occursOn({date:'2026-01-01',repeat:'daily'},'2027-01-01'),true);
+  assert.equal(occursOn({date:'2026-01-01'},'2026-01-02'),false);
+});
+
+test('programs can schedule and checkpoint memory atomically across runs',() => {
+  const original = fresh();
+  const updated = applyAutomation(original,[{kind:'event',event:{title:'Review',date:'2026-10-29',time:'09:00',endTime:'10:00',repeat:'weekly'}},{kind:'memory',key:'step',value:{counter:'12345678901234567890'}}],'2026-10-29',()=>'event',0);
+  assert.equal(updated.events[0].repeat,'weekly');
+  assert.equal(updated.automationMemory.step.counter,'12345678901234567890');
+  assert.equal(original.automationMemory,undefined);
+  assert.equal(validate(JSON.parse(JSON.stringify(updated))).events.length,1);
+  for (const event of [{title:'Bad',time:'10:00',endTime:'09:00'},{title:'Bad',repeat:'monthly'},{title:'Bad',until:'2020-01-01'}]) {
+    assert.throws(() => applyAutomation(original,[{kind:'event',event}],'2026-10-29',()=>'event',0));
+  }
+  assert.throws(() => applyAutomation(original,[{kind:'memory',key:'__proto__',value:{}}],'2026-10-29',()=>'event',0));
+});
+
+test('switch counts track off-to-on transitions only and old backups remain valid',() => {
+  const data = fresh(), item = {id:'water',title:'Water',on:false,color:'#176b53'};
+  data.switches.push(item); validate(data);
+  setSwitch(item,true); setSwitch(item,true); setSwitch(item,false);
+  assert.equal(item.toggleCount,1);
+  assert.equal(item.on,false);
+  setSwitch(item,true); setSwitch(item,false);
+  assert.equal(item.toggleCount,2);
+  assert.equal(validate(JSON.parse(JSON.stringify(data))).switches[0].toggleCount,2);
+  item.toggleCount = -1; assert.throws(() => validate(data));
+  item.toggleCount = Number.MAX_SAFE_INTEGER; assert.throws(() => setSwitch(item,true));
+  assert.equal(item.on,false);
+  item.on = true; setSwitch(item,false);
+  assert.equal(item.toggleCount,Number.MAX_SAFE_INTEGER);
+  assert.equal(item.on,false);
+});
 
 test('session autosaves serialize revisions and preserve edits made during a save',async () => {
   const writes = [], pending = [];

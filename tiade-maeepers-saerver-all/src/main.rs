@@ -3906,7 +3906,10 @@ impl Clone for AppState {
 </style>
 <style>
 #automation-dialog{width:min(760px,calc(100% - 28px))}.automation-editor{font:14px/1.6 ui-monospace,monospace;min-height:260px;resize:vertical;tab-size:2;white-space:pre;overflow:auto}.automation-output{font:13px/1.6 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;background:#edf3ef;min-height:90px;max-height:220px;overflow:auto;padding:14px;border-radius:5px}.automation-controls{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.automation-controls button{display:inline-flex;align-items:center;gap:8px}.automation-controls svg{width:18px;height:18px}.automation-options{margin-bottom:14px}
+.toggle-count{font:600 14px/1.4 'JetBrains Mono','DejaVu Sans Mono',monospace;font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0;color:var(--green)}.switch-label>span:not(.swatch):not(.toggle-count){min-width:0;overflow-wrap:anywhere}.time-tag{white-space:normal;flex-shrink:0;max-width:125px}.item-main{min-width:0;overflow-wrap:anywhere}.automation-editor,.automation-output{font-family:'JetBrains Mono','DejaVu Sans Mono',monospace}
 </style>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>.switch-label>span.toggle-count{flex:0 0 auto;min-width:3ch;text-align:right}</style>
 </head>
 <body>
 <main class="shell" inert>
@@ -3951,9 +3954,22 @@ impl Clone for AppState {
   const isDay = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && value.slice(0,4) >= '1900' && Number.isFinite(Date.parse(value+'T12:00:00Z')) && new Date(value+'T12:00:00Z').toISOString().slice(0,10) === value;
   const validNumber = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER;
   const nullableNumber = value => value === null || validNumber(value);
+  const occursOn = (event, day) => {
+    if (day < event.date || (event.until && day > event.until)) return false;
+    if (!event.repeat || event.repeat === 'once') return event.date === day;
+    return event.repeat === 'daily' || (Date.parse(day+'T12:00:00Z') - Date.parse(event.date+'T12:00:00Z')) % 604800000 === 0;
+  };
+  const setSwitch = (item, on) => {
+    if (item.on === on) return;
+    if (!on) { item.on = false; return; }
+    const count = item.toggleCount ?? 0;
+    if (!Number.isSafeInteger(count) || count < 0 || count >= Number.MAX_SAFE_INTEGER) throw new Error('Switch count limit reached.');
+    item.toggleCount = count + 1; item.on = on;
+  };
   const validate = data => {
     if (!data || data.version !== 1 || typeof data.sound !== 'boolean') throw new Error('Invalid organizer backup.');
     if (data.automationCode !== undefined && (typeof data.automationCode !== 'string' || data.automationCode.length > 20000)) throw new Error('Invalid saved program.');
+    if (data.automationMemory !== undefined && (!data.automationMemory || typeof data.automationMemory !== 'object' || Array.isArray(data.automationMemory) || JSON.stringify(data.automationMemory).length > 100000)) throw new Error('Invalid program memory.');
     for (const key of ['events','tasks','switches','alarms']) {
       if (!Array.isArray(data[key]) || data[key].length > 10000) throw new Error('Invalid list.');
       const ids = new Set();
@@ -3962,8 +3978,14 @@ impl Clone for AppState {
         ids.add(item.id);
         if ((key === 'events' || key === 'tasks') && !isDay(item.date)) throw new Error('Invalid date.');
         if (key === 'events' && item.time !== '' && !isTime(item.time)) throw new Error('Invalid event time.');
+        if (key === 'events') {
+          if (item.repeat !== undefined && !['once','daily','weekly'].includes(item.repeat)) throw new Error('Invalid event recurrence.');
+          if (item.until && (!isDay(item.until) || item.until < item.date)) throw new Error('Recurrence end must follow the start date.');
+          if (item.endTime && (!isTime(item.endTime) || !isTime(item.time) || item.endTime <= item.time)) throw new Error('End time must follow the start time on the same day.');
+        }
         if (key === 'tasks' && typeof item.done !== 'boolean') throw new Error('Invalid checklist.');
         if (key === 'switches' && (typeof item.on !== 'boolean' || !/^#[0-9a-f]{6}$/i.test(item.color))) throw new Error('Invalid switch.');
+        if (key === 'switches' && item.toggleCount !== undefined && (!Number.isSafeInteger(item.toggleCount) || item.toggleCount < 0)) throw new Error('Invalid switch count.');
         if (key === 'alarms' && (!isTime(item.time) || !['once','daily'].includes(item.repeat) || typeof item.on !== 'boolean' || !validNumber(item.next) || item.next > 8640000000000000)) throw new Error('Invalid alarm.');
       }
     }
@@ -3973,6 +3995,7 @@ impl Clone for AppState {
     return data;
   };
   const automationExamples = {
+    checkpoint: 'const memory = organizer.snapshot.memory;\nconst counter = BigInt(memory.counter ?? "0") + 1n;\norganizer.remember("counter", counter.toString());\norganizer.addEvent({title: "Review " + counter, date: organizer.snapshot.today, time: "16:00", endTime: "16:30", repeat: "weekly"});\nprint("Prepared run " + counter);',
     routine: '// Organizer API: snapshot, setSwitch(id, on), addTask(title),\n// setNote(text), startTimer(seconds). Changes are staged.\nprint("Pacific date: " + organizer.snapshot.today);\nfor (const item of organizer.snapshot.switches) {\n  organizer.setSwitch(item.id, false);\n}\norganizer.addTask("Choose three priorities");\norganizer.startTimer(25 * 60);\nprint("Morning routine prepared.");',
     fibonacci: 'let previous = 0n, current = 1n;\nfor (let index = 0; index < 50; index++) {\n  print(previous.toString());\n  [previous, current] = [current, previous + current];\n}',
     loop: 'while (true) {\n  // Stop manually or let the run limit stop this program.\n}'
@@ -3986,7 +4009,9 @@ impl Clone for AppState {
         setSwitch: (id, on) => stage({kind:'switch',id,on}),
         addTask: title => stage({kind:'task',title}),
         setNote: text => stage({kind:'note',text}),
-        startTimer: seconds => stage({kind:'timer',seconds})
+        startTimer: seconds => stage({kind:'timer',seconds}),
+        addEvent: event => stage({kind:'event',event}),
+        remember: (key, value) => stage({kind:'memory',key,value})
       };
       const print = (...values) => { if (output.length >= 100) throw new Error('Output limit: 100 lines.'); output.push(values.map(value => String(value).slice(0,1000)).join(' ').slice(0,1000)); };
       try {
@@ -4005,13 +4030,22 @@ impl Clone for AppState {
       if (command.kind === 'switch') {
         const item = updated.switches.find(item => item.id === command.id);
         if (!item || typeof command.on !== 'boolean') throw new Error('Invalid switch action.');
-        item.on = command.on;
+        setSwitch(item, command.on);
       } else if (command.kind === 'task') {
         if (!titleValid(command.title)) throw new Error('Task names need 1 to 160 characters.');
         updated.tasks.push({id:makeId(),title:command.title.trim(),date:today,done:false});
       } else if (command.kind === 'note') {
         if (typeof command.text !== 'string' || command.text.length > 20000) throw new Error('Notes must be at most 20,000 characters.');
         updated.notes[today] = command.text;
+      } else if (command.kind === 'event') {
+        const event = command.event;
+        if (!event || !titleValid(event.title)) throw new Error('Event names need 1 to 160 characters.');
+        updated.events.push({id:makeId(),title:event.title.trim(),date:event.date ?? today,time:event.time ?? '',endTime:event.endTime ?? '',repeat:event.repeat ?? 'once',until:event.until ?? ''});
+      } else if (command.kind === 'memory') {
+        if (typeof command.key !== 'string' || !command.key.length || command.key.length > 80 || ['__proto__','constructor','prototype'].includes(command.key)) throw new Error('Invalid memory key.');
+        if (command.value === undefined) throw new Error('Memory values must be JSON serializable.');
+        updated.automationMemory ??= {};
+        Object.defineProperty(updated.automationMemory,command.key,{value:JSON.parse(JSON.stringify(command.value)),enumerable:true,writable:true,configurable:true});
       } else if (command.kind === 'timer') {
         if (!Number.isInteger(command.seconds) || command.seconds <= 0 || command.seconds > 59999) throw new Error('Timer must be 1 to 59,999 seconds.');
         const duration = command.seconds * 1000;
@@ -4038,7 +4072,7 @@ impl Clone for AppState {
       unsaved: () => generation !== saved
     };
   };
-  if (typeof module !== 'undefined' && module.exports) module.exports = {pacificDay,nextAlarm,elapsed,remaining,fresh,validate,automationWorkerSource,applyAutomation,sessionWriter};
+  if (typeof module !== 'undefined' && module.exports) module.exports = {pacificDay,nextAlarm,elapsed,remaining,fresh,validate,setSwitch,occursOn,automationWorkerSource,applyAutomation,sessionWriter};
   if (typeof document === 'undefined') return;
   const $ = id => document.getElementById(id);
   const key = 'palmorganizer-v1';
@@ -4050,6 +4084,7 @@ impl Clone for AppState {
     return response.json();
   };
   const writer = sessionWriter(requestSession,dirty => message(dirty ? 'Unsaved changes' : 'Saved to disk.'));
+  let saveTimeout = null;
   const flush = async () => {
     try { await writer.flush(() => data); }
     catch (error) { if (error.status === 409 || error.status === 404) storageConflict = true; message('Not saved: '+error.message); throw error; }
@@ -4057,6 +4092,7 @@ impl Clone for AppState {
   const save = () => {
     if (loadFailed || storageConflict) { message('Saving blocked. Export your changes, then reload.'); return; }
     writer.dirty();
+    clearTimeout(saveTimeout); saveTimeout = setTimeout(() => { if (!switching) flush().catch(() => {}); },500);
   };
   let today = pacificDay(Date.now()), selected = today, month = today.slice(0,7), view = 'today', editing = null, ringItems = [], audio = null, soundLoop = null;
   const icons = () => { if (window.lucide) window.lucide.createIcons(); };
@@ -4072,8 +4108,8 @@ impl Clone for AppState {
   const listEmpty = (container,text) => container.append(make('p','empty',text));
   const renderEvents = (id,day) => {
     const container = $(id); container.replaceChildren();
-    const events = data.events.filter(event => event.date === day).sort((left,right) => left.time.localeCompare(right.time));
-    events.forEach(event => { const row = make('div','item'); row.append(make('span','time-tag',timeLabel(event.time)),make('strong','item-main',event.title),iconButton('pencil','Edit event',() => openEntry('event',event))); container.append(row); });
+    const events = data.events.filter(event => occursOn(event,day)).sort((left,right) => left.time.localeCompare(right.time));
+    events.forEach(event => { const row = make('div','item'), info = make('span','item-main'); info.append(make('strong','',event.title)); if (event.repeat && event.repeat !== 'once') info.append(make('div','small muted',`${event.repeat === 'daily' ? 'Daily' : 'Weekly'}${event.until ? ' through '+event.until : ''}`)); row.append(make('span','time-tag',timeLabel(event.time)+(event.endTime ? ' - '+timeLabel(event.endTime) : '')),info,iconButton('pencil','Edit event series',() => openEntry('event',event))); container.append(row); });
     if (!events.length) listEmpty(container,'Nothing scheduled. A little breathing room.');
   };
   const renderSwitches = id => {
@@ -4081,8 +4117,10 @@ impl Clone for AppState {
     data.switches.forEach(item => {
       const row = make('div','item'), label = make('label','switch-label'), dot = make('span','swatch'), title = make('span','',item.title), input = make('input','switch');
       dot.style.backgroundColor = item.color; input.type = 'checkbox'; input.setAttribute('role','switch'); input.checked = item.on;
-      input.onchange = () => { item.on = input.checked; save(); renderSwitches(id === 'today-switches' ? 'all-switches' : 'today-switches'); icons(); };
-      label.append(dot,title,input); row.append(label,iconButton('pencil','Edit switch',() => openEntry('switch',item))); container.append(row);
+      const count = make('span','toggle-count',String(item.toggleCount ?? 0));
+      count.title = 'Times turned on'; count.setAttribute('aria-label',`${item.toggleCount ?? 0} times turned on`);
+      input.onchange = () => { try { setSwitch(item,input.checked); save(); } catch (error) { message(error.message); } renderSwitches('today-switches'); renderSwitches('all-switches'); icons(); };
+      label.append(dot,title,count,input); row.append(label,iconButton('pencil','Edit switch',() => openEntry('switch',item))); container.append(row);
     });
     if (!data.switches.length) listEmpty(container,'Add a switch for a habit, reminder, or daily ritual.');
   };
@@ -4103,8 +4141,9 @@ impl Clone for AppState {
     for (let day = 1; day <= count; day++) {
       const value = `${month}-${String(day).padStart(2,'0')}`, button = make('button','day'+(value === today ? ' today' : '')+(value === selected ? ' selected' : ''),String(day));
       button.setAttribute('aria-label',dateLabel(value)); button.setAttribute('aria-pressed',String(value === selected)); if (value === today) button.setAttribute('aria-current','date');
-      if (data.events.some(event => event.date === value)) button.append(make('span','dot'));
-      button.onclick = () => { selected = value; renderCalendar(); icons(); }; grid.append(button);
+      const scheduled = data.events.filter(event => occursOn(event,value)).length;
+      if (scheduled) { button.append(make('span','dot')); button.setAttribute('aria-label',`${dateLabel(value)}, ${scheduled} events`); }
+      button.onclick = () => { const alreadySelected = selected === value; selected = value; renderCalendar(); icons(); if (alreadySelected) openEntry('event'); }; grid.append(button);
     }
     $('selected-label').textContent = dateLabel(selected); renderEvents('selected-events',selected);
   };
@@ -4123,27 +4162,44 @@ impl Clone for AppState {
   const render = () => { renderEvents('today-events',today); renderTasks(); renderSwitches('today-switches'); renderSwitches('all-switches'); renderCalendar(); renderAlarms(); $('note').value = data.notes[today] || ''; icons(); };
   const listKey = kind => ({event:'events',task:'tasks',switch:'switches',alarm:'alarms'})[kind];
   const field = name => $('entry-form').elements.namedItem(name);
+  const addEventField = (id, labelText, name, type) => {
+    const label = make('label','field',labelText), input = make('input'); label.id = id; input.name = name; input.type = type;
+    if (type === 'date') { input.min = '1900-01-01'; input.max = '9999-12-31'; }
+    label.append(input); $('repeat-field').before(label);
+  };
+  addEventField('end-time-field','End time (Pacific)','endTime','time');
+  addEventField('until-field','Repeat through (optional)','until','date');
+  const weekly = make('option','','Every week'); weekly.value = 'weekly'; field('repeat').append(weekly);
   const openEntry = (kind,item = null) => {
     editing = {kind,id:item?.id}; $('entry-form').reset(); field('title').setCustomValidity('');
+    field('endTime').setCustomValidity('');
     $('entry-title').textContent = `${item ? 'Edit' : 'Add'} ${kind}`;
     field('title').value = item?.title || ''; field('date').value = item?.date || (view === 'calendar' ? selected : today); field('time').value = item?.time || (kind === 'alarm' ? '08:00' : ''); field('repeat').value = item?.repeat || 'once'; field('color').value = item?.color || '#176b53';
     $('date-field').hidden = !['event','task'].includes(kind); field('date').required = ['event','task'].includes(kind);
     $('time-field').hidden = !['event','alarm'].includes(kind); field('time').required = kind === 'alarm';
-    $('repeat-field').hidden = kind !== 'alarm'; $('color-field').hidden = kind !== 'switch'; $('delete-entry').hidden = !item; $('entry-dialog').showModal();
+    field('endTime').value = item?.endTime || ''; field('until').value = item?.until || '';
+    $('end-time-field').hidden = kind !== 'event'; $('until-field').hidden = kind !== 'event';
+    weekly.disabled = kind !== 'event';
+    $('repeat-field').hidden = !['alarm','event'].includes(kind); $('color-field').hidden = kind !== 'switch'; $('delete-entry').hidden = !item; $('entry-dialog').showModal();
   };
   $('entry-form').onsubmit = event => {
     event.preventDefault(); const {kind,id} = editing, list = data[listKey(kind)], existing = list.find(item => item.id === id), title = field('title').value.trim();
     if (!title) { field('title').setCustomValidity('Enter a name.'); field('title').reportValidity(); return; }
     const item = {id:id || identifier(),title};
     if (kind === 'event' || kind === 'task') { item.date = field('date').value; if (!isDay(item.date)) { message('Choose a valid date.'); return; } }
-    if (kind === 'event') item.time = field('time').value;
+    if (kind === 'event') {
+      item.time = field('time').value; item.endTime = field('endTime').value; item.repeat = field('repeat').value; item.until = item.repeat === 'once' ? '' : field('until').value;
+      const candidate = fresh(); candidate.events.push(item);
+      try { validate(candidate); } catch (error) { message(error.message); field('endTime').setCustomValidity(error.message); field('endTime').reportValidity(); return; }
+    }
     if (kind === 'task') item.done = existing?.done || false;
-    if (kind === 'switch') { item.color = field('color').value; item.on = existing?.on || false; }
+    if (kind === 'switch') { item.color = field('color').value; item.on = existing?.on || false; item.toggleCount = existing?.toggleCount ?? 0; }
     if (kind === 'alarm') { item.time = field('time').value; item.repeat = field('repeat').value; item.on = existing?.on ?? true; item.next = nextAlarm(item.time,Date.now()); }
     if (existing) Object.assign(existing,item); else list.push(item);
     save(); $('entry-dialog').close(); render();
   };
   field('title').oninput = event => event.target.setCustomValidity('');
+  ['endTime','time','until','date','repeat'].forEach(name => field(name).oninput = () => field('endTime').setCustomValidity(''));
   $('delete-entry').onclick = () => { if (!confirm('Delete this entry?')) return; data[listKey(editing.kind)] = data[listKey(editing.kind)].filter(item => item.id !== editing.id); save(); $('entry-dialog').close(); render(); };
   document.querySelectorAll('[data-add]').forEach(button => button.onclick = () => openEntry(button.dataset.add));
   document.querySelectorAll('[data-close]').forEach(button => button.onclick = () => $(button.dataset.close).close());
@@ -4215,6 +4271,7 @@ impl Clone for AppState {
   };
   const discardAutomation = () => { stagedAutomation = null; $('automation-apply').disabled = true; };
   const automationButton = make('button','','Automation console');
+  const checkpointExample = make('option','','Persistent counter & weekly review'); checkpointExample.value = 'checkpoint'; $('automation-example').append(checkpointExample);
   automationButton.type = 'button'; $('notification-button').after(automationButton);
   automationButton.onclick = () => { $('settings-dialog').close(); $('automation-code').value = data.automationCode ?? automationExamples.routine; $('automation-dialog').showModal(); };
   $('automation-code').oninput = () => { data.automationCode = $('automation-code').value; save(); discardAutomation(); };
@@ -4224,7 +4281,7 @@ impl Clone for AppState {
     if (loadFailed || storageConflict) { automationStatus('Resolve the storage warning before running automation.'); return; }
     data.automationCode = $('automation-code').value; save();
     const baseline = JSON.stringify(data), runDay = today;
-    const snapshot = {today:runDay,switches:data.switches,tasks:data.tasks.filter(task => task.date === runDay),note:data.notes[runDay] || ''};
+    const snapshot = {today:runDay,switches:data.switches,tasks:data.tasks.filter(task => task.date === runDay),events:data.events,memory:data.automationMemory ?? {},note:data.notes[runDay] || ''};
     let workerUrl;
     try {
       workerUrl = URL.createObjectURL(new Blob([automationWorkerSource],{type:'text/javascript'}));

@@ -1,0 +1,164 @@
+{
+  "backend": "ruby-partitioned-array-v1",
+  "db_size": 1,
+  "partition_amount_and_offset": 32,
+  "data_arr": [
+    {
+      "applied_revision": 0,
+      "desired": {
+        "alpha": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "text": ""
+      },
+      "id": "28d6766a-0373-c355-3622-cd1fee0c446b",
+      "last_seen": 1793311886,
+      "message": "",
+      "message_at": 0,
+      "name": "SL:\\\\MoonLink (v12f) - BACKUP",
+      "object_key": "8fa266c0-da28-4269-a86a-841d5146f3a4",
+      "region": "Natoma",
+      "reported_text": "",
+      "revision": 0,
+      "runtime": {
+        "last_run_at": 0,
+        "logs": [],
+        "paused": false,
+        "poll_seconds": 15,
+        "runs": 0,
+        "version": 0,
+        "wake_at": 0
+      },
+      "secret": "bf55fdfb-f8b4-79ce-e002-8765cd9f7ff8",
+      "state": {}
+    },
+    {
+      "applied_revision": 2,
+      "desired": {
+        "alpha": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "text": "ไอโล ไอลอน"
+      },
+      "id": "5146fc4c-09b5-1bbd-2686-51f3784d2d7d",
+      "last_seen": 1793312415,
+      "message": "",
+      "message_at": 0,
+      "name": "SL:\\\\MoonLink  FINAL",
+      "object_key": "b1f98c62-db53-ba04-ccde-f939cc9d982d",
+      "region": "Natoma",
+      "reported_text": "ไอโล ไอลอน",
+      "revision": 2,
+      "runtime": {
+        "last_run_at": 0,
+        "logs": [],
+        "paused": false,
+        "poll_seconds": 15,
+        "runs": 0,
+        "version": 0,
+        "wake_at": 0
+      },
+      "secret": "e8b0d8e6-9463-01eb-53a5-98da9f79fd1a",
+      "state": {}
+    },
+    {
+      "applied_revision": 1,
+      "desired": {
+        "alpha": 1.0,
+        "color": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "text": "test"
+      },
+      "id": "5edcd7a1-ae66-9919-ee45-ece01d52b33f",
+      "last_seen": 1793311616,
+      "message": "",
+      "message_at": 0,
+      "name": "NameLog",
+      "object_key": "f87d05de-3127-6379-6e3d-f70c9f907a5b",
+      "region": "Natoma",
+      "reported_text": "test",
+      "revision": 1,
+      "runtime": {
+        "last_run_at": 0,
+        "logs": [],
+        "paused": false,
+        "poll_seconds": 15,
+        "runs": 0,
+        "version": 0,
+        "wake_at": 0
+      },
+      "secret": "c97f7ac0-8445-9747-fb37-31e3645c1485",
+      "state": {}
+    },
+    {
+      "applied_revision": 3,
+      "desired": {
+        "alpha": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "text": "อาร์โล อาร์ลอน"
+      },
+      "id": "fee2c3aa-a7da-1377-110c-d94ec83cafe2",
+      "last_seen": 1793312414,
+      "message": "",
+      "message_at": 0,
+      "name": "SL:\\\\MoonLink  FINAL",
+      "object_key": "1f2d1cb9-83df-1565-d06b-ea7547502827",
+      "region": "Natoma",
+      "reported_text": "อาร์โล อาร์ลอน",
+      "revision": 3,
+      "runtime": {
+        "last_run_at": 0,
+        "logs": [],
+        "paused": false,
+        "poll_seconds": 15,
+        "runs": 0,
+        "version": 0,
+        "wake_at": 0
+      },
+      "secret": "115889bb-c02e-ead6-5aef-b69a00da5c48",
+      "state": {}
+    },
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+  ]
+}

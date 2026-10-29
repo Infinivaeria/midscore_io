@@ -4,7 +4,10 @@
 
 `/palmorganizer` has independent named sessions. Create, switch, rename, or delete
 them with the session controls. Each session stores its calendar, checklist,
-switches, notes, alarms, stopwatch, timer, sound setting, and automation code.
+switches, toggle counts, notes, alarms, stopwatch, timer, sound setting,
+automation code, and program memory. All of these live in the Rust backend's
+partitioned array, not browser local storage. Browser session storage remembers
+only which server session to select.
 A persistent HttpOnly browser cookie scopes the session list to that browser;
 it is not an account system. Clearing the cookie loses access to its sessions.
 
@@ -14,7 +17,8 @@ to override that path. The file is an atomic snapshot of the entire partitioned
 array, including its entries and allocation metadata. Back it up as a whole;
 only one server process may write to it. Invalid snapshots fail startup.
 
-While the page is open, changed data is sent every five seconds. Each accepted
+While the page is open, changes are sent after a 500 ms pause, with a five-second
+fallback flush. Each accepted
 write atomically saves the partitioned array to disk before reporting success.
 Switching sessions and importing backups also flush pending changes. Hiding
 or leaving the page attempts a final save, but browser shutdown/network failure
@@ -23,6 +27,39 @@ save status before closing. No writes are needed when nothing changed.
 Revision checks prevent stale tabs overwriting newer saves; export unsaved work
 before reloading a tab with a conflict. A failed disk write leaves both the
 previous file and server memory unchanged.
+
+Switch counts use JetBrains Mono (with local monospace fallbacks). Each actual
+off-to-on transition counts once, including approved program actions. Turning
+off, setting the same state, or renaming a switch does not increment it.
+Existing stored totals are retained; only future increments use this rule.
+Older switches without a stored count start at zero.
+
+Calendar events support all-day or timed entries, optional same-day end times,
+daily/weekly recurrence, and an optional inclusive recurrence end date.
+Select a date and use Add, or click the selected date again to schedule.
+Recurring events appear in both the calendar and today's agenda. Editing or
+deleting an occurrence edits or deletes the entire series. Dates and times
+are Pacific local time; weekly recurrence follows calendar dates across DST.
+
+### Programmable Automation
+
+Settings opens the existing JavaScript automation console. Its general-purpose
+language supports loops, conditionals, functions, and arbitrary-precision
+integers: it is Turing-complete in the usual idealized language sense, not an
+unlimited physical computer. Each browser-worker run is limited to three seconds,
+100 output lines, and 100 staged actions, with explicit approval before applying
+changes. Workers are not a security sandbox; run only trusted code. Programs
+run on demand while the page is open, not as background server jobs.
+
+The snapshot now includes all event series and saved `memory`, alongside today's
+tasks, switches, notes, and date. `organizer.addEvent({title, date, time, endTime,
+repeat, until})` schedules events; only `title` is required. The date defaults to
+today, times to all-day, and repeat to `once` (`daily` and `weekly` also work).
+`organizer.remember(key, value)` saves JSON state in the session's partitioned-array
+record. Read it on the next run through `organizer.snapshot.memory`. Store BigInt
+values as strings. Memory is limited to 100,000 JSON characters and is included
+in backup import/export. The persistent-counter example demonstrates checkpointed
+computation and calendar scheduling. Invalid action batches apply nothing.
 
 The previous `palmorganizer-v1` browser data migrates into the first session when
 no server sessions exist. Its old browser copy is removed only after a successful
