@@ -83144,9 +83144,18 @@
         "body": "{\"avatar_id\":\"43321c7f-b664-4ccd-b25a-3b8fe23fb4e3\",\"avatar_name\":\"Tirips Resident\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"h0I!\",\"sim_name\":\"Japan Hiroba\",\"timestamp\":1793236502,\"x_pos\":62.550190,\"y_pos\":110.006100,\"z_pos\":24.269150}",
         "received_at": "2026-10-29T01:15:03.645174203+00:00"
       },
-      {},
-      {},
-      {},
+      {
+        "body": "{\"avatar_id\":\"eedaaa61-91ef-7f34-0978-b257123702bf\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Japan Hiroba\",\"timestamp\":1793243536,\"x_pos\":63.971700,\"y_pos\":108.866000,\"z_pos\":24.238320}",
+        "received_at": "2026-10-29T03:12:17.078225715+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"eedaaa61-91ef-7f34-0978-b257123702bf\",\"avatar_name\":\"ArityWolf Resident\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Japan Hiroba\",\"timestamp\":1793247805,\"x_pos\":63.971700,\"y_pos\":108.866000,\"z_pos\":24.238320}",
+        "received_at": "2026-10-29T04:23:25.570336273+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"82a029a6-7472-8df3-f585-86654ed98034\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Japan Hiroba\",\"timestamp\":1793269994,\"x_pos\":63.971700,\"y_pos\":108.866000,\"z_pos\":24.269330}",
+        "received_at": "2026-10-29T10:33:14.824726341+00:00"
+      },
       {},
       {},
       {},
@@ -83229,7 +83238,7 @@
       {}
     ]
   },
-  "chatlog_revision": 16558,
+  "chatlog_revision": 16561,
   "variable_entries": {
     "db_size": 1,
     "partition_amount_and_offset": 64,

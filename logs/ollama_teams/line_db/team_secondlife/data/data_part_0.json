@@ -204,6 +204,10 @@
       {
         "reply": "The requested translation is not available in the system. However, we can assist you with other translation requests. Please provide us with the text you would like translated, and we will provide you with a translator to assist you.",
         "user": "KintariusPyromancer Resident says: translate to esperanto: hi, hello, I, you, me, us, actors, penis"
+      },
+      {
+        "reply": "\"ใครๆคือใส่เข็ม\" แปลเข็มไปให้ได้แล้วมั้ย",
+        "user": "ArityWolf Resident says: translate \"You are all full of shit.\" into the thai language"
       }
     ]
   },
