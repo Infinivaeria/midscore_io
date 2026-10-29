@@ -7,6 +7,7 @@ mod organizer;
 mod palm_sessions;
 mod persistent_snapshot;
 mod youtube_music;
+mod sl_message;
 
 use std::io::{self, BufRead};
 use tide::utils::After;
@@ -3707,6 +3708,7 @@ let state = AppState {
 };
 let mut app = tide::with_state(state.clone());
 youtube_music::mount(&mut app)?;
+sl_message::mount(&mut app)?;
     let state_for_shutdown = state.clone();
     ctrlc::set_handler(move || {
         if let Err(error) = persist_memory_stores(&state_for_shutdown) {
