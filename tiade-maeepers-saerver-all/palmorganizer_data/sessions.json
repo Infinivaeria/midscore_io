@@ -227,20 +227,23 @@
           {
             "color": "#ff00ff",
             "id": "3b820d62-b8ba-4b25-a03e-1e647d4ec4e7",
-            "on": false,
-            "title": "Character Space (RistWolf | VivexFennec | Trafford | FOX) <<>> (IsoWolf | AuberonDhole | VelHyena | Liam)"
+            "on": true,
+            "title": "Character Space (RistWolf | VivexFennec | Trafford | FOX) <<>> (IsoWolf | AuberonDhole | VelHyena | Liam)",
+            "toggleCount": 2
           },
           {
             "color": "#176b53",
             "id": "47a79af0-f0b7-4e0f-bd63-4fb36db60dbb",
             "on": false,
-            "title": "PixelWolf <> RiffWolf"
+            "title": "PixelWolf (GenericDefault) <> RiffWolf (DefaultGeneric)",
+            "toggleCount": 0
           },
           {
             "color": "#ff0000",
             "id": "5b257539-107d-441b-b1f9-4d55a4f99d1e",
             "on": false,
-            "title": "Sigil X [duped sigil]Wishhead protoplasm metaphycycist bot/hudlink manager"
+            "title": "Sigil X [duped sigil] Wishhead protoplasm metaphycycist bot/hudlink manager",
+            "toggleCount": 0
           }
         ],
         "tasks": [],
@@ -259,7 +262,7 @@
       "id": "5e99f879-30a2-4702-9230-f6afb7901475",
       "name": "The Actors Team",
       "owner": "1111edcf-ca23-449c-a6ed-b95068698a3f",
-      "revision": 55
+      "revision": 60
     },
     {},
     {},

@@ -1,3 +1,92 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling syn v2.0.106
+   Compiling libnghttp2-sys v0.1.11+1.64.0
+    Checking async-std v1.13.2
+    Checking rend v0.4.2
+    Checking pxfm v0.1.24
+   Compiling rkyv_derive v0.7.45
+    Checking exr v1.73.0
+    Checking pure-rust-locales v0.8.1
+    Checking moxcms v0.7.5
+    Checking rkyv v0.7.45
+   Compiling synstructure v0.13.2
+   Compiling wasm-bindgen-backend v0.2.104
+   Compiling bindgen v0.72.1
+   Compiling zerovec-derive v0.11.1
+   Compiling displaydoc v0.2.5
+   Compiling serde_derive v1.0.227
+   Compiling thiserror-impl v1.0.69
+   Compiling equator-macro v0.4.2
+   Compiling pin-project-internal v1.1.10
+   Compiling zerofrom-derive v0.1.6
+   Compiling yoke-derive v0.8.0
+    Checking equator v0.4.2
+    Checking aligned-vec v0.6.4
+   Compiling wasm-bindgen-macro-support v0.2.104
+   Compiling tracing-attributes v0.1.30
+    Checking v_frame v0.3.9
+    Checking pin-project v1.1.10
+    Checking thiserror v1.0.69
+   Compiling openssl-macros v0.1.1
+   Compiling profiling-procmacros v1.0.17
+    Checking av1-grain v0.2.4
+    Checking openssl v0.10.73
+    Checking zerofrom v0.1.6
+    Checking profiling v1.0.17
+   Compiling futures-macro v0.3.31
+   Compiling arg_enum_proc_macro v0.3.4
+    Checking yoke v0.8.0
+   Compiling num-derive v0.4.2
+    Checking zerovec v0.11.4
+    Checking zerotrie v0.2.2
+   Compiling curl-sys v0.4.83+curl-8.15.0
+   Compiling fax_derive v0.2.0
+   Compiling tokio-macros v2.5.0
+   Compiling wasm-bindgen-macro v0.2.104
+    Checking futures-util v0.3.31
+   Compiling async-trait v0.1.89
+    Checking rav1e v0.7.1
+    Checking tracing v0.1.41
+    Checking fax v0.2.6
+    Checking wasm-bindgen v0.2.104
+    Checking tracing-futures v0.2.5
+    Checking tokio v1.47.1
+   Compiling magnus-macros v0.9.1 (https://github.com/matsadler/magnus?rev=5056dd0dba225b10b8303a9d8097e2d8a6349521#5056dd0d)
+    Checking tiff v0.10.3
+    Checking tinystr v0.8.1
+    Checking icu_locale_core v2.0.0
+    Checking potential_utf v0.1.3
+    Checking icu_collections v2.0.0
+    Checking js-sys v0.3.81
+    Checking serde v1.0.227
+   Compiling rb-sys-build v0.9.130
+    Checking icu_provider v2.0.0
+    Checking icu_properties v2.0.1
+    Checking icu_normalizer v2.0.0
+    Checking serde_qs v0.8.5
+    Checking serde_urlencoded v0.7.1
+    Checking notify-types v2.0.0
+    Checking chrono v0.4.42
+   Compiling rb-sys v0.9.130
+    Checking native-tls v0.2.14
+    Checking notify v8.2.0
+    Checking idna_adapter v1.2.1
+    Checking idna v1.1.0
+    Checking url v2.5.7
+    Checking http-types v2.12.0
+    Checking async-native-tls v0.5.0
+    Checking web-sys v0.3.81
+    Checking ravif v0.11.20
+    Checking image v0.25.8
+    Checking tokio-native-tls v0.3.1
+   Compiling magnus v0.10.0 (https://github.com/matsadler/magnus?rev=5056dd0dba225b10b8303a9d8097e2d8a6349521#5056dd0d)
+   Compiling curl v0.4.49
+   Compiling isahc v0.9.14
+    Checking http-client v6.5.3
+    Checking surf v2.3.2
+    Checking image_resizer v0.1.0 (/root/midscore_io/image_resizer)
 warning: unused dependency `async-native-tls`
  --> Cargo.toml:8:1
   |
@@ -56,4 +145,4 @@ warning: unused dependency `tokio-native-tls`
    |
 help: consider removing the dependency on `tokio-native-tls`
 warning: `image_resizer` (manifest) generated 8 warnings
-    Finished `dev` profile [optimized + debuginfo] target(s) in 0.82s
+    Finished `dev` profile [optimized + debuginfo] target(s) in 1m 27s

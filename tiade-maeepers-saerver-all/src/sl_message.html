@@ -20,10 +20,10 @@
   let token = '', busy = false, connection = 0;
   const rows = new Map(), status = document.getElementById('status');
   const make = (tag, text, className) => {const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node;};
-  async function api(path, body) {
-    const response = await fetch('/slmessage/' + path, {method:body === undefined ? 'GET' : 'POST',cache:'no-store',headers:{Authorization:'Bearer ' + token,'Content-Type':'application/json'},body:body === undefined ? undefined : JSON.stringify(body)});
+  async function api(path, body, method = body === undefined ? 'GET' : 'POST') {
+    const response = await fetch('/slmessage/' + path, {method,cache:'no-store',headers:{Authorization:'Bearer ' + token,'Content-Type':'application/json'},body:body === undefined ? undefined : JSON.stringify(body)});
     if (!response.ok) {
-      const message = response.status === 401 ? 'Access denied. Check the admin token.' : response.status === 409 ? 'Runtime changed. Reload state before saving again.' : (await response.text() || 'Request failed: ' + response.status);
+      const message = response.status === 401 ? 'Access denied. Check the admin token.' : response.status === 409 && method === 'DELETE' ? 'Object is online; only offline objects can be deleted.' : response.status === 409 && path.endsWith('/runtime') ? 'Runtime changed. Reload state before saving again.' : (await response.text() || 'Request failed: ' + response.status);
       const error = new Error(message); error.status = response.status; throw error;
     }
     return response.json();
@@ -92,7 +92,21 @@
     text.maxLength = 254; color.type = 'color'; alpha.type = 'range'; alpha.min = '0'; alpha.max = '1'; alpha.step = '.05';
     textLabel.append(text); colorLabel.append(color); alphaLabel.append(alpha); controls.append(colorLabel,alphaLabel,send); form.append(textLabel,controls,result);
     incoming.append(make('h3','Reported hover text'),reported,make('h3','Latest object message'),message,seen); heading.append(name,state); layout.append(form,incoming); article.append(heading,meta,layout);
-    const row = {article,name,state,meta,text,color,alpha,reported,message,seen,result,dirty:false,revision:-1};
+    const remove = make('button','Delete object');
+    remove.type = 'button';remove.hidden = object.online;remove.title = 'Delete this offline object and its saved state';
+    heading.append(remove);
+    const row = {article,name,state,meta,text,color,alpha,reported,message,seen,result,remove,dirty:false,revision:-1};
+    remove.addEventListener('click',async () => {
+      if (!window.confirm('Delete this offline object and all its saved settings, state and logs? A returning prim can register again.')) return;
+      const session = connection;
+      remove.disabled = true;
+      try {
+        await api('objects/' + encodeURIComponent(object.id),undefined,'DELETE');
+        if (session !== connection) return;
+        article.remove();rows.delete(object.id);await refresh();
+      } catch (error) {if (session === connection) result.textContent = error.message;}
+      finally {remove.disabled = false;}
+    });
     runtimeControls(row,object);
     form.addEventListener('input', () => {row.dirty = true;});
     form.addEventListener('submit', async event => {
@@ -110,8 +124,11 @@
     try {
       const {objects} = await api('objects');
       if (session !== connection) return;
+      const ids = new Set(objects.map(object => object.id));
+      for (const [id,row] of rows) {if (!ids.has(id)) {row.article.remove();rows.delete(id);}}
       for (const object of objects) {
         const row = rows.get(object.id) || createRow(object);
+        row.remove.hidden = object.online;
         if (!row.runtimeSaving) showRuntime(row,object);
         row.name.textContent = object.name || 'Unnamed prim'; row.state.textContent = (object.online ? 'Online' : 'Offline') + ' / ' + (object.revision === object.applied_revision ? 'Applied' : 'Pending'); row.state.classList.toggle('online',object.online);
         row.meta.textContent = object.region + ' | ' + object.id;

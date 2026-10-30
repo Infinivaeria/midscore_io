@@ -45,6 +45,12 @@ struct Object {
     runtime: Runtime,
 }
 
+impl Object {
+    fn online(&self, now: i64) -> bool {
+        self.last_seen > 0 && now - self.last_seen < 60
+    }
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(default)]
 struct Runtime {
@@ -308,6 +314,16 @@ impl Store {
         Ok(response)
     }
 
+    fn delete_offline(&mut self, id: &str) -> tide::Result<()> {
+        let object = self.objects.get(id).ok_or_else(|| error(StatusCode::NotFound, "Unknown object"))?;
+        if object.online(chrono::Utc::now().timestamp()) {
+            return Err(error(StatusCode::Conflict, "Object is online; only offline objects can be deleted"));
+        }
+        let mut objects = self.objects.clone();
+        objects.remove(id);
+        self.commit(objects)
+    }
+
     fn set_display(&mut self, id: &str, display: Display) -> tide::Result<i32> {
         display.validate()?;
         let mut objects = self.objects.clone();
@@ -389,7 +405,7 @@ fn service(bridge: Bridge) -> tide::Server<Bridge> {
             "reported_text": object.reported_text, "message": object.message, "message_at": object.message_at,
             "state": object.state,
             "runtime": object.runtime,
-            "last_seen": object.last_seen, "online": object.last_seen > 0 && now - object.last_seen < 60,
+            "last_seen": object.last_seen, "online": object.online(now),
         })).collect();
         Ok(json(serde_json::json!({"objects": objects})))
     });
@@ -400,6 +416,12 @@ fn service(bridge: Bridge) -> tide::Server<Bridge> {
         let revision = req.state().store.lock().map_err(|_| error(StatusCode::InternalServerError, "Store unavailable"))?
             .set_display(&id, display)?;
         Ok(json(serde_json::json!({"revision": revision})))
+    }).delete(|req: Request<Bridge>| async move {
+        authorize(&req, &req.state().admin_token)?;
+        let id = req.param("id")?;
+        req.state().store.lock().map_err(|_| error(StatusCode::InternalServerError, "Store unavailable"))?
+            .delete_offline(id)?;
+        Ok(json(serde_json::json!({"deleted": id})))
     });
     app.at("/objects/:id/runtime").get(|req: Request<Bridge>| async move {
         authorize(&req, &req.state().admin_token)?;
@@ -431,14 +453,38 @@ fn admin_token_or_default(configured: Option<String>) -> String {
     configured.unwrap_or_else(|| DEFAULT_ADMIN_TOKEN.to_owned())
 }
 
+fn persisted_admin_token(path: &std::path::Path, configured: Option<String>) -> tide::Result<String> {
+    use partitioned_array_rust::PartitionedArray;
+    let saved = crate::persistent_snapshot::load::<PartitionedArray>(path)?;
+    let stored_token = saved.as_ref().map(|rows| {
+        let records: Vec<_> = rows.data_arr.iter().filter(|row| !row.is_empty()).collect();
+        if records.len() != 1 {
+            return Err(error(StatusCode::InternalServerError, "Invalid SL Message admin token storage"));
+        }
+        records[0].get("admin_token").and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| error(StatusCode::InternalServerError, "Invalid SL Message admin token storage"))
+    }).transpose()?;
+    let token = admin_token_or_default(configured.or_else(|| stored_token.clone()));
+    if stored_token.as_ref() != Some(&token) {
+        let mut rows = PartitionedArray::new(1, 1, 1, false);
+        rows.allocate(false);
+        rows.add(|row| { row.insert("admin_token".into(), serde_json::json!(token)); })
+            .ok_or_else(|| error(StatusCode::InternalServerError, "Admin token storage is full"))?;
+        crate::persistent_snapshot::save(path, &rows)?;
+    }
+    Ok(token)
+}
+
 pub fn mount<State: Clone + Send + Sync + 'static>(app: &mut tide::Server<State>) -> tide::Result<()> {
     let path = PathBuf::from(std::env::var("SL_MESSAGE_STORE").unwrap_or_else(|_| "sl_message_data/objects.json".into()));
+    let admin_token = persisted_admin_token(&path.with_extension("admin.json"), std::env::var("SL_MESSAGE_ADMIN_TOKEN").ok())?;
     let mut store = Store::open(path)?;
     store.handler = std::env::var("SL_MESSAGE_HANDLER").ok()
         .map(std::fs::read_to_string).transpose()?;
     let bridge = Bridge {
         store: Arc::new(Mutex::new(store)),
-        admin_token: Some(admin_token_or_default(std::env::var("SL_MESSAGE_ADMIN_TOKEN").ok())),
+        admin_token: Some(admin_token),
         device_token: std::env::var("SL_MESSAGE_DEVICE_TOKEN").ok(),
     };
     mount_bridge(app, bridge);
@@ -518,6 +564,58 @@ mod tests {
         assert_eq!(admin_token_or_default(None), "slmessage-admin");
         assert_eq!(admin_token_or_default(Some("custom-admin".into())), "custom-admin");
         assert_eq!(admin_token_or_default(Some(String::new())), "");
+    }
+
+    #[test]
+    fn admin_token_persists_in_rust_array_and_can_be_rotated_or_disabled() {
+        let directory = std::env::temp_dir().join(format!("sl-admin-{}", uuid::Uuid::new_v4()));
+        let path = directory.join("objects.admin.json");
+        assert_eq!(persisted_admin_token(&path, None).unwrap(), DEFAULT_ADMIN_TOKEN);
+        assert_eq!(persisted_admin_token(&path, Some("custom-admin".into())).unwrap(), "custom-admin");
+        assert_eq!(persisted_admin_token(&path, None).unwrap(), "custom-admin");
+        let rows: partitioned_array_rust::PartitionedArray = crate::persistent_snapshot::load(&path).unwrap().unwrap();
+        assert_eq!(rows.data_arr.iter().find(|row| !row.is_empty()).unwrap()["admin_token"], "custom-admin");
+        assert_eq!(persisted_admin_token(&path, Some(String::new())).unwrap(), "");
+        assert_eq!(persisted_admin_token(&path, None).unwrap(), "");
+        std::fs::write(&path, b"invalid snapshot").unwrap();
+        assert!(persisted_admin_token(&path, None).is_err());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[async_std::test]
+    async fn offline_deletion_requires_admin_and_persists_atomically() {
+        let directory = std::env::temp_dir().join(format!("sl-delete-{}", uuid::Uuid::new_v4()));
+        let path = directory.join("objects.json");
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut store = Store::open(path.clone()).unwrap();
+        store.poll(report(&id)).unwrap();
+        let store = Arc::new(Mutex::new(store));
+        let mut app = tide::new();
+        mount_bridge(&mut app, Bridge { store: store.clone(), admin_token: Some("admin".into()), device_token: Some("device".into()) });
+        let mut request = tide::http::Request::new(tide::http::Method::Delete,
+            format!("http://localhost/slmessage/objects/{id}").parse::<tide::http::Url>().unwrap());
+        for token in [None, Some("device"), Some("admin")] {
+            if let Some(token) = token { request.insert_header("Authorization", format!("Bearer {token}")); }
+            let response: Response = app.respond(request.clone()).await.unwrap();
+            assert_eq!(response.status(), if token == Some("admin") { StatusCode::Conflict } else { StatusCode::Unauthorized });
+            assert!(store.lock().unwrap().objects.contains_key(&id));
+        }
+        {
+            let mut store = store.lock().unwrap();
+            store.objects.get_mut(&id).unwrap().last_seen = chrono::Utc::now().timestamp() - 60;
+            store.path = Some(directory.clone());
+            assert!(store.delete_offline(&id).is_err());
+            assert!(store.objects.contains_key(&id));
+            assert!(Store::open(path.clone()).unwrap().objects.contains_key(&id));
+            store.path = Some(path.clone());
+        }
+        let mut response: Response = app.respond(request.clone()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::Ok);
+        assert_eq!(response.take_body().into_json::<serde_json::Value>().await.unwrap()["deleted"], id);
+        assert!(Store::open(path).unwrap().objects.is_empty());
+        let response: Response = app.respond(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NotFound);
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[async_std::test]

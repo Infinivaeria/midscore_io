@@ -1,0 +1,23 @@
+{
+  "db_size": 1,
+  "partition_amount_and_offset": 1,
+  "partition_addition_amount": 1,
+  "dynamically_allocates": false,
+  "allocated": true,
+  "range_arr": [
+    [
+      0,
+      1
+    ]
+  ],
+  "rel_arr": [
+    0,
+    1
+  ],
+  "data_arr": [
+    {
+      "admin_token": "slmessage-admin"
+    },
+    {}
+  ]
+}

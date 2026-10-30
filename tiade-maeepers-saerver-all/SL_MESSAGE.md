@@ -2,7 +2,7 @@
 
 ## Server Setup
 
-The default admin token is `slmessage-admin` when `SL_MESSAGE_ADMIN_TOKEN` is unset. This is a public development default, not a secure secret. Override it before exposing the server publicly. An explicitly empty admin token disables admin access.
+The initial default admin token is `slmessage-admin` when `SL_MESSAGE_ADMIN_TOKEN` is unset and no saved token exists. This is a public development default, not a secure secret. Override it before exposing the server publicly. The admin token is persisted atomically in Rust's `PartitionedArray` at `sl_message_data/objects.admin.json`, alongside the registry (the `SL_MESSAGE_STORE` path with its extension replaced by `admin.json`). An explicit environment token updates the saved token; when the variable is unset, startup reuses the saved token. An explicitly empty token disables admin access and that disabled setting persists. Invalid token storage fails startup. Protect and back up this file: it contains the admin credential in plaintext. Device tokens remain environment-only.
 
 Set two different, randomly generated secrets in the server process environment:
 
@@ -26,6 +26,8 @@ Each prim generates an ID and secret with `llGenerateKey`, saved in linkset data
 Multiple standalone objects and multiple prims in a linked object can use the same server and device token. Install one script in each prim to control it independently. There is no fixed prim-count limit; storage partitions grow as new identities register, and names need not be unique. Each identity gets its own dashboard row, hover-text settings, revision, and latest message. Updates target the generated ID, not the object name.
 
 Prims register on their first poll. The dashboard refreshes every five seconds, and prims poll about every 15-18 seconds (with error backoff). The script honors the server's polling interval, bounded to 15-120 seconds plus jitter. Requests are never overlapped. Edits to text, color, and opacity target one ID. Empty text clears hover text. Text is limited to 254 UTF-8 bytes, not 254 Unicode characters. After applying an update, the script immediately polls again to acknowledge the revision; failed acknowledgments retry on subsequent polls. Newer edits replace older pending edits; this is a latest-state service, not a chat queue. Offline edits persist until a prim returns. Online means a poll within the last 60 seconds.
+
+Offline rows offer **Delete object** with confirmation. Deletion removes the entire saved object record, including settings, state and logs, and is persisted before success. The server rechecks offline status under the registry lock and rejects online objects with HTTP 409. This is cleanup, not a ban: if the prim returns, its client can register again with revision `-1`. With polling intervals longer than 60 seconds, an active prim can appear offline between polls.
 
 ## From Second Life To The Server
 
@@ -133,6 +135,7 @@ All bodies are JSON, at most 4096 bytes. Responses must not be cached.
 - `GET /slmessage/script.lsl`: template script, without credentials.
 - `GET /slmessage/objects`: registry, using `Authorization: Bearer <admin token>`; never returns per-prim secrets.
 - `POST /slmessage/objects/:id`: admin update, body `{"text":"Hello","color":[1,1,1],"alpha":1}`.
+- `DELETE /slmessage/objects/:id`: admin-only offline object deletion; returns `{"deleted":"<id>"}`, HTTP 409 for online objects, or HTTP 404 for unknown IDs.
 - `GET /slmessage/objects/:id/runtime`: admin-only runtime and persisted state inspection.
 - `POST /slmessage/objects/:id/runtime`: admin-only, version-checked runtime controls and state replacement.
 - `POST /slmessage/poll`: register/report/fetch, using the device bearer token. Body contains `id`, `secret`, `object_key`, `name`, `region`, `applied_revision`, `reported_text`, `color`, `alpha`, and `message`. Initial revision is `-1`. Reply contains `revision`, `text`, `color`, `alpha`, and `poll_seconds`. Existing IDs require their original prim key and secret as well as the shared device token.
