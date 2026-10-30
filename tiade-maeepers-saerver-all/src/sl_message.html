@@ -141,7 +141,18 @@
     } catch (error) {if (session === connection) status.textContent = error.message;} finally {if (session === connection) busy = false;}
   }
   function clearConnection() {connection++;busy = false;rows.clear();document.getElementById('objects').replaceChildren();document.getElementById('empty').hidden = false;}
-  document.getElementById('connect').onsubmit = event => {event.preventDefault();if ([...rows.values()].some(row => row.dirty || row.stateDirty || row.pollDirty) && !window.confirm('Discard unsaved changes and reconnect?')) return;clearConnection();token = document.getElementById('token').value;refresh();};
+  document.getElementById('connect').onsubmit = async event => {
+    event.preventDefault();
+    if ([...rows.values()].some(row => row.dirty || row.stateDirty || row.pollDirty) && !window.confirm('Discard unsaved changes and reconnect?')) return;
+    clearConnection();token = document.getElementById('token').value;busy = true;
+    const session = connection;
+    status.textContent = 'Connecting...';
+    try {
+      await api('connect','POST');
+      if (session !== connection) return;
+      busy = false;refresh();
+    } catch (error) {if (session === connection) {busy = false;token = '';status.textContent = error.message;}}
+  };
   document.getElementById('disconnect').onclick = () => {clearConnection();token = '';document.getElementById('token').value = '';status.textContent = 'Disconnected';};
   setInterval(refresh,5000);
 })();

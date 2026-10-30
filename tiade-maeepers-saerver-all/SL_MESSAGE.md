@@ -11,7 +11,7 @@ export SL_MESSAGE_ADMIN_TOKEN="YOUR_LONG_RANDOM_ADMIN_TOKEN"
 export SL_MESSAGE_DEVICE_TOKEN="YOUR_DIFFERENT_LONG_RANDOM_DEVICE_TOKEN"
 ```
 
-Restart the rebuilt server and open `/slmessage` over HTTPS. Enter the admin token to load the object registry. Tokens are held only in page memory, not browser storage. The page and template script are public; all object data and changes require authentication. Do not put the admin token in a prim.
+Restart the rebuilt server and open `/slmessage` over HTTPS. Enter the admin token to load the object registry. Connect authenticates and saves the accepted admin token in the Rust PartitionedArray snapshot at `SL_MESSAGE_STORE` with its extension replaced by `.admin.json` before loading objects. In the browser, tokens are held only in page memory, not browser storage. The page and template script are public; all object data and changes require authentication. Do not put the admin token in a prim.
 
 The registry is built using Ruby's actual `PartitionedArray` class from `../lib/partitioned_array/lib/partitioned_array.rb`, running in the embedded Ruby VM. Override that library's absolute path with `SL_MESSAGE_RUBY_ARRAY` when deploying elsewhere. The adapter explicitly adds partitions as needed and uses `add_nosave`, leaving atomic disk writes to the server. It does not use Rust's array class for new snapshots. The complete Ruby array snapshot has backend marker `ruby-partitioned-array-v1` and is saved atomically to `sl_message_data/objects.json`, relative to the server working directory. Override with `SL_MESSAGE_STORE`.
 
@@ -133,6 +133,7 @@ All bodies are JSON, at most 4096 bytes. Responses must not be cached.
 
 - `GET /slmessage` or `/slmessage/`: control page.
 - `GET /slmessage/script.lsl`: template script, without credentials.
+- `POST /slmessage/connect`: admin-authenticated connection; persists the configured admin token to disk and returns `{"connected":true}`.
 - `GET /slmessage/objects`: registry, using `Authorization: Bearer <admin token>`; never returns per-prim secrets.
 - `POST /slmessage/objects/:id`: admin update, body `{"text":"Hello","color":[1,1,1],"alpha":1}`.
 - `DELETE /slmessage/objects/:id`: admin-only offline object deletion; returns `{"deleted":"<id>"}`, HTTP 409 for online objects, or HTTP 404 for unknown IDs.

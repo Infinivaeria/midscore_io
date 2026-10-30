@@ -389,6 +389,14 @@ fn mount_bridge<State: Clone + Send + Sync + 'static>(app: &mut tide::Server<Sta
 fn service(bridge: Bridge) -> tide::Server<Bridge> {
     let mut app = tide::with_state(bridge);
     app.at("/").get(|_| async { Ok(control_page()) });
+    app.at("/connect").post(|req: Request<Bridge>| async move {
+        authorize(&req, &req.state().admin_token)?;
+        let store = req.state().store.lock().map_err(|_| error(StatusCode::InternalServerError, "Store unavailable"))?;
+        if let Some(path) = &store.path {
+            persisted_admin_token(&path.with_extension("admin.json"), req.state().admin_token.clone())?;
+        }
+        Ok(json(serde_json::json!({"connected": true})))
+    });
     app.at("/script.lsl").get(|_| async {
         let mut response = Response::new(StatusCode::Ok);
         response.insert_header("Content-Type", "text/plain; charset=utf-8");
@@ -564,6 +572,37 @@ mod tests {
         assert_eq!(admin_token_or_default(None), "slmessage-admin");
         assert_eq!(admin_token_or_default(Some("custom-admin".into())), "custom-admin");
         assert_eq!(admin_token_or_default(Some(String::new())), "");
+    }
+
+    #[async_std::test]
+    async fn connect_persists_only_authenticated_admin_tokens() {
+        let directory = std::env::temp_dir().join(format!("sl-connect-{}", uuid::Uuid::new_v4()));
+        let path = directory.join("objects.json");
+        let admin_path = path.with_extension("admin.json");
+        let mut app = tide::new();
+        mount_bridge(&mut app, Bridge {
+            store: Arc::new(Mutex::new(Store::new(Some(path)))),
+            admin_token: Some("connect-admin".into()), device_token: Some("device".into()),
+        });
+        for token in [None, Some("device"), Some("wrong-admin"), Some("connect-admin")] {
+            let mut request = tide::http::Request::new(tide::http::Method::Post,
+                tide::http::Url::parse("http://localhost/slmessage/connect").unwrap());
+            if let Some(token) = token {
+                request.insert_header("Authorization", format!("Bearer {token}"));
+            }
+            let mut response: Response = app.respond(request).await.unwrap();
+            if token == Some("connect-admin") {
+                assert_eq!(response.status(), StatusCode::Ok);
+                assert_eq!(response.take_body().into_json::<serde_json::Value>().await.unwrap(), json!({"connected": true}));
+            } else {
+                assert_eq!(response.status(), StatusCode::Unauthorized);
+                assert!(!admin_path.exists());
+            }
+        }
+        let rows: partitioned_array_rust::PartitionedArray = crate::persistent_snapshot::load(&admin_path).unwrap().unwrap();
+        assert_eq!(rows.data_arr.iter().find(|row| !row.is_empty()).unwrap()["admin_token"], "connect-admin");
+        assert_eq!(persisted_admin_token(&admin_path, None).unwrap(), "connect-admin");
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
