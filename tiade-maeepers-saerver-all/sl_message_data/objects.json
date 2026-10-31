@@ -4,39 +4,7 @@
   "partition_amount_and_offset": 32,
   "data_arr": [
     {
-      "applied_revision": 2,
-      "desired": {
-        "alpha": 1.0,
-        "color": [
-          1.0,
-          1.0,
-          1.0
-        ],
-        "text": "ไอโล ไอลอน"
-      },
-      "id": "5146fc4c-09b5-1bbd-2686-51f3784d2d7d",
-      "last_seen": 1793352837,
-      "message": "",
-      "message_at": 0,
-      "name": "SL:\\\\MoonLink  FINAL",
-      "object_key": "b1f98c62-db53-ba04-ccde-f939cc9d982d",
-      "region": "Natoma",
-      "reported_text": "ไอโล ไอลอน",
-      "revision": 2,
-      "runtime": {
-        "last_run_at": 0,
-        "logs": [],
-        "paused": false,
-        "poll_seconds": 15,
-        "runs": 0,
-        "version": 0,
-        "wake_at": 0
-      },
-      "secret": "e8b0d8e6-9463-01eb-53a5-98da9f79fd1a",
-      "state": {}
-    },
-    {
-      "applied_revision": 3,
+      "applied_revision": 0,
       "desired": {
         "alpha": 1.0,
         "color": [
@@ -46,15 +14,15 @@
         ],
         "text": "อาร์โล อาร์ลอน"
       },
-      "id": "fee2c3aa-a7da-1377-110c-d94ec83cafe2",
-      "last_seen": 1793352842,
+      "id": "1667851e-078d-b4be-ce22-7a30d520e5af",
+      "last_seen": 1793434414,
       "message": "",
       "message_at": 0,
       "name": "SL:\\\\MoonLink  FINAL",
-      "object_key": "1f2d1cb9-83df-1565-d06b-ea7547502827",
+      "object_key": "70a327a5-d57d-ce42-da0b-0ca5792202a7",
       "region": "Natoma",
       "reported_text": "อาร์โล อาร์ลอน",
-      "revision": 3,
+      "revision": 0,
       "runtime": {
         "last_run_at": 0,
         "logs": [],
@@ -64,7 +32,39 @@
         "version": 0,
         "wake_at": 0
       },
-      "secret": "115889bb-c02e-ead6-5aef-b69a00da5c48",
+      "secret": "1212f722-d587-32cb-4dfd-7bbf6edaa767",
+      "state": {}
+    },
+    {
+      "applied_revision": 0,
+      "desired": {
+        "alpha": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "text": "ไอโล ไอลอน"
+      },
+      "id": "32319aa9-9f86-7d1c-8b48-27e6fa69e9d3",
+      "last_seen": 1793434415,
+      "message": "",
+      "message_at": 0,
+      "name": "SL:\\\\MoonLink  FINAL",
+      "object_key": "900e148f-9ac7-861b-cfc6-47813841de09",
+      "region": "Natoma",
+      "reported_text": "ไอโล ไอลอน",
+      "revision": 0,
+      "runtime": {
+        "last_run_at": 0,
+        "logs": [],
+        "paused": false,
+        "poll_seconds": 15,
+        "runs": 0,
+        "version": 0,
+        "wake_at": 0
+      },
+      "secret": "c0936ea0-1391-237e-9e0f-13ac0793a097",
       "state": {}
     },
     {},

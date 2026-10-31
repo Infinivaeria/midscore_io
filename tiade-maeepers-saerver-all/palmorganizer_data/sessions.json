@@ -229,7 +229,7 @@
             "id": "3b820d62-b8ba-4b25-a03e-1e647d4ec4e7",
             "on": true,
             "title": "Character Space (RistWolf | VivexFennec | Trafford | FOX) <<>> (IsoWolf | AuberonDhole | VelHyena | Liam)",
-            "toggleCount": 2
+            "toggleCount": 3
           },
           {
             "color": "#176b53",
@@ -244,6 +244,27 @@
             "on": false,
             "title": "Sigil X [duped sigil] Wishhead protoplasm metaphycycist bot/hudlink manager",
             "toggleCount": 0
+          },
+          {
+            "color": "#176b53",
+            "id": "dcce79ad-f8e5-465c-9f56-5c265b072f8c",
+            "on": false,
+            "title": "Nemzky <> RustledFluff",
+            "toggleCount": 0
+          },
+          {
+            "color": "#176b53",
+            "id": "4813ad15-b6c4-4b97-ab87-0b0800126558",
+            "on": false,
+            "title": "DevWolf <> MelodyWolf",
+            "toggleCount": 0
+          },
+          {
+            "color": "#ffffff",
+            "id": "4258fc2c-1d3b-4ef6-9a8e-1ffdae3e550f",
+            "on": false,
+            "title": "Gut'out / Gut'in the Nths backwards sigil",
+            "toggleCount": 1
           }
         ],
         "tasks": [],
@@ -262,7 +283,7 @@
       "id": "5e99f879-30a2-4702-9230-f6afb7901475",
       "name": "The Actors Team",
       "owner": "1111edcf-ca23-449c-a6ed-b95068698a3f",
-      "revision": 60
+      "revision": 67
     },
     {},
     {},

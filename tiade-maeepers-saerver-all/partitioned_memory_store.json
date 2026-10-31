@@ -83852,68 +83852,254 @@
         "body": "{\"avatar_id\":\"9bd34fc0-58e5-2539-f411-54b746421f5a\",\"avatar_name\":\"\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"Thank you for completing the puzzle! The creator has been notified\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1793319395,\"x_pos\":78.008350,\"y_pos\":172.846300,\"z_pos\":29.665770}",
         "received_at": "2026-10-30T00:16:36.563650795+00:00"
       },
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
+      {
+        "body": "{\"avatar_id\":\"65a1ce6f-c120-47af-87df-6d39ea0f9da6\",\"avatar_name\":\"Mist Marshdevil\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"hi marissa\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1793354359,\"x_pos\":71.810870,\"y_pos\":169.184400,\"z_pos\":25.912380}",
+        "received_at": "2026-10-30T09:59:19.732347625+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"65a1ce6f-c120-47af-87df-6d39ea0f9da6\",\"avatar_name\":\"Mist Marshdevil\",\"captured_by\":\"aritywolf\",\"message\":\"hi marissa\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793354359,\"x_pos\":72.531870,\"y_pos\":167.334100,\"z_pos\":25.907430}",
+        "received_at": "2026-10-30T09:59:20.381553338+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"21631fc5-6766-4ef6-aca7-6d87c8952309\",\"avatar_name\":\"sarajanelopez Resident\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"The mobile SL has improved a lot\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1793354366,\"x_pos\":71.810870,\"y_pos\":169.184400,\"z_pos\":25.912380}",
+        "received_at": "2026-10-30T09:59:27.018983443+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"21631fc5-6766-4ef6-aca7-6d87c8952309\",\"avatar_name\":\"sarajanelopez Resident\",\"captured_by\":\"aritywolf\",\"message\":\"The mobile SL has improved a lot\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793354366,\"x_pos\":72.531870,\"y_pos\":167.334100,\"z_pos\":25.907430}",
+        "received_at": "2026-10-30T09:59:27.862805157+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"21631fc5-6766-4ef6-aca7-6d87c8952309\",\"avatar_name\":\"sarajanelopez Resident\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"There was a new update today\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1793354394,\"x_pos\":71.810870,\"y_pos\":169.184400,\"z_pos\":25.912380}",
+        "received_at": "2026-10-30T09:59:54.576766498+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"21631fc5-6766-4ef6-aca7-6d87c8952309\",\"avatar_name\":\"sarajanelopez Resident\",\"captured_by\":\"aritywolf\",\"message\":\"There was a new update today\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793354394,\"x_pos\":72.531870,\"y_pos\":167.334100,\"z_pos\":25.907430}",
+        "received_at": "2026-10-30T09:59:54.981041802+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"21631fc5-6766-4ef6-aca7-6d87c8952309\",\"avatar_name\":\"sarajanelopez Resident\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"Hi Freydis\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1793354408,\"x_pos\":71.810870,\"y_pos\":169.184400,\"z_pos\":25.912380}",
+        "received_at": "2026-10-30T10:00:08.785219713+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"21631fc5-6766-4ef6-aca7-6d87c8952309\",\"avatar_name\":\"sarajanelopez Resident\",\"captured_by\":\"aritywolf\",\"message\":\"Hi Freydis\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793354408,\"x_pos\":72.531870,\"y_pos\":167.334100,\"z_pos\":25.907430}",
+        "received_at": "2026-10-30T10:00:09.233473764+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"65a1ce6f-c120-47af-87df-6d39ea0f9da6\",\"avatar_name\":\"Mist Marshdevil\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"oo really, does it render avatars correctly now?\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1793354419,\"x_pos\":71.810870,\"y_pos\":169.184400,\"z_pos\":25.912380}",
+        "received_at": "2026-10-30T10:00:19.468623105+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"65a1ce6f-c120-47af-87df-6d39ea0f9da6\",\"avatar_name\":\"Mist Marshdevil\",\"captured_by\":\"aritywolf\",\"message\":\"oo really, does it render avatars correctly now?\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793354419,\"x_pos\":72.531870,\"y_pos\":167.334100,\"z_pos\":25.907430}",
+        "received_at": "2026-10-30T10:00:19.870980765+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"21631fc5-6766-4ef6-aca7-6d87c8952309\",\"avatar_name\":\"sarajanelopez Resident\",\"captured_by\":\"aritywolf\",\"message\":\"Yes it\\\\'s nice\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793354429,\"x_pos\":72.531870,\"y_pos\":167.334100,\"z_pos\":25.907430}",
+        "received_at": "2026-10-30T10:00:29.463800160+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"21631fc5-6766-4ef6-aca7-6d87c8952309\",\"avatar_name\":\"sarajanelopez Resident\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"Yes it\\\\'s nice\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1793354429,\"x_pos\":71.810870,\"y_pos\":169.184400,\"z_pos\":25.912380}",
+        "received_at": "2026-10-30T10:00:29.975618232+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"21631fc5-6766-4ef6-aca7-6d87c8952309\",\"avatar_name\":\"sarajanelopez Resident\",\"captured_by\":\"aritywolf\",\"message\":\"It renders well\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793354440,\"x_pos\":72.531870,\"y_pos\":167.334100,\"z_pos\":25.907430}",
+        "received_at": "2026-10-30T10:00:40.990351710+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"21631fc5-6766-4ef6-aca7-6d87c8952309\",\"avatar_name\":\"sarajanelopez Resident\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"It renders well\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1793354440,\"x_pos\":71.810870,\"y_pos\":169.184400,\"z_pos\":25.912380}",
+        "received_at": "2026-10-30T10:00:41.706579564+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"21631fc5-6766-4ef6-aca7-6d87c8952309\",\"avatar_name\":\"sarajanelopez Resident\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"I\\\\'m using the Linden lab version\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1793354465,\"x_pos\":71.810870,\"y_pos\":169.184400,\"z_pos\":25.912380}",
+        "received_at": "2026-10-30T10:01:05.510516621+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"21631fc5-6766-4ef6-aca7-6d87c8952309\",\"avatar_name\":\"sarajanelopez Resident\",\"captured_by\":\"aritywolf\",\"message\":\"I\\\\'m using the Linden lab version\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793354465,\"x_pos\":72.531870,\"y_pos\":167.334100,\"z_pos\":25.907430}",
+        "received_at": "2026-10-30T10:01:05.884122502+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"65a1ce6f-c120-47af-87df-6d39ea0f9da6\",\"avatar_name\":\"Mist Marshdevil\",\"captured_by\":\"aritywolf\",\"message\":\"nice\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793354467,\"x_pos\":72.531870,\"y_pos\":167.334100,\"z_pos\":25.907430}",
+        "received_at": "2026-10-30T10:01:07.553085381+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"21631fc5-6766-4ef6-aca7-6d87c8952309\",\"avatar_name\":\"sarajanelopez Resident\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"Nods\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1793354477,\"x_pos\":71.810870,\"y_pos\":169.184400,\"z_pos\":25.912380}",
+        "received_at": "2026-10-30T10:01:18.104914250+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"21631fc5-6766-4ef6-aca7-6d87c8952309\",\"avatar_name\":\"sarajanelopez Resident\",\"captured_by\":\"aritywolf\",\"message\":\"Nods\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793354477,\"x_pos\":72.531870,\"y_pos\":167.334100,\"z_pos\":25.907430}",
+        "received_at": "2026-10-30T10:01:18.679880352+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"afb5cb7d-f294-4a90-aa8a-c5915bcd04bc\",\"avatar_name\":\"tototol Resident\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"lg\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1793356237,\"x_pos\":71.810870,\"y_pos\":169.184400,\"z_pos\":25.912380}",
+        "received_at": "2026-10-30T10:30:38.155852913+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"afb5cb7d-f294-4a90-aa8a-c5915bcd04bc\",\"avatar_name\":\"tototol Resident\",\"captured_by\":\"aritywolf\",\"message\":\"lg\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793356237,\"x_pos\":72.529720,\"y_pos\":167.328400,\"z_pos\":25.907380}",
+        "received_at": "2026-10-30T10:30:38.504724708+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"2e53a2eb-e44a-c07c-6689-c79d1ea03cf8\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793369700,\"x_pos\":72.530980,\"y_pos\":167.330100,\"z_pos\":25.907420}",
+        "received_at": "2026-10-30T14:15:00.921804621+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"3a0acc78-06ab-8ea1-22a8-61c1cc41a5cc\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793369909,\"x_pos\":72.530960,\"y_pos\":167.330300,\"z_pos\":25.871750}",
+        "received_at": "2026-10-30T14:18:30.067893840+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"ef78c0fc-3460-6561-0bb1-590ced185639\",\"avatar_name\":\"Canteen\",\"captured_by\":\"aritywolf\",\"message\":\"Touched\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793372728,\"x_pos\":72.500140,\"y_pos\":167.290600,\"z_pos\":25.907500}",
+        "received_at": "2026-10-30T15:05:28.868838421+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"ef78c0fc-3460-6561-0bb1-590ced185639\",\"avatar_name\":\"Canteen\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"Touched\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1793372728,\"x_pos\":71.804030,\"y_pos\":169.181400,\"z_pos\":25.911540}",
+        "received_at": "2026-10-30T15:05:29.279887629+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"ef78c0fc-3460-6561-0bb1-590ced185639\",\"avatar_name\":\"Canteen\",\"captured_by\":\"aritywolf\",\"message\":\"Touched\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793372736,\"x_pos\":72.500140,\"y_pos\":167.290700,\"z_pos\":25.907500}",
+        "received_at": "2026-10-30T15:05:37.171141536+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"ef78c0fc-3460-6561-0bb1-590ced185639\",\"avatar_name\":\"Canteen\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"Touched\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1793372736,\"x_pos\":71.804030,\"y_pos\":169.181400,\"z_pos\":25.911540}",
+        "received_at": "2026-10-30T15:05:37.557045373+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"8be89c45-8cdc-466e-4578-78b130922025\",\"avatar_name\":\"AO - Dangerous\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"Touched\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1793372751,\"x_pos\":71.804030,\"y_pos\":169.181400,\"z_pos\":25.911540}",
+        "received_at": "2026-10-30T15:05:51.677197976+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"8be89c45-8cdc-466e-4578-78b130922025\",\"avatar_name\":\"AO - Dangerous\",\"captured_by\":\"aritywolf\",\"message\":\"Touched\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793372751,\"x_pos\":72.500140,\"y_pos\":167.290700,\"z_pos\":25.907500}",
+        "received_at": "2026-10-30T15:05:52.097273781+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"8be89c45-8cdc-466e-4578-78b130922025\",\"avatar_name\":\"AO - Dangerous\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"Touched\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1793372764,\"x_pos\":71.804030,\"y_pos\":169.181400,\"z_pos\":25.911540}",
+        "received_at": "2026-10-30T15:06:04.878832583+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"8be89c45-8cdc-466e-4578-78b130922025\",\"avatar_name\":\"AO - Dangerous\",\"captured_by\":\"aritywolf\",\"message\":\"Touched\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793372764,\"x_pos\":72.500140,\"y_pos\":167.290700,\"z_pos\":25.907500}",
+        "received_at": "2026-10-30T15:06:05.316670045+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"9039c7c4-80d4-6635-a78b-fc2a09ae4a00\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793372878,\"x_pos\":72.500150,\"y_pos\":167.291100,\"z_pos\":25.907480}",
+        "received_at": "2026-10-30T15:07:59.161474026+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"1624d6ce-d177-2449-2383-2023b2c9d7d2\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793381563,\"x_pos\":72.577870,\"y_pos\":167.258200,\"z_pos\":25.998070}",
+        "received_at": "2026-10-30T17:32:43.966746700+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"a6a22893-ea46-2ecd-5353-fa483b9d2210\",\"avatar_name\":\"Actors' N Bracelet v7.0\",\"captured_by\":\"aritywolf\",\"message\":\"Running\\\\.\\\\.\\\\.\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793391528,\"x_pos\":72.577870,\"y_pos\":167.258200,\"z_pos\":25.982720}",
+        "received_at": "2026-10-30T20:18:48.701487571+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"459d9f91-6427-4c5c-9f0b-dea4ab15cd53\",\"avatar_name\":\"Zasui Resident\",\"captured_by\":\"aritywolf\",\"message\":\"こんにちは、さようなら、コチコチカッチン、\",\"sim_name\":\"Ivory Tower Library of Primitives Sandbox\",\"timestamp\":1793394807,\"x_pos\":72.577920,\"y_pos\":167.258000,\"z_pos\":25.907650}",
+        "received_at": "2026-10-30T21:13:28.027030386+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"459d9f91-6427-4c5c-9f0b-dea4ab15cd53\",\"avatar_name\":\"Zasui Resident\",\"captured_by\":\"kintariuspyromancer\",\"message\":\"こんにちは、さようなら、コチコチカッチン、\",\"sim_name\":\"Ivory Tower Library of Primitives Table\",\"timestamp\":1793394807,\"x_pos\":71.836050,\"y_pos\":169.179700,\"z_pos\":25.911440}",
+        "received_at": "2026-10-30T21:13:28.476075855+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"57204bf2-3164-49e5-ae1f-6cb030254010\",\"avatar_name\":\"sooyoung12345 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"ew\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433136,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:52:16.530249216+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"57204bf2-3164-49e5-ae1f-6cb030254010\",\"avatar_name\":\"sooyoung12345 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"lol\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433137,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:52:18.067751684+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"57204bf2-3164-49e5-ae1f-6cb030254010\",\"avatar_name\":\"sooyoung12345 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"thats a man\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433153,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:52:34.045296897+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"57204bf2-3164-49e5-ae1f-6cb030254010\",\"avatar_name\":\"sooyoung12345 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"yeah\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433183,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:53:03.410066763+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"57204bf2-3164-49e5-ae1f-6cb030254010\",\"avatar_name\":\"sooyoung12345 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"noone says that\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433185,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:53:05.932744235+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"57204bf2-3164-49e5-ae1f-6cb030254010\",\"avatar_name\":\"sooyoung12345 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"hes from PA\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433230,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:53:51.091995994+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"57204bf2-3164-49e5-ae1f-6cb030254010\",\"avatar_name\":\"sooyoung12345 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"dont listen\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433234,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:53:54.369771499+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"57204bf2-3164-49e5-ae1f-6cb030254010\",\"avatar_name\":\"sooyoung12345 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"love him\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433237,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:53:57.590314662+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"57204bf2-3164-49e5-ae1f-6cb030254010\",\"avatar_name\":\"sooyoung12345 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"LOL\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433299,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:54:59.426982778+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"57204bf2-3164-49e5-ae1f-6cb030254010\",\"avatar_name\":\"sooyoung12345 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"WHO IS PISSING\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433302,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:55:02.598829390+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"908b2c06-4f72-437c-81f4-26e2502e8746\",\"avatar_name\":\"fdg Ally\",\"captured_by\":\"aritywolf\",\"message\":\"virtual tv show\\\\: it\\\\'s always sunny in \\\\.Pennsylvania\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433369,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:56:09.328762546+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"338c2403-13fe-4d7a-bc6f-e80935adf8c1\",\"avatar_name\":\"Keroppi Resident\",\"captured_by\":\"aritywolf\",\"message\":\"u need to alpha it\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433389,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:56:30.108525007+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"338c2403-13fe-4d7a-bc6f-e80935adf8c1\",\"avatar_name\":\"Keroppi Resident\",\"captured_by\":\"aritywolf\",\"message\":\"dixon\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433391,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:56:31.897567079+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"338c2403-13fe-4d7a-bc6f-e80935adf8c1\",\"avatar_name\":\"Keroppi Resident\",\"captured_by\":\"aritywolf\",\"message\":\"yea\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433401,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:56:41.553213704+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"338c2403-13fe-4d7a-bc6f-e80935adf8c1\",\"avatar_name\":\"Keroppi Resident\",\"captured_by\":\"aritywolf\",\"message\":\"i dont think so\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433405,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:56:45.798059494+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"338c2403-13fe-4d7a-bc6f-e80935adf8c1\",\"avatar_name\":\"Keroppi Resident\",\"captured_by\":\"aritywolf\",\"message\":\"u could also take the lelutka head off and wear a system head alpha but there\\\\'s prob head alphas for free on the mp\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433500,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:58:20.662866624+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433563,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:59:24.251357394+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"86d7f8eb-2622-4bd8-8ed6-7bcf0ac5b2c2\",\"avatar_name\":\"AubreyyXo Resident\",\"captured_by\":\"aritywolf\",\"message\":\"𝚕𝚘𝚗𝚐 𝚍𝚒𝚌𝚔 𝚑𝚎𝚛 𝚕𝚒𝚔𝚎 𝚞𝚐𝚑, 𝚞𝚐𝚑, 𝚞𝚐𝚑\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433564,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:59:24.703574248+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433565,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:59:26.161517279+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"667ff6db-b0ba-4bf2-b0e0-e488f0200949\",\"avatar_name\":\"BR33ZY420 Resident\",\"captured_by\":\"aritywolf\",\"message\":\"𝚕𝚘𝚗𝚐 𝚍𝚒𝚌𝚔 𝚑𝚎𝚛 𝚕𝚒𝚔𝚎 𝚞𝚐𝚑, 𝚞𝚐𝚑, 𝚞𝚐𝚑\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433565,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:59:26.541915996+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"ec6eb8dd-0f6a-467f-8f73-752b378f23f9\",\"avatar_name\":\"Damo Bekkers\",\"captured_by\":\"aritywolf\",\"message\":\"✖ FAIL ! ✖\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433575,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:59:35.967675026+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"ec6eb8dd-0f6a-467f-8f73-752b378f23f9\",\"avatar_name\":\"Damo Bekkers\",\"captured_by\":\"aritywolf\",\"message\":\"✖ FAIL ! ✖\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433580,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:59:41.050330451+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"583ff76e-5860-a8ba-0007-63092c479283\",\"avatar_name\":\"CD Headpat Counter Deluxe\",\"captured_by\":\"aritywolf\",\"message\":\"❤️ Thank you хJιɴхх ƝΦғᴜx for headpat #2571 ❤️\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433588,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:59:48.972679610+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"ec6eb8dd-0f6a-467f-8f73-752b378f23f9\",\"avatar_name\":\"Damo Bekkers\",\"captured_by\":\"aritywolf\",\"message\":\"✖ FAIL ! ✖\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433589,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T07:59:49.664100013+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"9542422a-df40-4db4-9ca8-689d461439e2\",\"avatar_name\":\"Rot Baby\",\"captured_by\":\"aritywolf\",\"message\":\"𝓗𝓮𝓱𝓮𝓱𝓮𝓱𝓮 \\\\.\\\\.\\\\.\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433614,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T08:00:14.910348140+00:00"
+      },
+      {
+        "body": "{\"avatar_id\":\"9542422a-df40-4db4-9ca8-689d461439e2\",\"avatar_name\":\"Rot Baby\",\"captured_by\":\"aritywolf\",\"message\":\"𝓗𝓮𝓱𝓮𝓱𝓮𝓱𝓮 ( ʘ‿ʘ )\",\"sim_name\":\"LONDON CITY - Soho & Regent's Park\",\"timestamp\":1793433615,\"x_pos\":74.987060,\"y_pos\":185.891400,\"z_pos\":23.219290}",
+        "received_at": "2026-10-31T08:00:15.920302965+00:00"
+      },
       {},
       {},
       {},
@@ -84081,7 +84267,7 @@
       {}
     ]
   },
-  "chatlog_revision": 16670,
+  "chatlog_revision": 16732,
   "variable_entries": {
     "db_size": 1,
     "partition_amount_and_offset": 64,
